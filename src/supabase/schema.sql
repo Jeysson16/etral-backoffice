@@ -1,0 +1,242 @@
+-- ETRAL · Modelo operativo para Supabase
+-- Ejecutar completo en SQL Editor antes de seed.sql.
+
+create table if not exists flow_stages (
+  id text primary key,
+  "order" int not null,
+  name text not null,
+  short_name text not null,
+  capacity_hours numeric not null default 0 check (capacity_hours >= 0),
+  standard_hours numeric not null default 0 check (standard_hours >= 0),
+  color text not null default '#f36b21',
+  gated_by_quality boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists stage_activities (
+  id text primary key,
+  stage_id text not null references flow_stages(id) on delete cascade,
+  sequence int not null check (sequence > 0),
+  name text not null,
+  standard_minutes numeric not null default 0 check (standard_minutes >= 0),
+  active boolean not null default true,
+  unique (stage_id, sequence)
+);
+
+create table if not exists body_types (
+  id text primary key,
+  code text unique not null,
+  family text not null,
+  name text not null,
+  target_days numeric not null default 0 check (target_days >= 0),
+  output_unit text not null default 'und'
+);
+
+create table if not exists product_routes (
+  product_id text not null references body_types(id) on delete cascade,
+  stage_id text not null references flow_stages(id),
+  sequence int not null check (sequence > 0),
+  primary key (product_id, stage_id),
+  unique (product_id, sequence)
+);
+
+create table if not exists inventory_items (
+  id text primary key,
+  code text unique not null,
+  category text not null default 'Material',
+  description text not null,
+  physical numeric not null default 0 check (physical >= 0),
+  committed numeric not null default 0 check (committed >= 0),
+  safety numeric not null default 0 check (safety >= 0),
+  service_factor numeric,
+  demand_std_dev numeric,
+  lead_time_days numeric,
+  unit text not null default 'und',
+  location text
+);
+
+create table if not exists bom_items (
+  id text primary key,
+  body_type_id text not null references body_types(id) on delete cascade,
+  stage_id text references flow_stages(id),
+  material_code text not null references inventory_items(code),
+  piece_code text not null,
+  description text not null,
+  length_mm numeric not null default 0 check (length_mm >= 0),
+  quantity numeric not null check (quantity > 0)
+);
+
+create table if not exists ceco_orders (
+  id text primary key,
+  ceco text unique not null,
+  customer text not null,
+  body_type_id text not null references body_types(id),
+  progress numeric not null default 0 check (progress between 0 and 100),
+  line text not null,
+  status text not null check (status in ('green', 'orange', 'red')),
+  stage_id text references flow_stages(id),
+  plant_state text not null,
+  priority int not null default 999,
+  due_date date,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists stage_inventory (
+  id text primary key,
+  stage_id text not null references flow_stages(id),
+  ceco text not null references ceco_orders(ceco) on delete cascade,
+  item text not null,
+  quantity numeric not null default 0 check (quantity >= 0),
+  unit text not null default 'und',
+  status text not null check (status in ('waiting', 'processing', 'blocked', 'released')),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists ceco_activity_progress (
+  id text primary key,
+  ceco text not null references ceco_orders(ceco) on delete cascade,
+  activity_id text not null references stage_activities(id) on delete cascade,
+  status text not null check (status in ('pending', 'in_progress', 'completed', 'blocked')),
+  progress numeric not null default 0 check (progress between 0 and 100),
+  started_at timestamptz,
+  finished_at timestamptz,
+  updated_at timestamptz not null default now(),
+  unique (ceco, activity_id)
+);
+
+create table if not exists operation_logs (
+  id text primary key,
+  date date not null,
+  ceco text not null references ceco_orders(ceco),
+  worker text not null,
+  activity text not null,
+  total_hours numeric not null default 0 check (total_hours > 0),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists warehouse_exits (
+  id text primary key,
+  ticket text unique not null,
+  ceco text references ceco_orders(ceco),
+  material_code text not null references inventory_items(code),
+  quantity numeric not null default 0 check (quantity > 0),
+  timestamp timestamptz not null default now()
+);
+
+create table if not exists quality_checks (
+  id text primary key,
+  ceco text not null references ceco_orders(ceco),
+  stage_id text not null references flow_stages(id),
+  inspector text not null,
+  approval text not null check (approval in ('approved', 'observed', 'pending')),
+  observations text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists inventory_movements (
+  id text primary key,
+  type text not null check (type in ('ingreso', 'reserva', 'salida', 'consumo', 'ajuste', 'liberacion')),
+  code text not null references inventory_items(code),
+  ceco text,
+  quantity numeric not null check (quantity > 0),
+  timestamp timestamptz not null default now(),
+  note text
+);
+
+create table if not exists simulation_runs (
+  id bigint generated by default as identity primary key,
+  name text not null,
+  parameters jsonb not null,
+  results jsonb not null,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+-- Compatibilidad al aplicar este esquema sobre la versión inicial de la demo.
+alter table flow_stages add column if not exists standard_hours numeric not null default 0;
+alter table body_types add column if not exists code text;
+alter table body_types add column if not exists family text;
+alter table body_types add column if not exists output_unit text not null default 'und';
+alter table inventory_items add column if not exists location text;
+alter table inventory_items add column if not exists service_factor numeric;
+alter table inventory_items add column if not exists demand_std_dev numeric;
+alter table inventory_items add column if not exists lead_time_days numeric;
+alter table bom_items add column if not exists stage_id text references flow_stages(id);
+create unique index if not exists idx_body_types_code on body_types(code) where code is not null;
+
+create index if not exists idx_activity_stage on stage_activities(stage_id, sequence);
+create index if not exists idx_routes_product on product_routes(product_id, sequence);
+create index if not exists idx_orders_stage on ceco_orders(stage_id, status);
+create index if not exists idx_orders_due on ceco_orders(due_date);
+create index if not exists idx_bom_product on bom_items(body_type_id);
+create index if not exists idx_movements_code_time on inventory_movements(code, timestamp desc);
+create index if not exists idx_wip_stage on stage_inventory(stage_id, status);
+create index if not exists idx_activity_progress_ceco on ceco_activity_progress(ceco, status);
+
+create or replace function next_ceco_code()
+returns text language plpgsql set search_path = public as $$
+declare prefix text := to_char(now(), 'YY'); max_seq int;
+begin
+  select coalesce(max(substring(ceco from 3)::int), 0) into max_seq from ceco_orders where ceco like prefix || '%';
+  return prefix || lpad((max_seq + 1)::text, 4, '0');
+end; $$;
+
+create or replace function next_inventory_code(category_prefix text)
+returns text language plpgsql set search_path = public as $$
+declare prefix text := upper(left(regexp_replace(category_prefix, '[^A-Za-z]', '', 'g'), 3)); max_seq int;
+begin
+  if prefix = '' then prefix := 'MAT'; end if;
+  select coalesce(max(nullif(split_part(code, '-', 2), '')::int), 0) into max_seq from inventory_items where code like prefix || '-%';
+  return prefix || '-' || lpad((max_seq + 1)::text, 4, '0');
+end; $$;
+
+create or replace function next_warehouse_ticket()
+returns text language plpgsql set search_path = public as $$
+declare max_seq int;
+begin
+  select coalesce(max(nullif(split_part(ticket, '-', 2), '')::int), 7000) into max_seq from warehouse_exits where ticket like 'SAL-%';
+  return 'SAL-' || (max_seq + 1)::text;
+end; $$;
+
+-- Políticas de demostración: permiten al frontend anon leer/escribir.
+-- En producción, sustituirlas por políticas basadas en auth.uid() y roles.
+alter table flow_stages enable row level security;
+alter table stage_activities enable row level security;
+alter table body_types enable row level security;
+alter table product_routes enable row level security;
+alter table inventory_items enable row level security;
+alter table bom_items enable row level security;
+alter table ceco_orders enable row level security;
+alter table stage_inventory enable row level security;
+alter table ceco_activity_progress enable row level security;
+alter table operation_logs enable row level security;
+alter table warehouse_exits enable row level security;
+alter table quality_checks enable row level security;
+alter table inventory_movements enable row level security;
+alter table simulation_runs enable row level security;
+
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array['flow_stages','stage_activities','body_types','product_routes','inventory_items','bom_items','ceco_orders','stage_inventory','ceco_activity_progress','operation_logs','warehouse_exits','quality_checks','inventory_movements']
+  loop
+    execute format('drop policy if exists demo_access on %I', table_name);
+    execute format('create policy demo_access on %I for all to anon, authenticated using (true) with check (true)', table_name);
+  end loop;
+end $$;
+
+drop policy if exists simulation_read on simulation_runs;
+drop policy if exists simulation_write on simulation_runs;
+create policy simulation_read on simulation_runs for select to authenticated using (created_by = auth.uid());
+create policy simulation_write on simulation_runs for insert to authenticated with check (created_by = auth.uid());
+
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array['ceco_orders','inventory_items','inventory_movements','stage_inventory','ceco_activity_progress','operation_logs','quality_checks']
+  loop
+    if not exists (
+      select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = table_name
+    ) then execute format('alter publication supabase_realtime add table %I', table_name); end if;
+  end loop;
+end $$;
