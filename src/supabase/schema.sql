@@ -135,6 +135,74 @@ create table if not exists ceco_activity_progress (
   unique (ceco, activity_id)
 );
 
+create table if not exists work_shifts (
+  id text primary key,
+  code text unique not null,
+  name text not null,
+  start_time time not null,
+  end_time time not null,
+  break_minutes int not null default 0 check (break_minutes between 0 and 240),
+  active boolean not null default true
+);
+
+create table if not exists personnel (
+  id text primary key,
+  employee_code text unique not null,
+  name text not null,
+  role text not null,
+  specialty text,
+  shift_id text references work_shifts(id),
+  status text not null check (status in ('available', 'assigned', 'absent', 'leave')),
+  efficiency numeric not null default 100 check (efficiency between 1 and 150),
+  weekly_hours numeric not null default 48 check (weekly_hours between 0 and 84),
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists equipment (
+  id text primary key,
+  code text unique not null,
+  name text not null,
+  stage_id text not null references flow_stages(id),
+  status text not null check (status in ('operational', 'restricted', 'maintenance', 'out_of_service')),
+  capacity_hours numeric not null default 0 check (capacity_hours >= 0),
+  maintenance_due date,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists work_calendar (
+  id text primary key,
+  calendar_date date unique not null,
+  day_type text not null check (day_type in ('working', 'reduced', 'holiday', 'shutdown')),
+  available_hours numeric not null default 8 check (available_hours between 0 and 24),
+  note text
+);
+
+create table if not exists resource_assignments (
+  id text primary key,
+  personnel_id text not null references personnel(id),
+  ceco text not null references ceco_orders(ceco),
+  activity_id text not null references stage_activities(id),
+  assigned_date date not null,
+  planned_hours numeric not null check (planned_hours > 0 and planned_hours <= 24),
+  status text not null check (status in ('planned', 'in_progress', 'completed', 'blocked')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists operational_incidents (
+  id text primary key,
+  occurred_at timestamptz not null default now(),
+  type text not null check (type in ('equipment', 'material', 'quality', 'personnel', 'safety', 'other')),
+  severity text not null check (severity in ('low', 'medium', 'high', 'critical')),
+  stage_id text not null references flow_stages(id),
+  ceco text references ceco_orders(ceco),
+  equipment_id text references equipment(id),
+  downtime_hours numeric not null default 0 check (downtime_hours >= 0),
+  description text not null,
+  status text not null check (status in ('open', 'investigating', 'resolved')),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists operation_logs (
   id text primary key,
   date date not null,
@@ -209,6 +277,14 @@ create index if not exists idx_bom_product on bom_items(body_type_id);
 create index if not exists idx_movements_code_time on inventory_movements(code, timestamp desc);
 create index if not exists idx_wip_stage on stage_inventory(stage_id, status);
 create index if not exists idx_activity_progress_ceco on ceco_activity_progress(ceco, status);
+create index if not exists idx_personnel_shift on personnel(shift_id, status) where active;
+create index if not exists idx_equipment_stage on equipment(stage_id, status);
+create index if not exists idx_assignments_person_date on resource_assignments(personnel_id, assigned_date);
+create index if not exists idx_assignments_ceco on resource_assignments(ceco, status);
+create index if not exists idx_assignments_activity on resource_assignments(activity_id);
+create index if not exists idx_incidents_stage_status on operational_incidents(stage_id, status);
+create index if not exists idx_incidents_ceco on operational_incidents(ceco) where ceco is not null;
+create index if not exists idx_incidents_equipment on operational_incidents(equipment_id) where equipment_id is not null;
 
 create or replace function next_ceco_code()
 returns text language plpgsql set search_path = public as $$
@@ -255,11 +331,17 @@ alter table warehouse_exits enable row level security;
 alter table quality_checks enable row level security;
 alter table inventory_movements enable row level security;
 alter table simulation_runs enable row level security;
+alter table work_shifts enable row level security;
+alter table personnel enable row level security;
+alter table equipment enable row level security;
+alter table work_calendar enable row level security;
+alter table resource_assignments enable row level security;
+alter table operational_incidents enable row level security;
 
 do $$
 declare table_name text;
 begin
-  foreach table_name in array array['material_categories','measurement_units','brands','activity_types','flow_stages','stage_activities','body_types','product_routes','inventory_items','bom_items','ceco_orders','stage_inventory','ceco_activity_progress','operation_logs','warehouse_exits','quality_checks','inventory_movements']
+  foreach table_name in array array['material_categories','measurement_units','brands','activity_types','flow_stages','stage_activities','body_types','product_routes','inventory_items','bom_items','ceco_orders','stage_inventory','ceco_activity_progress','work_shifts','personnel','equipment','work_calendar','resource_assignments','operational_incidents','operation_logs','warehouse_exits','quality_checks','inventory_movements']
   loop
     execute format('drop policy if exists demo_access on %I', table_name);
     execute format('create policy demo_access on %I for all to anon, authenticated using (true) with check (true)', table_name);
@@ -277,6 +359,8 @@ grant select, insert, update, delete on table public.flow_stages, public.stage_a
   public.material_categories, public.measurement_units, public.brands, public.activity_types,
   public.body_types, public.product_routes, public.inventory_items, public.bom_items,
   public.ceco_orders, public.stage_inventory, public.ceco_activity_progress,
+  public.work_shifts, public.personnel, public.equipment, public.work_calendar,
+  public.resource_assignments, public.operational_incidents,
   public.operation_logs, public.warehouse_exits, public.quality_checks,
   public.inventory_movements to anon, authenticated;
 grant usage, select on all sequences in schema public to anon, authenticated;
@@ -286,7 +370,7 @@ grant execute on function public.next_ceco_code(), public.next_inventory_code(te
 do $$
 declare table_name text;
 begin
-  foreach table_name in array array['ceco_orders','inventory_items','inventory_movements','stage_inventory','ceco_activity_progress','operation_logs','quality_checks']
+  foreach table_name in array array['ceco_orders','inventory_items','inventory_movements','stage_inventory','ceco_activity_progress','personnel','equipment','work_calendar','resource_assignments','operational_incidents','operation_logs','quality_checks']
   loop
     if not exists (
       select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = table_name

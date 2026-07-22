@@ -9,25 +9,36 @@ export const supabaseRepository = {
     if (!supabase) {
       throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
     }
-    const tables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands"];
+    const requiredTables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands"];
+    const resourceTables = ["work_shifts", "personnel", "equipment", "work_calendar", "resource_assignments", "operational_incidents"];
+    const tables = [...requiredTables, ...resourceTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
-    const failed = results.find((result) => result.error);
+    const failed = results.slice(0, requiredTables.length).find((result) => result.error);
     if (failed) throw failed.error;
+    const optionalFailure = results.slice(requiredTables.length).find((result) => result.error && !["PGRST205", "42P01"].includes(result.error.code));
+    if (optionalFailure) throw optionalFailure.error;
+    const rows = Object.fromEntries(tables.map((table, index) => [table, results[index].error ? [] : results[index].data]));
 
     return {
-      flowStages: results[0].data.map(mapStage),
-      stageActivities: results[1].data.map(mapActivity),
-      stageInventory: results[2].data.map(mapStageInventory),
-      activityProgress: results[3].data.map(mapActivityProgress),
-      bodyTypes: results[4].data.map((row) => mapBodyType(row, results[5].data)),
-      inventory: results[6].data.map(mapInventory),
-      bom: results[7].data.map(mapBom),
-      orders: results[8].data.map(mapOrder),
-      operations: results[9].data.map(mapOperation),
-      warehouse: results[10].data.map(mapWarehouse),
-      quality: results[11].data.map(mapQuality),
-      inventoryMovements: results[12].data.map(mapMovement),
-      catalogs: { categories: results[13].data, units: results[14].data, brands: results[15].data }
+      flowStages: rows.flow_stages.map(mapStage),
+      stageActivities: rows.stage_activities.map(mapActivity),
+      stageInventory: rows.stage_inventory.map(mapStageInventory),
+      activityProgress: rows.ceco_activity_progress.map(mapActivityProgress),
+      bodyTypes: rows.body_types.map((row) => mapBodyType(row, rows.product_routes)),
+      inventory: rows.inventory_items.map(mapInventory),
+      bom: rows.bom_items.map(mapBom),
+      orders: rows.ceco_orders.map(mapOrder),
+      operations: rows.operation_logs.map(mapOperation),
+      warehouse: rows.warehouse_exits.map(mapWarehouse),
+      quality: rows.quality_checks.map(mapQuality),
+      inventoryMovements: rows.inventory_movements.map(mapMovement),
+      catalogs: { categories: rows.material_categories, units: rows.measurement_units, brands: rows.brands },
+      shifts: rows.work_shifts.map(mapShift),
+      personnel: rows.personnel.map(mapPerson),
+      equipment: rows.equipment.map(mapEquipment),
+      workCalendar: rows.work_calendar.map(mapCalendarDay),
+      assignments: rows.resource_assignments.map(mapAssignment),
+      incidents: rows.operational_incidents.map(mapIncident)
     };
   },
   async saveFlowStages(flowStages) {
@@ -247,6 +258,36 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async createShift(payload) {
+    const { error } = await supabase.from("work_shifts").insert({ id: `shift-${Date.now()}`, code: payload.code, name: payload.name, start_time: payload.startTime, end_time: payload.endTime, break_minutes: Number(payload.breakMinutes), active: true });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async createPersonnel(payload) {
+    const { error } = await supabase.from("personnel").insert({ id: `person-${Date.now()}`, employee_code: payload.employeeCode, name: payload.name, role: payload.role, specialty: payload.specialty, shift_id: payload.shiftId || null, status: payload.status, efficiency: Number(payload.efficiency), weekly_hours: Number(payload.weeklyHours), active: true });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async createEquipment(payload) {
+    const { error } = await supabase.from("equipment").insert({ id: `equipment-${Date.now()}`, code: payload.code, name: payload.name, stage_id: payload.stageId, status: payload.status, capacity_hours: Number(payload.capacityHours), maintenance_due: payload.maintenanceDue || null });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async createCalendarDay(payload) {
+    const { error } = await supabase.from("work_calendar").upsert({ id: `calendar-${payload.date}`, calendar_date: payload.date, day_type: payload.dayType, available_hours: Number(payload.availableHours), note: payload.note }, { onConflict: "calendar_date" });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async createAssignment(payload) {
+    const { error } = await supabase.from("resource_assignments").insert({ id: `assignment-${Date.now()}`, personnel_id: payload.personnelId, ceco: payload.ceco, activity_id: payload.activityId, assigned_date: payload.assignedDate, planned_hours: Number(payload.plannedHours), status: payload.status });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async createIncident(payload) {
+    const { error } = await supabase.from("operational_incidents").insert({ id: `incident-${Date.now()}`, occurred_at: payload.occurredAt, type: payload.type, severity: payload.severity, stage_id: payload.stageId, ceco: payload.ceco || null, equipment_id: payload.equipmentId || null, downtime_hours: Number(payload.downtimeHours), description: payload.description, status: "open" });
+    if (error) throw error;
+    return this.getDataset();
+  },
   subscribe(callback) {
     const channel = supabase
       .channel("digital-twin-realtime")
@@ -304,3 +345,10 @@ function mapQuality(row) {
 function mapMovement(row) {
   return { id: row.id, type: row.type, code: row.code, ceco: row.ceco || "", quantity: Number(row.quantity), timestamp: String(row.timestamp).replace("T", " ").slice(0, 16), note: row.note };
 }
+
+function mapShift(row) { return { id: row.id, code: row.code, name: row.name, startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), breakMinutes: Number(row.break_minutes), active: row.active }; }
+function mapPerson(row) { return { id: row.id, employeeCode: row.employee_code, name: row.name, role: row.role, specialty: row.specialty, shiftId: row.shift_id, status: row.status, efficiency: Number(row.efficiency), weeklyHours: Number(row.weekly_hours), active: row.active }; }
+function mapEquipment(row) { return { id: row.id, code: row.code, name: row.name, stageId: row.stage_id, status: row.status, capacityHours: Number(row.capacity_hours), maintenanceDue: row.maintenance_due }; }
+function mapCalendarDay(row) { return { id: row.id, date: row.calendar_date, dayType: row.day_type, availableHours: Number(row.available_hours), note: row.note }; }
+function mapAssignment(row) { return { id: row.id, personnelId: row.personnel_id, ceco: row.ceco, activityId: row.activity_id, assignedDate: row.assigned_date, plannedHours: Number(row.planned_hours), status: row.status }; }
+function mapIncident(row) { return { id: row.id, occurredAt: String(row.occurred_at).replace("T", " ").slice(0, 16), type: row.type, severity: row.severity, stageId: row.stage_id, ceco: row.ceco, equipmentId: row.equipment_id, downtimeHours: Number(row.downtime_hours), description: row.description, status: row.status }; }

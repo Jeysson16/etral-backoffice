@@ -59,3 +59,16 @@ test("simulador genera alertas auditables desde indicadores", () => {
   assert.ok(result.notifications.some((item) => item.category === "PMP" && item.equation.includes("órdenes terminables")));
   assert.ok(result.notifications.some((item) => item.category === "Inventario" && item.equation.includes("SS = Z")));
 });
+
+test("personal, equipos e incidencias alimentan la capacidad real del gemelo", () => {
+  const constrained = runDigitalTwin(initialDataset, { laborAvailability: 100, horizonDays: 14 });
+  const unrestrictedDataset = structuredClone(initialDataset);
+  unrestrictedDataset.personnel = unrestrictedDataset.personnel.map((item) => ({ ...item, status: "available", efficiency: 100 }));
+  unrestrictedDataset.equipment = unrestrictedDataset.equipment.map((item) => ({ ...item, status: "operational" }));
+  unrestrictedDataset.incidents = unrestrictedDataset.incidents.map((item) => ({ ...item, status: "resolved" }));
+  const unrestricted = runDigitalTwin(unrestrictedDataset, { laborAvailability: 100, horizonDays: 14 });
+  const constrainedPaint = constrained.scenario.stageCapacity.find((item) => item.stageId === "stage-paint");
+  const unrestrictedPaint = unrestricted.scenario.stageCapacity.find((item) => item.stageId === "stage-paint");
+  assert.ok(constrainedPaint.availableHours < unrestrictedPaint.availableHours);
+  assert.equal(constrainedPaint.incidentHours, 2);
+});

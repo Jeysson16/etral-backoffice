@@ -84,6 +84,46 @@ insert into ceco_orders (id,ceco,customer,body_type_id,progress,line,status,stag
 ('order-260184','260184','Minerales SAC','body-mixed-rail',31,'Línea 3','orange','stage-cut','En proceso',5,'2026-07-25')
 on conflict (id) do update set progress=excluded.progress,status=excluded.status,stage_id=excluded.stage_id,plant_state=excluded.plant_state,due_date=excluded.due_date;
 
+insert into work_shifts (id,code,name,start_time,end_time,break_minutes,active) values
+('shift-day','T1','Turno día','07:30','16:30',60,true),
+('shift-evening','T2','Turno tarde','16:30','23:30',45,true)
+on conflict (id) do update set code=excluded.code,name=excluded.name,start_time=excluded.start_time,end_time=excluded.end_time,break_minutes=excluded.break_minutes,active=excluded.active;
+
+insert into personnel (id,employee_code,name,role,specialty,shift_id,status,efficiency,weekly_hours,active) values
+('person-001','ETR-001','Luis Medina','Soldador','Soldadura estructural','shift-day','available',96,48,true),
+('person-002','ETR-002','Rosa Paredes','Armadora','Ensamble de carrocería','shift-day','assigned',94,48,true),
+('person-003','ETR-003','Marco Rojas','Operador de corte','Corte y trazado','shift-day','assigned',91,48,true),
+('person-004','ETR-004','Ana Reyes','Pintora','Preparación y acabado','shift-day','available',93,48,true),
+('person-005','ETR-005','Jorge Díaz','Inspector','Control de calidad','shift-evening','available',97,42,true),
+('person-006','ETR-006','Claudia Soto','Inspectora','Liberación de producto','shift-day','absent',95,48,true)
+on conflict (id) do update set employee_code=excluded.employee_code,name=excluded.name,role=excluded.role,specialty=excluded.specialty,shift_id=excluded.shift_id,status=excluded.status,efficiency=excluded.efficiency,weekly_hours=excluded.weekly_hours,active=excluded.active;
+
+insert into equipment (id,code,name,stage_id,status,capacity_hours,maintenance_due) values
+('equipment-cut-01','EQ-COR-01','Cizalla hidráulica','stage-cut','operational',40,'2026-08-05'),
+('equipment-weld-01','EQ-SOL-01','Soldadora MIG','stage-assembly','operational',48,'2026-07-30'),
+('equipment-paint-01','EQ-PIN-01','Cabina de pintura','stage-paint','restricted',30,'2026-07-24'),
+('equipment-lift-01','EQ-MON-01','Puente grúa','stage-mount','operational',36,'2026-08-12')
+on conflict (id) do update set code=excluded.code,name=excluded.name,stage_id=excluded.stage_id,status=excluded.status,capacity_hours=excluded.capacity_hours,maintenance_due=excluded.maintenance_due;
+
+insert into work_calendar (id,calendar_date,day_type,available_hours,note) values
+('calendar-2026-07-21','2026-07-21','working',8,'Jornada regular'),
+('calendar-2026-07-22','2026-07-22','working',8,'Jornada regular'),
+('calendar-2026-07-23','2026-07-23','working',8,'Jornada regular'),
+('calendar-2026-07-24','2026-07-24','reduced',6,'Mantenimiento general')
+on conflict (id) do update set calendar_date=excluded.calendar_date,day_type=excluded.day_type,available_hours=excluded.available_hours,note=excluded.note;
+
+insert into resource_assignments (id,personnel_id,ceco,activity_id,assigned_date,planned_hours,status) values
+('assignment-001','person-001','260182','act-assembly-3','2026-07-21',8,'in_progress'),
+('assignment-002','person-002','260183','act-assembly-2','2026-07-21',7,'blocked'),
+('assignment-003','person-003','260184','act-cut-2','2026-07-21',6,'in_progress'),
+('assignment-004','person-004','260180','act-paint-3','2026-07-21',7,'planned')
+on conflict (id) do update set personnel_id=excluded.personnel_id,ceco=excluded.ceco,activity_id=excluded.activity_id,assigned_date=excluded.assigned_date,planned_hours=excluded.planned_hours,status=excluded.status;
+
+insert into operational_incidents (id,occurred_at,type,severity,stage_id,ceco,equipment_id,downtime_hours,description,status) values
+('incident-001','2026-07-21 09:20','equipment','medium','stage-paint','260180','equipment-paint-01',2,'Presión irregular en cabina de pintura','open'),
+('incident-002','2026-07-21 10:10','material','high','stage-assembly','260183',null,4,'Material reservado insuficiente para continuar','investigating')
+on conflict (id) do update set occurred_at=excluded.occurred_at,type=excluded.type,severity=excluded.severity,stage_id=excluded.stage_id,ceco=excluded.ceco,equipment_id=excluded.equipment_id,downtime_hours=excluded.downtime_hours,description=excluded.description,status=excluded.status;
+
 insert into stage_inventory (id,stage_id,ceco,item,quantity,unit,status) values
 ('wip-1','stage-paint','260180','Carrocería lista para acabado',1,'und','processing'),('wip-2','stage-prepaint','260181','Componentes preparados',26,'pzas','waiting'),
 ('wip-3','stage-assembly','260182','Conjunto de cisterna',1,'und','processing'),('wip-4','stage-assembly','260183','Estructura parcial',1,'und','blocked'),('wip-5','stage-cut','260184','Piezas cortadas',18,'pzas','processing')

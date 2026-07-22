@@ -90,6 +90,16 @@ def simulate(input_data: SimulationInput) -> dict:
     mrp = evaluate_mrp(snapshot, input_data.priority_overrides)
     blocked_cecos = {entry["ceco"] for entry in mrp["blocked_orders"]}
     active = [order for order in snapshot.orders if order.progress < 100]
+    active_personnel = [person for person in snapshot.personnel if person.status not in ("inactive",)]
+    available_personnel = [person for person in active_personnel if person.status not in ("absent", "leave")]
+    personnel_factor = (
+        sum((_number(person.efficiency) / 100) for person in available_personnel) / len(active_personnel)
+        if active_personnel else 1
+    )
+    calendar_factor = (
+        sum(_number(day.available_hours) for day in snapshot.calendar) / (len(snapshot.calendar) * 8)
+        if snapshot.calendar else 1
+    )
     hours_per_stage: dict[str, Decimal] = defaultdict(lambda: Decimal(0))
     for order in active:
         route = snapshot.routes.get(order.body_type_id, [])
@@ -102,13 +112,23 @@ def simulate(input_data: SimulationInput) -> dict:
     capacity = []
     for stage in sorted(snapshot.stages, key=lambda item: item.sequence):
         available = stage.capacity_hours * Decimal(input_data.horizon_days) / Decimal(7)
+        stage_equipment = [item for item in snapshot.equipment if item.stage_id == stage.id]
+        equipment_weights = {"operational": 1, "restricted": .7, "maintenance": .35, "out_of_service": 0}
+        equipment_factor = (
+            sum(equipment_weights.get(item.status, 1) for item in stage_equipment) / len(stage_equipment)
+            if stage_equipment else 1
+        )
+        incident_hours = sum(_number(item.downtime_hours) for item in snapshot.incidents if item.stage_id == stage.id and item.status != "resolved")
         available *= input_data.labor_availability / Decimal(100) * input_data.shifts_per_day
+        available *= Decimal(str(personnel_factor * calendar_factor * equipment_factor))
+        available = max(Decimal(0), available - Decimal(str(incident_hours)))
         required = hours_per_stage[stage.id]
         utilization = Decimal(0) if not available else (required / available) * 100
         capacity.append({
             "stage_id": stage.id, "name": stage.name, "required_hours": float(required),
             "available_hours": round(float(available), 2), "utilization": round(float(utilization), 2),
-            "bottleneck": utilization > 100,
+            "bottleneck": utilization > 100, "personnel_factor": round(personnel_factor, 3),
+            "equipment_factor": round(equipment_factor, 3), "incident_hours": round(incident_hours, 2),
         })
 
     bottleneck = max(capacity, key=lambda item: item["utilization"], default=None)

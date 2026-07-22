@@ -71,6 +71,46 @@ export const catalogsSeed = {
   brands: [{ id: "brand-anypsa", name: "Anypsa" }, { id: "brand-3m", name: "3M" }, { id: "brand-aurora", name: "Aurora" }, { id: "brand-fene", name: "Fene" }, { id: "brand-etral", name: "ETRAL" }, { id: "brand-generic", name: "Genérico" }]
 };
 
+export const shiftsSeed = [
+  { id: "shift-day", code: "T1", name: "Turno día", startTime: "07:30", endTime: "16:30", breakMinutes: 60, active: true },
+  { id: "shift-evening", code: "T2", name: "Turno tarde", startTime: "16:30", endTime: "23:30", breakMinutes: 45, active: true }
+];
+
+export const personnelSeed = [
+  { id: "person-001", employeeCode: "ETR-001", name: "Luis Medina", role: "Soldador", specialty: "Soldadura estructural", shiftId: "shift-day", status: "available", efficiency: 96, weeklyHours: 48, active: true },
+  { id: "person-002", employeeCode: "ETR-002", name: "Rosa Paredes", role: "Armadora", specialty: "Ensamble de carrocería", shiftId: "shift-day", status: "assigned", efficiency: 94, weeklyHours: 48, active: true },
+  { id: "person-003", employeeCode: "ETR-003", name: "Marco Rojas", role: "Operador de corte", specialty: "Corte y trazado", shiftId: "shift-day", status: "assigned", efficiency: 91, weeklyHours: 48, active: true },
+  { id: "person-004", employeeCode: "ETR-004", name: "Ana Reyes", role: "Pintora", specialty: "Preparación y acabado", shiftId: "shift-day", status: "available", efficiency: 93, weeklyHours: 48, active: true },
+  { id: "person-005", employeeCode: "ETR-005", name: "Jorge Díaz", role: "Inspector", specialty: "Control de calidad", shiftId: "shift-evening", status: "available", efficiency: 97, weeklyHours: 42, active: true },
+  { id: "person-006", employeeCode: "ETR-006", name: "Claudia Soto", role: "Inspectora", specialty: "Liberación de producto", shiftId: "shift-day", status: "absent", efficiency: 95, weeklyHours: 48, active: true }
+];
+
+export const equipmentSeed = [
+  { id: "equipment-cut-01", code: "EQ-COR-01", name: "Cizalla hidráulica", stageId: "stage-cut", status: "operational", capacityHours: 40, maintenanceDue: "2026-08-05" },
+  { id: "equipment-weld-01", code: "EQ-SOL-01", name: "Soldadora MIG", stageId: "stage-assembly", status: "operational", capacityHours: 48, maintenanceDue: "2026-07-30" },
+  { id: "equipment-paint-01", code: "EQ-PIN-01", name: "Cabina de pintura", stageId: "stage-paint", status: "restricted", capacityHours: 30, maintenanceDue: "2026-07-24" },
+  { id: "equipment-lift-01", code: "EQ-MON-01", name: "Puente grúa", stageId: "stage-mount", status: "operational", capacityHours: 36, maintenanceDue: "2026-08-12" }
+];
+
+export const workCalendarSeed = [
+  { id: "calendar-2026-07-21", date: "2026-07-21", dayType: "working", availableHours: 8, note: "Jornada regular" },
+  { id: "calendar-2026-07-22", date: "2026-07-22", dayType: "working", availableHours: 8, note: "Jornada regular" },
+  { id: "calendar-2026-07-23", date: "2026-07-23", dayType: "working", availableHours: 8, note: "Jornada regular" },
+  { id: "calendar-2026-07-24", date: "2026-07-24", dayType: "reduced", availableHours: 6, note: "Mantenimiento general" }
+];
+
+export const assignmentsSeed = [
+  { id: "assignment-001", personnelId: "person-001", ceco: "260182", activityId: "act-assembly-3", assignedDate: "2026-07-21", plannedHours: 8, status: "in_progress" },
+  { id: "assignment-002", personnelId: "person-002", ceco: "260183", activityId: "act-assembly-2", assignedDate: "2026-07-21", plannedHours: 7, status: "blocked" },
+  { id: "assignment-003", personnelId: "person-003", ceco: "260184", activityId: "act-cut-2", assignedDate: "2026-07-21", plannedHours: 6, status: "in_progress" },
+  { id: "assignment-004", personnelId: "person-004", ceco: "260180", activityId: "act-paint-3", assignedDate: "2026-07-21", plannedHours: 7, status: "planned" }
+];
+
+export const incidentsSeed = [
+  { id: "incident-001", occurredAt: "2026-07-21 09:20", type: "equipment", severity: "medium", stageId: "stage-paint", ceco: "260180", equipmentId: "equipment-paint-01", downtimeHours: 2, description: "Presión irregular en cabina de pintura", status: "open" },
+  { id: "incident-002", occurredAt: "2026-07-21 10:10", type: "material", severity: "high", stageId: "stage-assembly", ceco: "260183", equipmentId: null, downtimeHours: 4, description: "Material reservado insuficiente para continuar", status: "investigating" }
+];
+
 export const bomSeed = [
   { id: "bom-1", bodyTypeId: "body-van-ribbed", stageId: "stage-cut", materialCode: "MAT-0043", pieceCode: "PZA-1101", description: "Panel lateral acanalado", lengthMm: 6200, quantity: 8 },
   { id: "bom-2", bodyTypeId: "body-van-ribbed", stageId: "stage-assembly", materialCode: "MAT-0044", pieceCode: "PZA-1102", description: "Perfil estructural", lengthMm: 6000, quantity: 16 },
@@ -156,5 +196,11 @@ export const initialDataset = {
   warehouse: warehouseSeed,
   inventoryMovements: inventoryMovementsSeed,
   quality: qualitySeed,
-  catalogs: catalogsSeed
+  catalogs: catalogsSeed,
+  shifts: shiftsSeed,
+  personnel: personnelSeed,
+  equipment: equipmentSeed,
+  workCalendar: workCalendarSeed,
+  assignments: assignmentsSeed,
+  incidents: incidentsSeed
 };

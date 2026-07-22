@@ -1,5 +1,7 @@
 # ETRAL · Control de producción y gemelo digital
 
+La descripción del flujo, arquitectura y patrones del gemelo se encuentra en [`docs/arquitectura-gemelo-digital.md`](docs/arquitectura-gemelo-digital.md).
+
 Aplicación React para registrar productos, rutas variables, fases, actividades, materiales, inventario, BOM, órdenes CECO y ejecución de planta. El simulador compara el plan vigente contra un escenario sin alterar los registros operativos.
 
 ## Ejecutar

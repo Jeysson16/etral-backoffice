@@ -1,7 +1,7 @@
 import unittest
 from decimal import Decimal
 
-from app.schemas import BomItem, FactorySnapshot, Material, ProductionOrder, SimulationInput, Stage
+from app.schemas import BomItem, EquipmentResource, FactorySnapshot, IncidentResource, Material, PersonnelResource, ProductionOrder, SimulationInput, Stage
 from app.services import evaluate_mrp, generate_ceco, simulate, simulate_comparison
 
 
@@ -40,6 +40,17 @@ class TwinServiceTests(unittest.TestCase):
         self.assertIn("scenario", result)
         self.assertIn("stageCapacity", result["scenario"])
         self.assertGreater(result["scenario"]["stageCapacity"][0]["demandHours"], result["baseline"]["stageCapacity"][0]["demandHours"])
+
+    def test_operational_resources_reduce_real_capacity(self):
+        constrained_snapshot = snapshot().model_copy(update={
+            "personnel": [PersonnelResource(id="p1", status="absent", efficiency=100, weekly_hours=48)],
+            "equipment": [EquipmentResource(id="e1", stage_id="paint", status="restricted", capacity_hours=8)],
+            "incidents": [IncidentResource(stage_id="paint", downtime_hours=Decimal("2"), status="open", severity="high")],
+        })
+        constrained = simulate(SimulationInput(snapshot=constrained_snapshot))
+        regular = simulate(SimulationInput(snapshot=snapshot()))
+        self.assertLess(constrained["stage_capacity"][0]["available_hours"], regular["stage_capacity"][0]["available_hours"])
+        self.assertEqual(constrained["stage_capacity"][0]["incident_hours"], 2)
 
 
 if __name__ == "__main__":

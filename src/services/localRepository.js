@@ -196,6 +196,37 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async createShift(payload) {
+    const dataset = load();
+    dataset.shifts.unshift({ id: `shift-${Date.now()}`, ...payload, breakMinutes: Number(payload.breakMinutes), active: true });
+    save(dataset); return dataset;
+  },
+  async createPersonnel(payload) {
+    const dataset = load();
+    dataset.personnel.unshift({ id: `person-${Date.now()}`, ...payload, efficiency: Number(payload.efficiency), weeklyHours: Number(payload.weeklyHours), active: true });
+    save(dataset); return dataset;
+  },
+  async createEquipment(payload) {
+    const dataset = load();
+    dataset.equipment.unshift({ id: `equipment-${Date.now()}`, ...payload, capacityHours: Number(payload.capacityHours) });
+    save(dataset); return dataset;
+  },
+  async createCalendarDay(payload) {
+    const dataset = load();
+    const row = { id: `calendar-${payload.date}`, ...payload, availableHours: Number(payload.availableHours) };
+    dataset.workCalendar = [row, ...dataset.workCalendar.filter((item) => item.date !== payload.date)];
+    save(dataset); return dataset;
+  },
+  async createAssignment(payload) {
+    const dataset = load();
+    dataset.assignments.unshift({ id: `assignment-${Date.now()}`, ...payload, plannedHours: Number(payload.plannedHours) });
+    save(dataset); return dataset;
+  },
+  async createIncident(payload) {
+    const dataset = load();
+    dataset.incidents.unshift({ id: `incident-${Date.now()}`, ...payload, downtimeHours: Number(payload.downtimeHours), status: "open" });
+    save(dataset); return dataset;
+  },
   subscribe(callback) {
     const listener = (event) => callback(event.detail);
     window.addEventListener("etral:dataset", listener);

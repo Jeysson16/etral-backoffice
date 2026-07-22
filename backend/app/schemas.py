@@ -44,6 +44,50 @@ class Stage(BaseModel):
     color: str = "#f36b21"
 
 
+class PersonnelResource(BaseModel):
+    id: str
+    status: str
+    efficiency: Decimal = Field(default=100, gt=0, le=150)
+    weekly_hours: Decimal = Field(default=48, ge=0, le=84)
+    shift_id: str | None = None
+
+
+class ShiftResource(BaseModel):
+    id: str
+    start_time: str
+    end_time: str
+    break_minutes: int = Field(default=0, ge=0, le=240)
+    active: bool = True
+
+
+class EquipmentResource(BaseModel):
+    id: str
+    stage_id: str
+    status: str
+    capacity_hours: Decimal = Field(default=0, ge=0)
+
+
+class CalendarResource(BaseModel):
+    date: date
+    day_type: str
+    available_hours: Decimal = Field(default=8, ge=0, le=24)
+
+
+class AssignmentResource(BaseModel):
+    personnel_id: str
+    ceco: str
+    activity_id: str
+    planned_hours: Decimal = Field(gt=0, le=24)
+    status: str
+
+
+class IncidentResource(BaseModel):
+    stage_id: str
+    downtime_hours: Decimal = Field(default=0, ge=0)
+    status: str
+    severity: str
+
+
 class FactorySnapshot(BaseModel):
     """Estado operativo usado por el MRP y por una corrida del gemelo."""
 
@@ -52,6 +96,12 @@ class FactorySnapshot(BaseModel):
     orders: list[ProductionOrder]
     stages: list[Stage]
     routes: dict[str, list[str]]
+    personnel: list[PersonnelResource] = Field(default_factory=list)
+    shifts: list[ShiftResource] = Field(default_factory=list)
+    equipment: list[EquipmentResource] = Field(default_factory=list)
+    calendar: list[CalendarResource] = Field(default_factory=list)
+    assignments: list[AssignmentResource] = Field(default_factory=list)
+    incidents: list[IncidentResource] = Field(default_factory=list)
 
     @field_validator("routes")
     @classmethod

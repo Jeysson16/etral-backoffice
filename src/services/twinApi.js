@@ -17,7 +17,13 @@ function snapshotFromDataset(dataset) {
     bom: dataset.bom.map((item) => ({ body_type_id: item.bodyTypeId, stage_id: item.stageId, material_code: item.materialCode, quantity: Number(item.quantity) })),
     orders: dataset.orders.map((item) => ({ ceco: item.ceco, body_type_id: item.bodyTypeId, stage_id: item.stageId, priority: Number(item.priority), progress: Number(item.progress), due_date: item.dueDate || null })),
     stages: dataset.flowStages.map((item, index) => ({ id: item.id, name: item.name, capacity_hours: Number(item.capacityHours), standard_hours: Number(item.standardHours), sequence: index + 1, color: item.color })),
-    routes: Object.fromEntries(dataset.bodyTypes.map((item) => [item.id, item.route]))
+    routes: Object.fromEntries(dataset.bodyTypes.map((item) => [item.id, item.route])),
+    personnel: (dataset.personnel ?? []).map((item) => ({ id: item.id, status: item.status, efficiency: Number(item.efficiency), weekly_hours: Number(item.weeklyHours), shift_id: item.shiftId })),
+    shifts: (dataset.shifts ?? []).map((item) => ({ id: item.id, start_time: item.startTime, end_time: item.endTime, break_minutes: Number(item.breakMinutes), active: item.active })),
+    equipment: (dataset.equipment ?? []).map((item) => ({ id: item.id, stage_id: item.stageId, status: item.status, capacity_hours: Number(item.capacityHours) })),
+    calendar: (dataset.workCalendar ?? []).map((item) => ({ date: item.date, day_type: item.dayType, available_hours: Number(item.availableHours) })),
+    assignments: (dataset.assignments ?? []).map((item) => ({ personnel_id: item.personnelId, ceco: item.ceco, activity_id: item.activityId, planned_hours: Number(item.plannedHours), status: item.status })),
+    incidents: (dataset.incidents ?? []).map((item) => ({ stage_id: item.stageId, downtime_hours: Number(item.downtimeHours), status: item.status, severity: item.severity }))
   };
 }
 

@@ -7,7 +7,14 @@ function daysUntil(date, now = new Date("2026-07-13T12:00:00")) {
 
 function calculateScenario(dataset, params) {
   const horizonDays = Math.max(1, Number(params.horizonDays ?? 14));
-  const laborFactor = Math.max(0.1, Number(params.laborAvailability ?? 100) / 100);
+  const activePersonnel = (dataset.personnel ?? []).filter((item) => item.active);
+  const availablePersonnel = activePersonnel.filter((item) => !["absent", "leave"].includes(item.status));
+  const personnelFactor = activePersonnel.length
+    ? availablePersonnel.reduce((sum, item) => sum + Number(item.efficiency ?? 100) / 100, 0) / activePersonnel.length
+    : 1;
+  const laborFactor = Math.max(0.1, Number(params.laborAvailability ?? 100) / 100) * personnelFactor;
+  const calendarRows = dataset.workCalendar ?? [];
+  const calendarFactor = calendarRows.length ? calendarRows.reduce((sum, item) => sum + Number(item.availableHours), 0) / (calendarRows.length * 8) : 1;
   const shifts = Math.max(1, Number(params.shiftsPerDay ?? 1));
   const demandFactor = Math.max(0.1, Number(params.demandPercent ?? 100) / 100);
   const activeOrders = dataset.orders.filter((order) => Number(order.progress) < 100);
@@ -20,7 +27,12 @@ function calculateScenario(dataset, params) {
       const isPending = route.indexOf(stage.id) >= currentIndex;
       return sum + (isPending ? Number(stage.standardHours ?? 6) * demandFactor : 0);
     }, 0);
-    const availableHours = Number(stage.capacityHours) * (horizonDays / 7) * laborFactor * shifts;
+    const stageEquipment = (dataset.equipment ?? []).filter((item) => item.stageId === stage.id);
+    const equipmentFactor = stageEquipment.length
+      ? stageEquipment.reduce((sum, item) => sum + ({ operational: 1, restricted: 0.7, maintenance: 0.35, out_of_service: 0 }[item.status] ?? 1), 0) / stageEquipment.length
+      : 1;
+    const incidentHours = (dataset.incidents ?? []).filter((item) => item.stageId === stage.id && item.status !== "resolved").reduce((sum, item) => sum + Number(item.downtimeHours), 0);
+    const availableHours = Math.max(0, Number(stage.capacityHours) * (horizonDays / 7) * laborFactor * calendarFactor * equipmentFactor * shifts - incidentHours);
     const utilization = availableHours === 0 ? 100 : Math.round((demandHours / availableHours) * 100);
     return {
       stageId: stage.id,
@@ -29,7 +41,8 @@ function calculateScenario(dataset, params) {
       demandHours: Number(demandHours.toFixed(1)),
       availableHours: Number(availableHours.toFixed(1)),
       utilization,
-      overloadHours: Number(Math.max(0, demandHours - availableHours).toFixed(1))
+      overloadHours: Number(Math.max(0, demandHours - availableHours).toFixed(1)),
+      personnelFactor: Number(personnelFactor.toFixed(2)), equipmentFactor: Number(equipmentFactor.toFixed(2)), incidentHours
     };
   });
 
