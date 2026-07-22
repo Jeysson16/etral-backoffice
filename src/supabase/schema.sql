@@ -1,6 +1,32 @@
 -- ETRAL · Modelo operativo para Supabase
 -- Ejecutar completo en SQL Editor antes de seed.sql.
 
+create table if not exists material_categories (
+  id text primary key,
+  name text unique not null,
+  description text,
+  active boolean not null default true
+);
+
+create table if not exists measurement_units (
+  id text primary key,
+  name text unique not null,
+  symbol text unique not null,
+  active boolean not null default true
+);
+
+create table if not exists brands (
+  id text primary key,
+  name text unique not null,
+  active boolean not null default true
+);
+
+create table if not exists activity_types (
+  code text primary key,
+  name text unique not null,
+  diagram_symbol text not null
+);
+
 create table if not exists flow_stages (
   id text primary key,
   "order" int not null,
@@ -10,6 +36,7 @@ create table if not exists flow_stages (
   standard_hours numeric not null default 0 check (standard_hours >= 0),
   color text not null default '#f36b21',
   gated_by_quality boolean not null default false,
+  code text unique,
   created_at timestamptz not null default now()
 );
 
@@ -20,6 +47,7 @@ create table if not exists stage_activities (
   name text not null,
   standard_minutes numeric not null default 0 check (standard_minutes >= 0),
   active boolean not null default true,
+  activity_type_code text not null default 'operation' references activity_types(code),
   unique (stage_id, sequence)
 );
 
@@ -53,6 +81,9 @@ create table if not exists inventory_items (
   lead_time_days numeric,
   unit text not null default 'und',
   location text
+  ,category_id text references material_categories(id)
+  ,unit_id text references measurement_units(id)
+  ,brand_id text references brands(id)
 );
 
 create table if not exists bom_items (
@@ -154,6 +185,7 @@ create table if not exists simulation_runs (
 
 -- Compatibilidad al aplicar este esquema sobre la versión inicial de la demo.
 alter table flow_stages add column if not exists standard_hours numeric not null default 0;
+alter table flow_stages add column if not exists code text;
 alter table body_types add column if not exists code text;
 alter table body_types add column if not exists family text;
 alter table body_types add column if not exists output_unit text not null default 'und';
@@ -161,10 +193,15 @@ alter table inventory_items add column if not exists location text;
 alter table inventory_items add column if not exists service_factor numeric;
 alter table inventory_items add column if not exists demand_std_dev numeric;
 alter table inventory_items add column if not exists lead_time_days numeric;
+alter table inventory_items add column if not exists category_id text references material_categories(id);
+alter table inventory_items add column if not exists unit_id text references measurement_units(id);
+alter table inventory_items add column if not exists brand_id text references brands(id);
+alter table stage_activities add column if not exists activity_type_code text references activity_types(code);
 alter table bom_items add column if not exists stage_id text references flow_stages(id);
 create unique index if not exists idx_body_types_code on body_types(code) where code is not null;
 
 create index if not exists idx_activity_stage on stage_activities(stage_id, sequence);
+create index if not exists idx_inventory_category on inventory_items(category_id);
 create index if not exists idx_routes_product on product_routes(product_id, sequence);
 create index if not exists idx_orders_stage on ceco_orders(stage_id, status);
 create index if not exists idx_orders_due on ceco_orders(due_date);
@@ -201,6 +238,10 @@ end; $$;
 -- Políticas de demostración: permiten al frontend anon leer/escribir.
 -- En producción, sustituirlas por políticas basadas en auth.uid() y roles.
 alter table flow_stages enable row level security;
+alter table material_categories enable row level security;
+alter table measurement_units enable row level security;
+alter table brands enable row level security;
+alter table activity_types enable row level security;
 alter table stage_activities enable row level security;
 alter table body_types enable row level security;
 alter table product_routes enable row level security;
@@ -218,7 +259,7 @@ alter table simulation_runs enable row level security;
 do $$
 declare table_name text;
 begin
-  foreach table_name in array array['flow_stages','stage_activities','body_types','product_routes','inventory_items','bom_items','ceco_orders','stage_inventory','ceco_activity_progress','operation_logs','warehouse_exits','quality_checks','inventory_movements']
+  foreach table_name in array array['material_categories','measurement_units','brands','activity_types','flow_stages','stage_activities','body_types','product_routes','inventory_items','bom_items','ceco_orders','stage_inventory','ceco_activity_progress','operation_logs','warehouse_exits','quality_checks','inventory_movements']
   loop
     execute format('drop policy if exists demo_access on %I', table_name);
     execute format('create policy demo_access on %I for all to anon, authenticated using (true) with check (true)', table_name);
@@ -229,6 +270,18 @@ drop policy if exists simulation_read on simulation_runs;
 drop policy if exists simulation_write on simulation_runs;
 create policy simulation_read on simulation_runs for select to authenticated using (created_by = auth.uid());
 create policy simulation_write on simulation_runs for insert to authenticated with check (created_by = auth.uid());
+
+-- Supabase Data API: desde 2026 los nuevos proyectos pueden requerir permisos
+-- explícitos, aun cuando RLS y sus políticas ya estén creadas.
+grant select, insert, update, delete on table public.flow_stages, public.stage_activities,
+  public.material_categories, public.measurement_units, public.brands, public.activity_types,
+  public.body_types, public.product_routes, public.inventory_items, public.bom_items,
+  public.ceco_orders, public.stage_inventory, public.ceco_activity_progress,
+  public.operation_logs, public.warehouse_exits, public.quality_checks,
+  public.inventory_movements to anon, authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated;
+grant execute on function public.next_ceco_code(), public.next_inventory_code(text),
+  public.next_warehouse_ticket() to anon, authenticated;
 
 do $$
 declare table_name text;

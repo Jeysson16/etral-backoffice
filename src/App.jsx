@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { initialDataset } from "./data/seed.js";
 import { evaluateMrp, inventoryHeatmap } from "./lib/mrp.js";
-import { calculateKpis, runDigitalTwin } from "./lib/simulator.js";
+import { calculateKpis } from "./lib/simulator.js";
 import { getRepository } from "./services/repository.js";
+import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
 
 const views = {
   overview: { label: "Inicio", icon: "⌂", subtitle: "Situación operativa de la planta" },
@@ -14,6 +15,8 @@ const views = {
 };
 
 const statusText = { green: "En curso", orange: "Atención", red: "Bloqueado" };
+const twinEngine = getTwinEngine();
+const twinEngineLabel = twinEngine === "python" ? "Motor Python avanzado" : "Motor ligero JS";
 
 function normalizeDataset(value) {
   return {
@@ -22,7 +25,8 @@ function normalizeDataset(value) {
     flowStages: value?.flowStages?.length ? value.flowStages : initialDataset.flowStages,
     stageActivities: value?.stageActivities?.length ? value.stageActivities : initialDataset.stageActivities,
     stageInventory: value?.stageInventory?.length ? value.stageInventory : initialDataset.stageInventory,
-    bodyTypes: value?.bodyTypes?.length ? value.bodyTypes : initialDataset.bodyTypes
+    bodyTypes: value?.bodyTypes?.length ? value.bodyTypes : initialDataset.bodyTypes,
+    catalogs: value?.catalogs?.categories?.length ? value.catalogs : initialDataset.catalogs
   };
 }
 
@@ -60,20 +64,33 @@ export default function App() {
     expediteCeco: ""
   });
   const [simParams, setSimParams] = useState(simDraft);
+  const [twin, setTwin] = useState(null);
   const [simulationTime, setSimulationTime] = useState("Escenario inicial");
+  const [dataReady, setDataReady] = useState(false);
   const repo = useMemo(() => getRepository(), []);
 
   useEffect(() => {
     repo.getDataset()
-      .then((loaded) => setDataset(normalizeDataset(loaded)))
-      .catch((err) => setError(err.message));
-    return repo.subscribe?.((fresh) => fresh && setDataset(normalizeDataset(fresh)));
+      .then((loaded) => {
+        const normalized = normalizeDataset(loaded);
+        setDataset(normalized);
+        setSimDraft((current) => normalized.inventory.some((item) => item.code === current.materialCode)
+          ? current
+          : { ...current, materialCode: normalized.inventory[0]?.code ?? "" });
+        setDataReady(true);
+      })
+      .catch((err) => { setDataReady(false); setError(err.message); });
+    return repo.subscribe?.((fresh) => {
+      if (fresh) {
+        setDataset(normalizeDataset(fresh));
+        setDataReady(true);
+      }
+    });
   }, [repo]);
 
   const heatmap = useMemo(() => inventoryHeatmap(dataset.inventory, dataset.orders, dataset.bom), [dataset]);
   const mrp = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory), [dataset]);
   const kpis = useMemo(() => calculateKpis(dataset), [dataset]);
-  const twin = useMemo(() => runDigitalTwin(dataset, simParams), [dataset, simParams]);
 
   async function persist(action, message) {
     try {
@@ -85,6 +102,19 @@ export default function App() {
       window.setTimeout(() => setNotice(""), 2800);
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function createCatalogItem(payload) {
+    try {
+      const updated = await repo.createCatalogItem(payload);
+      setDataset(normalizeDataset(updated));
+      setError("");
+      setNotice("Opción agregada al catálogo.");
+      window.setTimeout(() => setNotice(""), 2800);
+    } catch (err) {
+      setError(err.message);
+      throw err;
     }
   }
 
@@ -102,12 +132,15 @@ export default function App() {
     const values = Object.fromEntries(form.entries());
     if (drawer.type === "material") {
       return persist(() => repo.createInventory({
-        category: values.category,
+        category: dataset.catalogs.categories.find((item) => item.id === values.categoryId)?.name || "Sin categoría",
+        categoryId: values.categoryId,
         description: values.description,
         physical: Number(values.physical),
         committed: 0,
         safety: Number(values.safety),
-        unit: values.unit,
+        unit: dataset.catalogs.units.find((item) => item.id === values.unitId)?.symbol || "und",
+        unitId: values.unitId,
+        brandId: values.brandId || null,
         location: values.location
       }), "Material registrado correctamente.");
     }
@@ -169,9 +202,16 @@ export default function App() {
     }
   }
 
-  function executeSimulation() {
-    setSimParams({ ...simDraft });
-    setSimulationTime(`Ejecutado ${new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`);
+  async function executeSimulation() {
+    try {
+      const result = await runTwinSimulation(dataset, simDraft);
+      setSimParams({ ...simDraft });
+      setTwin(result);
+      setError("");
+      setSimulationTime(`Ejecutado ${new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`);
+    } catch (err) {
+      setError(`No se pudo ejecutar la simulación: ${err.message}`);
+    }
   }
 
   const page = views[view];
@@ -191,7 +231,7 @@ export default function App() {
         </nav>
         <div className="sidebar-status">
           <span className={`connection-dot ${import.meta.env.VITE_SUPABASE_URL ? "online" : "demo"}`} />
-          <div><strong>{import.meta.env.VITE_SUPABASE_URL ? "Supabase conectado" : "Datos de demostración"}</strong><small>{dataset.orders.length} CECO · {dataset.inventory.length} materiales</small></div>
+          <div><strong>{dataReady ? "Supabase sincronizado" : "Sincronizando datos"}</strong><small>{dataset.orders.length} CECO · {dataset.inventory.length} materiales · {twinEngineLabel}</small></div>
         </div>
       </aside>
 
@@ -206,14 +246,14 @@ export default function App() {
 
         <div className="page-content">
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} />}
-          {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} simulationTime={simulationTime} />}
+          {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} simulationTime={simulationTime} dataReady={dataReady} />}
           {view === "orders" && <OrdersView dataset={dataset} openDrawer={setDrawer} advanceOrder={advanceOrder} />}
           {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
           {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} />}
         </div>
       </main>
-      <RecordDrawer drawer={drawer} dataset={dataset} onClose={() => setDrawer(null)} onSubmit={submitDrawer} />
+      <RecordDrawer drawer={drawer} dataset={dataset} onClose={() => setDrawer(null)} onSubmit={submitDrawer} onCreateCatalog={createCatalogItem} />
     </div>
   );
 }
@@ -291,18 +331,22 @@ function Overview({ dataset, kpis, heatmap, mrp, setView }) {
   </div>;
 }
 
-function TwinView({ dataset, draft, setDraft, result, execute, simulationTime }) {
+function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, dataReady }) {
   const [tab, setTab] = useState("capacity");
   function update(key, value) { setDraft((current) => ({ ...current, [key]: value })); }
-  const comparisons = [
+  const comparisons = result ? [
     ["Órdenes terminables", result.baseline.throughput, result.scenario.throughput, "órdenes"],
     ["Cumplimiento PMP", result.baseline.pmpCompliance, result.scenario.pmpCompliance, "%"],
     ["Lead time estimado", result.baseline.estimatedLeadDays, result.scenario.estimatedLeadDays, "días"],
     ["Quiebres proyectados", result.baseline.stockouts, result.scenario.stockouts, "materiales"]
-  ];
+  ] : [];
   return <div className="twin-layout">
     <aside className="scenario-panel panel">
       <SectionHeader eyebrow="Escenario" title="Configurar simulación" detail="Los cambios no modifican inventario ni órdenes reales." />
+      <div className={`twin-feed ${dataReady ? "ready" : "loading"}`}>
+        <span>{dataReady ? "✓" : "…"}</span>
+        <div><strong>{dataReady ? "Gemelo alimentado con Supabase" : "Cargando alimentación del gemelo"}</strong><small>{dataset.flowStages.length} fases · {dataset.stageActivities.length} actividades · {dataset.orders.length} CECO · {dataset.inventory.length} materiales · {dataset.bom.length} componentes BOM</small></div>
+      </div>
       <div className="form-stack">
         <Field label="Horizonte de planificación" hint="Período sobre el que se distribuye la capacidad."><select value={draft.horizonDays} onChange={(e) => update("horizonDays", Number(e.target.value))}><option value="7">7 días</option><option value="14">14 días</option><option value="21">21 días</option><option value="30">30 días</option></select></Field>
         <Field label="Personal disponible" hint={`${draft.laborAvailability}% de la dotación planificada.`}><input type="range" min="40" max="100" value={draft.laborAvailability} onChange={(e) => update("laborAvailability", Number(e.target.value))} /></Field>
@@ -311,11 +355,13 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime })
         <div className="field-group"><span>Ajuste extraordinario de material</span><div className="inline-fields"><select value={draft.materialCode} onChange={(e) => update("materialCode", e.target.value)}>{dataset.inventory.map((item) => <option value={item.code} key={item.code}>{item.code} · {item.description}</option>)}</select><input aria-label="Ajuste de stock" type="number" value={draft.stockAdjustment} onChange={(e) => update("stockAdjustment", Number(e.target.value))} /></div><small>Use un valor positivo para un ingreso y negativo para una pérdida simulada.</small></div>
         <Field label="CECO a priorizar" hint="Cambia la lectura de la cola, no el consumo total."><select value={draft.expediteCeco} onChange={(e) => update("expediteCeco", e.target.value)}><option value="">Mantener prioridad actual</option>{dataset.orders.map((order) => <option key={order.ceco} value={order.ceco}>CECO {order.ceco} · {productOf(dataset, order.bodyTypeId)?.name}</option>)}</select></Field>
       </div>
-      <Button onClick={execute}>Ejecutar simulación</Button>
+      <Button onClick={execute} disabled={!dataReady}>{dataReady ? "Ejecutar simulación" : "Esperando datos…"}</Button>
       <p className="run-stamp">{simulationTime}</p>
     </aside>
 
     <div className="simulation-results stack-lg">
+      {!result && <section className="panel"><EmptyState text={`Ejecuta el escenario para calcularlo con ${twinEngineLabel.toLowerCase()}.`} /></section>}
+      {result && <>
       <div className="simulation-note"><span>i</span><div><strong>Lectura del escenario</strong><p>Se compara el plan vigente con los parámetros elegidos. El resultado es una proyección determinística de capacidad, stock y fechas.</p></div></div>
       <section className="comparison-grid">
         {comparisons.map(([label, base, scenario, unit]) => {
@@ -330,6 +376,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime })
         {tab === "materials" && <MaterialSimulation rows={result.scenario.materials} />}
         {tab === "trace" && <div className="assumption-list">{result.changes.map((item, index) => <article key={item}><span>{index + 1}</span><p>{item}</p></article>)}</div>}
       </section>
+      </>}
     </div>
   </div>;
 }
@@ -465,11 +512,35 @@ function Field({ label, hint, children }) {
   return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
 }
 
-function RecordDrawer({ drawer, dataset, onClose, onSubmit }) {
+function CatalogManager({ type, label, items, onCreate }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [symbol, setSymbol] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await onCreate({ type, name, symbol });
+      setName("");
+      setSymbol("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="catalog-manager">
+    <button type="button" className="catalog-toggle" onClick={() => setOpen((value) => !value)}>{open ? "Ocultar opciones" : `+ Gestionar ${label.toLowerCase()}`}</button>
+    {open && <div className="catalog-popover"><div className="catalog-options">{items.map((item) => <span key={item.id}>{item.name}{item.symbol && ` · ${item.symbol}`}</span>)}</div><div className="catalog-entry"><input aria-label={`Nueva ${label}`} value={name} onChange={(event) => setName(event.target.value)} placeholder={`Nueva ${label.toLowerCase()}`} />{type === "units" && <input aria-label="Símbolo de unidad" value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="Símbolo, ej. kg" />}<Button type="button" onClick={submit} disabled={saving || !name.trim()}>{saving ? "Agregando..." : "Agregar"}</Button></div></div>}
+  </div>;
+}
+
+function RecordDrawer({ drawer, dataset, onClose, onSubmit, onCreateCatalog }) {
   if (!drawer) return null;
   const titles = { material: "Registrar material", movement: "Movimiento de inventario", order: "Nueva orden CECO", product: "Registrar producto", activity: "Añadir actividad", bom: "Añadir componente BOM", operation: "Registrar parte diario" };
   return <div className="drawer-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><aside className="drawer" role="dialog" aria-modal="true" aria-label={titles[drawer.type]}><header><div><p className="eyebrow">Nuevo registro</p><h2>{titles[drawer.type]}</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><form onSubmit={onSubmit}>
-    {drawer.type === "material" && <><Field label="Descripción"><input name="description" required placeholder="Ej. Plancha galvanizada 1.5 mm" /></Field><div className="form-row"><Field label="Categoría"><select name="category"><option>Planchas</option><option>Perfiles</option><option>Pinturas</option><option>Consumibles</option><option>Accesorios</option></select></Field><Field label="Unidad"><select name="unit"><option value="und">Unidad</option><option value="kg">Kilogramo</option><option value="gal">Galón</option><option value="m">Metro</option><option value="pzas">Piezas</option></select></Field></div><div className="form-row"><Field label="Stock inicial"><input name="physical" type="number" min="0" step="0.01" required /></Field><Field label="Stock de seguridad"><input name="safety" type="number" min="0" step="0.01" required /></Field></div><Field label="Ubicación"><input name="location" placeholder="Ej. ALM-PLA" /></Field></>}
+    {drawer.type === "material" && <><Field label="Descripción"><input name="description" required placeholder="Ej. Plancha galvanizada 1.5 mm" /></Field><div className="form-row"><Field label="Categoría"><select name="categoryId" required>{dataset.catalogs.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><CatalogManager type="categories" label="categoría" items={dataset.catalogs.categories} onCreate={onCreateCatalog} /></Field><Field label="Unidad de medida"><select name="unitId" required>{dataset.catalogs.units.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.symbol}</option>)}</select><CatalogManager type="units" label="unidad" items={dataset.catalogs.units} onCreate={onCreateCatalog} /></Field></div><Field label="Marca"><select name="brandId"><option value="">Sin marca / genérico</option>{dataset.catalogs.brands.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><CatalogManager type="brands" label="marca" items={dataset.catalogs.brands} onCreate={onCreateCatalog} /></Field><div className="form-row"><Field label="Stock inicial"><input name="physical" type="number" min="0" step="0.01" required /></Field><Field label="Stock de seguridad"><input name="safety" type="number" min="0" step="0.01" required /></Field></div><Field label="Ubicación"><input name="location" placeholder="Ej. ALM-PLA" /></Field></>}
     {drawer.type === "movement" && <><Field label="Tipo de movimiento"><select name="movementType"><option value="ingreso">Ingreso</option><option value="salida">Salida a planta</option><option value="reserva">Reserva para CECO</option><option value="ajuste">Ajuste de inventario</option></select></Field><Field label="Material"><select name="code">{dataset.inventory.map((item) => <option value={item.code} key={item.code}>{item.code} · {item.description}</option>)}</select></Field><div className="form-row"><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field><Field label="CECO (opcional)"><select name="ceco"><option value="">Sin CECO</option>{dataset.orders.map((item) => <option value={item.ceco} key={item.ceco}>{item.ceco}</option>)}</select></Field></div><Field label="Detalle"><textarea name="note" required placeholder="Motivo o documento de referencia" /></Field></>}
     {drawer.type === "order" && <><Field label="Cliente"><input name="customer" required /></Field><Field label="Producto"><select name="bodyTypeId">{dataset.bodyTypes.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></Field><div className="form-row"><Field label="Línea"><select name="line"><option>Línea 1</option><option>Línea 2</option><option>Línea 3</option></select></Field><Field label="Fecha pactada"><input name="dueDate" type="date" required /></Field></div><p className="form-info">Al guardar se genera el CECO, se asigna la primera fase de la ruta y se reserva la BOM.</p></>}
     {drawer.type === "product" && <><div className="form-row"><Field label="Código"><input name="code" required placeholder="PROD-XXX" /></Field><Field label="Familia"><input name="family" required placeholder="Furgones" /></Field></div><Field label="Nombre del producto"><input name="name" required /></Field><div className="form-row"><Field label="Días objetivo"><input name="targetDays" type="number" min="1" required /></Field><Field label="Unidad de salida"><select name="outputUnit"><option value="und">Unidad</option><option value="serv">Servicio</option></select></Field></div><fieldset className="route-picker"><legend>Ruta de fabricación</legend><p>Marca solo las fases que aplican; se conservará el orden productivo.</p>{byOrder(dataset).map((stage) => <label key={stage.id}><input type="checkbox" name="route" value={stage.id} defaultChecked /><span style={{ "--check-color": stage.color }}>{stage.shortName}</span><b>{stage.name}</b></label>)}</fieldset></>}

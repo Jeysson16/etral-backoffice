@@ -95,6 +95,22 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async createCatalogItem(payload) {
+    const dataset = load();
+    const collection = dataset.catalogs[payload.type];
+    if (!collection) throw new Error("Catálogo no válido");
+    const name = String(payload.name || "").trim();
+    if (!name) throw new Error("Ingresa un nombre para la opción");
+    if (collection.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error("Esta opción ya existe en el catálogo");
+    }
+    const prefix = payload.type === "categories" ? "cat" : payload.type === "units" ? "unit" : "brand";
+    const id = `${prefix}-${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now()}`;
+    const item = { id, name, ...(payload.type === "units" ? { symbol: String(payload.symbol || "").trim() || name.toLowerCase() } : {}) };
+    collection.push(item);
+    save(dataset);
+    return dataset;
+  },
   async createInventoryMovement(payload) {
     const dataset = load();
     const quantity = Number(payload.quantity);

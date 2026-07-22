@@ -1,15 +1,15 @@
 import { supabase } from "../supabase/client.js";
 
 export function hasSupabaseConfig() {
-  return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+  return Boolean(import.meta.env.VITE_SUPABASE_URL && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY));
 }
 
 export const supabaseRepository = {
   async getDataset() {
     if (!supabase) {
-      throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY o usa npm run dev:mocks.");
+      throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
     }
-    const tables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements"];
+    const tables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands"];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
     const failed = results.find((result) => result.error);
     if (failed) throw failed.error;
@@ -26,7 +26,8 @@ export const supabaseRepository = {
       operations: results[9].data.map(mapOperation),
       warehouse: results[10].data.map(mapWarehouse),
       quality: results[11].data.map(mapQuality),
-      inventoryMovements: results[12].data.map(mapMovement)
+      inventoryMovements: results[12].data.map(mapMovement),
+      catalogs: { categories: results[13].data, units: results[14].data, brands: results[15].data }
     };
   },
   async saveFlowStages(flowStages) {
@@ -89,15 +90,34 @@ export const supabaseRepository = {
       id: `inv-${code}`,
       code,
       category: payload.category || "MAT",
+      category_id: payload.categoryId || null,
       description: payload.description,
       physical: Number(payload.physical),
       committed: Number(payload.committed || 0),
       safety: Number(payload.safety),
       unit: payload.unit,
+      unit_id: payload.unitId || null,
+      brand_id: payload.brandId || null,
       location: payload.location
     });
     if (error) throw error;
     await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: "ingreso", code, ceco: "", quantity: Number(payload.physical), note: "Alta inicial de insumo" });
+    return this.getDataset();
+  },
+  async createCatalogItem(payload) {
+    const config = {
+      categories: { table: "material_categories", prefix: "cat" },
+      units: { table: "measurement_units", prefix: "unit" },
+      brands: { table: "brands", prefix: "brand" }
+    }[payload.type];
+    if (!config) throw new Error("Catálogo no válido");
+    const name = String(payload.name || "").trim();
+    if (!name) throw new Error("Ingresa un nombre para la opción");
+    const safeName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const row = { id: `${config.prefix}-${safeName}-${Date.now()}`, name };
+    if (payload.type === "units") row.symbol = String(payload.symbol || "").trim() || name.toLowerCase();
+    const { error } = await supabase.from(config.table).insert(row);
+    if (error) throw error;
     return this.getDataset();
   },
   async createInventoryMovement(payload) {
@@ -246,7 +266,7 @@ function mapBodyType(row, routes) {
 }
 
 function mapInventory(row) {
-  return { id: row.id, code: row.code, category: row.category, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: Number(row.service_factor), demandStdDev: Number(row.demand_std_dev), leadTimeDays: Number(row.lead_time_days), unit: row.unit, location: row.location };
+  return { id: row.id, code: row.code, category: row.category, categoryId: row.category_id, brandId: row.brand_id, unitId: row.unit_id, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: Number(row.service_factor), demandStdDev: Number(row.demand_std_dev), leadTimeDays: Number(row.lead_time_days), unit: row.unit, location: row.location };
 }
 
 function mapBom(row) {

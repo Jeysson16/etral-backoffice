@@ -40,10 +40,10 @@ test("requerimiento abierto se calcula desde órdenes activas y BOM", () => {
 
 test("gemelo digital muestra el efecto de menor disponibilidad de personal", () => {
   const result = runDigitalTwin(initialDataset, { laborAvailability: 45, horizonDays: 7, shiftsPerDay: 1 });
-  const baselineWelding = result.baseline.stageCapacity.find((stage) => stage.stageId === "stage-welding");
-  const scenarioWelding = result.scenario.stageCapacity.find((stage) => stage.stageId === "stage-welding");
-  assert.ok(scenarioWelding.availableHours < baselineWelding.availableHours);
-  assert.ok(scenarioWelding.utilization > baselineWelding.utilization);
+  const baselineAssembly = result.baseline.stageCapacity.find((stage) => stage.stageId === "stage-assembly");
+  const scenarioAssembly = result.scenario.stageCapacity.find((stage) => stage.stageId === "stage-assembly");
+  assert.ok(scenarioAssembly.availableHours < baselineAssembly.availableHours);
+  assert.ok(scenarioAssembly.utilization > baselineAssembly.utilization);
 });
 
 test("ajuste simulado de stock cambia la proyección del material elegido", () => {

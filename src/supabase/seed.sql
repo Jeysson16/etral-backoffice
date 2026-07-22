@@ -1,26 +1,26 @@
 -- Datos de demostración alineados con DOP DE FURGÓN ACANALADO y AVANCE DE CECOS.
-insert into flow_stages (id, "order", name, short_name, capacity_hours, standard_hours, color, gated_by_quality) values
-('stage-supply',0,'Abastecimiento','01',40,4,'#64748b',false),('stage-prepaint',1,'Pre-pintado','02',36,6,'#0ea5e9',true),
-('stage-cut',2,'Corte de componentes','03',44,7,'#2563eb',false),('stage-assembly',3,'Armado','04',52,14,'#16a34a',false),
-('stage-welding',4,'Soldado','05',48,12,'#059669',true),('stage-doors',5,'Kit de cierre y puertas','06',32,7,'#8b5cf6',true),
-('stage-guards',6,'Defensas','07',28,6,'#a855f7',false),('stage-paint',7,'Pintado general','08',34,16,'#f97316',true),
-('stage-mount',8,'Montaje sobre chasis','09',30,8,'#d97706',true),('stage-electrical',9,'Sistema eléctrico','10',30,6,'#eab308',true),
-('stage-finish',10,'Acabados y entrega','11',38,8,'#0f766e',true)
-on conflict (id) do update set "order"=excluded."order", name=excluded.name, short_name=excluded.short_name, capacity_hours=excluded.capacity_hours, standard_hours=excluded.standard_hours, color=excluded.color, gated_by_quality=excluded.gated_by_quality;
+insert into material_categories (id,name,description) values
+('cat-steel','Planchas y perfiles','Acero, tubos, planchas y piezas estructurales'),('cat-paint','Pinturas y preparación','Pinturas, selladores, thinner y lijas'),('cat-welding','Soldadura','Alambres, electrodos, gases y consumibles'),('cat-fastener','Fijaciones y herrajes','Pernos, tuercas, bisagras y kit de cierre'),('cat-electric','Sistema eléctrico','Cableado, faros, terminales y accesorios eléctricos'),('cat-wood','Madera y revestimiento','Listones, paneles y revestimientos')
+on conflict (id) do update set name=excluded.name, description=excluded.description;
+insert into measurement_units (id,name,symbol) values ('unit-und','Unidad','und'),('unit-gal','Galón','gal'),('unit-kg','Kilogramo','kg'),('unit-m','Metro','m'),('unit-roll','Rollo','rollo'),('unit-cylinder','Balón','balón') on conflict (id) do update set name=excluded.name, symbol=excluded.symbol;
+insert into brands (id,name) values ('brand-anypsa','Anypsa'),('brand-3m','3M'),('brand-aurora','Aurora'),('brand-fene','Fene'),('brand-etral','ETRAL'),('brand-generic','Genérico') on conflict (id) do update set name=excluded.name;
+insert into activity_types (code,name,diagram_symbol) values ('operation','Operación','círculo'),('inspection','Inspección','cuadrado'),('transport','Transporte','flecha'),('delay','Demora','semicírculo'),('storage','Almacén','triángulo') on conflict (code) do update set name=excluded.name, diagram_symbol=excluded.diagram_symbol;
 
-insert into stage_activities (id,stage_id,sequence,name,standard_minutes,active) values
-('act-supply-1','stage-supply',1,'Adquisición de planchas y perfiles',60,true),('act-supply-2','stage-supply',2,'Recepción de materiales',75,true),('act-supply-3','stage-supply',3,'Transporte interno al área de corte',90,true),
-('act-prepaint-1','stage-prepaint',1,'Descarga de material',60,true),('act-prepaint-2','stage-prepaint',2,'Lijado y limpieza con thinner',75,true),('act-prepaint-3','stage-prepaint',3,'Aplicación de acondicionador',90,true),('act-prepaint-4','stage-prepaint',4,'Aplicación de base',105,true),
-('act-cut-1','stage-cut',1,'Inspección de medidas',60,true),('act-cut-2','stage-cut',2,'Trazado de componentes',75,true),('act-cut-3','stage-cut',3,'Corte de planchas y perfiles',90,true),
-('act-assembly-1','stage-assembly',1,'Armado de falso chasis',60,true),('act-assembly-2','stage-assembly',2,'Colocación de puentes y durmientes',75,true),('act-assembly-3','stage-assembly',3,'Armado de laterales y frontal',90,true),('act-assembly-4','stage-assembly',4,'Colocación de piso',105,true),
-('act-welding-1','stage-welding',1,'Nivelado de carrocería',60,true),('act-welding-2','stage-welding',2,'Soldeo de falso chasis',75,true),('act-welding-3','stage-welding',3,'Soldeo de estructura',90,true),('act-welding-4','stage-welding',4,'Inspección de cordones',105,true),
-('act-doors-1','stage-doors',1,'Preparación de piezas',60,true),('act-doors-2','stage-doors',2,'Instalación de kit de cierre',75,true),('act-doors-3','stage-doors',3,'Soldado e instalación de puertas',90,true),
-('act-guards-1','stage-guards',1,'Perforación de perfiles',60,true),('act-guards-2','stage-guards',2,'Habilitado de tubos',75,true),('act-guards-3','stage-guards',3,'Soldado e instalación de defensas',90,true),
-('act-paint-1','stage-paint',1,'Esmerilado de soldaduras',60,true),('act-paint-2','stage-paint',2,'Masillado',75,true),('act-paint-3','stage-paint',3,'Lijado y pulido',90,true),('act-paint-4','stage-paint',4,'Aplicación de sellador y base',105,true),('act-paint-5','stage-paint',5,'Pintura final y acabado',120,true),
-('act-mount-1','stage-mount',1,'Ubicación para montaje',60,true),('act-mount-2','stage-mount',2,'Montaje de carrocería',75,true),('act-mount-3','stage-mount',3,'Instalación e inspección de abrazaderas',90,true),
-('act-electrical-1','stage-electrical',1,'Instalación de faros',60,true),('act-electrical-2','stage-electrical',2,'Cableado y fijación',75,true),('act-electrical-3','stage-electrical',3,'Prueba del sistema eléctrico',90,true),
-('act-finish-1','stage-finish',1,'Instalación de cintas y logos',60,true),('act-finish-2','stage-finish',2,'Accesorios finales',75,true),('act-finish-3','stage-finish',3,'Limpieza, inspección y entrega',90,true)
-on conflict (id) do update set name=excluded.name, standard_minutes=excluded.standard_minutes, active=excluded.active;
+insert into flow_stages (id,code,"order",name,short_name,capacity_hours,standard_hours,color,gated_by_quality) values
+('stage-supply','SUP',0,'Abastecimiento de materiales','01',40,4,'#64748b',false),('stage-prepaint','PRE',1,'Prepintado de componentes','02',36,6,'#0ea5e9',true),('stage-cut','CUT',2,'Corte de componentes','03',44,7,'#2563eb',true),('stage-assembly','ASM',3,'Armado de furgón acanalado','04',52,14,'#16a34a',false),('stage-paint','PNT',4,'Preparación de pintado general','05',34,16,'#f97316',true),('stage-doors','DRS',5,'Armado e instalación de puertas','06',32,12,'#8b5cf6',true),('stage-mount','MNT',6,'Montaje de furgón sobre chasis','07',30,8,'#d97706',true),('stage-systems','SYS',7,'Instalación de sistemas y accesorios','08',30,6,'#eab308',true),('stage-delivery','DEL',8,'Verificación y entrega','09',38,4,'#0f766e',true)
+on conflict (id) do update set code=excluded.code,"order"=excluded."order",name=excluded.name,short_name=excluded.short_name,capacity_hours=excluded.capacity_hours,standard_hours=excluded.standard_hours,color=excluded.color,gated_by_quality=excluded.gated_by_quality;
+
+insert into stage_activities (id,stage_id,sequence,name,standard_minutes,active,activity_type_code) values
+('act-supply-1','stage-supply',1,'Adquisición de planchas y perfiles metálicos',60,true,'operation'),('act-supply-2','stage-supply',2,'Recepción de materiales',75,true,'operation'),('act-supply-3','stage-supply',3,'Transporte interno al área de corte',45,true,'transport'),
+('act-prepaint-1','stage-prepaint',1,'Lijado de piezas',60,true,'operation'),('act-prepaint-2','stage-prepaint',2,'Aplicación de acondicionador de metal',75,true,'operation'),('act-prepaint-3','stage-prepaint',3,'Pre-pintado',90,true,'operation'),('act-prepaint-4','stage-prepaint',4,'Secado de prepintado de componentes',120,true,'delay'),
+('act-cut-1','stage-cut',1,'Inspección de medidas y piezas para corte',45,true,'inspection'),('act-cut-2','stage-cut',2,'Corte de planchas y perfiles',120,true,'operation'),
+('act-assembly-1','stage-assembly',1,'Soldeo de falso chasis',120,true,'operation'),('act-assembly-2','stage-assembly',2,'Resoldeo de falso chasis',90,true,'operation'),('act-assembly-3','stage-assembly',3,'Soldeo de carrocería',180,true,'operation'),('act-assembly-4','stage-assembly',4,'Resoldeo de carrocería',120,true,'operation'),('act-assembly-5','stage-assembly',5,'Instalación de kit de cierre',90,true,'operation'),
+('act-paint-1','stage-paint',1,'Esmerilado de soldaduras',90,true,'operation'),('act-paint-2','stage-paint',2,'Masillado',90,true,'operation'),('act-paint-3','stage-paint',3,'Lijado y pulido',120,true,'operation'),('act-paint-4','stage-paint',4,'Aplicación de sellador',75,true,'operation'),('act-paint-5','stage-paint',5,'Instalación de techo',120,true,'operation'),('act-paint-6','stage-paint',6,'Aplicación de pintura final de la estructura',150,true,'operation'),
+('act-doors-1','stage-doors',1,'Preparación de piezas',60,true,'operation'),('act-doors-2','stage-doors',2,'Prepintado',75,true,'operation'),('act-doors-3','stage-doors',3,'Soldado de subensamble',120,true,'operation'),('act-doors-4','stage-doors',4,'Lijado',60,true,'operation'),('act-doors-5','stage-doors',5,'Macillado',75,true,'operation'),('act-doors-6','stage-doors',6,'Pulido',60,true,'operation'),('act-doors-7','stage-doors',7,'Aplicación de sellador',60,true,'operation'),('act-doors-8','stage-doors',8,'Pintado de puertas',120,true,'operation'),('act-doors-9','stage-doors',9,'Instalación de jebes de puerta',60,true,'operation'),('act-doors-10','stage-doors',10,'Colocación de pernos y tuercas',60,true,'operation'),('act-doors-11','stage-doors',11,'Instalación de seguros de puerta',60,true,'operation'),('act-doors-12','stage-doors',12,'Instalación de puertas',90,true,'operation'),
+('act-mount-1','stage-mount',1,'Ubicación de furgón para el montaje',60,true,'operation'),('act-mount-2','stage-mount',2,'Instalación de listones de madera',120,true,'operation'),('act-mount-3','stage-mount',3,'Inspección de listones de madera',30,true,'inspection'),('act-mount-4','stage-mount',4,'Montaje de furgón',180,true,'operation'),('act-mount-5','stage-mount',5,'Instalación de abrazaderas',90,true,'operation'),('act-mount-6','stage-mount',6,'Inspección de abrazaderas',30,true,'inspection'),
+('act-systems-1','stage-systems',1,'Instalación de sistema eléctrico',120,true,'operation'),('act-systems-2','stage-systems',2,'Instalación de defensas y guardafangos',120,true,'operation'),('act-systems-3','stage-systems',3,'Instalación de parachoque',75,true,'operation'),('act-systems-4','stage-systems',4,'Instalación de porta extintor',45,true,'operation'),('act-systems-5','stage-systems',5,'Instalación de porta cono',45,true,'operation'),('act-systems-6','stage-systems',6,'Instalación de porta taco',45,true,'operation'),
+('act-delivery-1','stage-delivery',1,'Verificar',30,true,'inspection'),('act-delivery-2','stage-delivery',2,'Almacenamiento / entrega del producto',30,true,'storage')
+on conflict (id) do update set name=excluded.name,standard_minutes=excluded.standard_minutes,activity_type_code=excluded.activity_type_code,active=excluded.active;
 
 insert into body_types (id,code,family,name,target_days,output_unit) values
 ('body-van-ribbed','PROD-FAC','Furgones','Furgón Acanalado',16,'und'),('body-van-flat','PROD-FLI','Furgones','Furgón Liso',14,'und'),
@@ -28,10 +28,10 @@ insert into body_types (id,code,family,name,target_days,output_unit) values
 on conflict (id) do update set code=excluded.code,family=excluded.family,name=excluded.name,target_days=excluded.target_days,output_unit=excluded.output_unit;
 
 insert into product_routes (product_id,stage_id,sequence) values
-('body-van-ribbed','stage-supply',1),('body-van-ribbed','stage-prepaint',2),('body-van-ribbed','stage-cut',3),('body-van-ribbed','stage-assembly',4),('body-van-ribbed','stage-welding',5),('body-van-ribbed','stage-doors',6),('body-van-ribbed','stage-guards',7),('body-van-ribbed','stage-paint',8),('body-van-ribbed','stage-mount',9),('body-van-ribbed','stage-electrical',10),('body-van-ribbed','stage-finish',11),
-('body-van-flat','stage-supply',1),('body-van-flat','stage-prepaint',2),('body-van-flat','stage-cut',3),('body-van-flat','stage-assembly',4),('body-van-flat','stage-welding',5),('body-van-flat','stage-doors',6),('body-van-flat','stage-paint',7),('body-van-flat','stage-mount',8),('body-van-flat','stage-electrical',9),('body-van-flat','stage-finish',10),
-('body-tank-5000','stage-supply',1),('body-tank-5000','stage-prepaint',2),('body-tank-5000','stage-cut',3),('body-tank-5000','stage-assembly',4),('body-tank-5000','stage-welding',5),('body-tank-5000','stage-paint',6),('body-tank-5000','stage-mount',7),('body-tank-5000','stage-electrical',8),('body-tank-5000','stage-finish',9),
-('body-mixed-rail','stage-supply',1),('body-mixed-rail','stage-prepaint',2),('body-mixed-rail','stage-cut',3),('body-mixed-rail','stage-assembly',4),('body-mixed-rail','stage-welding',5),('body-mixed-rail','stage-guards',6),('body-mixed-rail','stage-paint',7),('body-mixed-rail','stage-mount',8),('body-mixed-rail','stage-electrical',9),('body-mixed-rail','stage-finish',10)
+('body-van-ribbed','stage-supply',1),('body-van-ribbed','stage-prepaint',2),('body-van-ribbed','stage-cut',3),('body-van-ribbed','stage-assembly',4),('body-van-ribbed','stage-paint',5),('body-van-ribbed','stage-doors',6),('body-van-ribbed','stage-mount',7),('body-van-ribbed','stage-systems',8),('body-van-ribbed','stage-delivery',9),
+('body-van-flat','stage-supply',1),('body-van-flat','stage-prepaint',2),('body-van-flat','stage-cut',3),('body-van-flat','stage-assembly',4),('body-van-flat','stage-paint',5),('body-van-flat','stage-doors',6),('body-van-flat','stage-mount',7),('body-van-flat','stage-systems',8),('body-van-flat','stage-delivery',9),
+('body-tank-5000','stage-supply',1),('body-tank-5000','stage-cut',2),('body-tank-5000','stage-assembly',3),('body-tank-5000','stage-paint',4),('body-tank-5000','stage-mount',5),('body-tank-5000','stage-systems',6),('body-tank-5000','stage-delivery',7),
+('body-mixed-rail','stage-supply',1),('body-mixed-rail','stage-prepaint',2),('body-mixed-rail','stage-cut',3),('body-mixed-rail','stage-assembly',4),('body-mixed-rail','stage-paint',5),('body-mixed-rail','stage-mount',6),('body-mixed-rail','stage-systems',7),('body-mixed-rail','stage-delivery',8)
 on conflict (product_id,stage_id) do update set sequence=excluded.sequence;
 
 insert into inventory_items (id,code,category,description,physical,committed,safety,unit,location) values
@@ -46,25 +46,47 @@ update inventory_items set service_factor=1.65, demand_std_dev=4.58, lead_time_d
 update inventory_items set service_factor=1.65, demand_std_dev=20.33, lead_time_days=5 where code='MAT-0045';
 update inventory_items set service_factor=1.65, demand_std_dev=0.97, lead_time_days=14 where code='MAT-0046';
 update inventory_items set service_factor=1.65, demand_std_dev=2.75, lead_time_days=7 where code='MAT-0047';
+update inventory_items set category_id='cat-paint', unit_id='unit-gal', brand_id='brand-anypsa' where code in ('MAT-0042','MAT-0047');
+update inventory_items set category_id='cat-steel', unit_id='unit-und' where code in ('MAT-0043','MAT-0044');
+update inventory_items set category_id='cat-welding', unit_id='unit-kg' where code='MAT-0045';
+update inventory_items set category_id='cat-fastener', unit_id='unit-und' where code='MAT-0046';
+
+insert into inventory_items (id,code,category,category_id,brand_id,unit_id,description,physical,committed,safety,service_factor,demand_std_dev,lead_time_days,unit,location) values
+('inv-0101','MAT-0101','Pinturas','cat-paint','brand-generic','unit-gal','Acondicionador de metales preparado',18,3,4,1.65,1.20,7,'gal','ALM-PIN'),
+('inv-0102','MAT-0102','Pinturas','cat-paint','brand-anypsa','unit-gal','Base zincromato Anypsa X3',26,8,6,1.65,1.70,7,'gal','ALM-PIN'),
+('inv-0103','MAT-0103','Pinturas','cat-paint','brand-fene','unit-und','Papel lija de fierro gr. 80',95,14,20,1.65,5.00,5,'und','ALM-PIN'),
+('inv-0104','MAT-0104','Pinturas','cat-paint','brand-generic','unit-kg','Trapo industrial',42,7,8,1.65,2.10,4,'kg','ALM-CON'),
+('inv-0105','MAT-0105','Soldadura','cat-welding','brand-generic','unit-roll','Alambre de soldadura E70XX',24,5,6,1.65,1.40,7,'rollo','ALM-SOL'),
+('inv-0106','MAT-0106','Soldadura','cat-welding','brand-generic','unit-cylinder','Argo mix',12,3,3,1.65,0.80,5,'balón','ALM-SOL'),
+('inv-0107','MAT-0107','Soldadura','cat-welding','brand-fene','unit-und','Disco de corte Fene 7 pulgadas',64,12,15,1.65,3.40,5,'und','ALM-HER'),
+('inv-0108','MAT-0108','Fijaciones','cat-fastener','brand-generic','unit-und','Kit de cierre 134121',16,6,4,1.65,1.10,10,'und','ALM-ACC'),
+('inv-0109','MAT-0109','Fijaciones','cat-fastener','brand-generic','unit-und','Perno zincado cabeza de coche 5/16 x 1',620,130,150,1.65,35.00,5,'und','ALM-FIJ'),
+('inv-0110','MAT-0110','Fijaciones','cat-fastener','brand-generic','unit-und','Tuerca stop zincada de 5/16',540,120,140,1.65,32.00,5,'und','ALM-FIJ'),
+('inv-0111','MAT-0111','Planchas','cat-steel','brand-generic','unit-m','Bobina de aluzinc 18000 mm ancho',160,38,35,1.65,8.00,14,'m','ALM-PLA'),
+('inv-0112','MAT-0112','Madera y revestimiento','cat-wood','brand-generic','unit-m','Bobina de fibra de vidrio translúcida 2600 mm ancho',45,9,10,1.65,2.80,12,'m','ALM-REV'),
+('inv-0113','MAT-0113','Pinturas','cat-paint','brand-3m','unit-und','Sellador 3M 550 + boquilla',36,8,10,1.65,2.30,7,'und','ALM-PIN'),
+('inv-0114','MAT-0114','Sistema eléctrico','cat-electric','brand-generic','unit-und','Base de faro lateral estandarizada',42,12,10,1.65,2.20,7,'und','ALM-ELE')
+on conflict (id) do update set category=excluded.category,category_id=excluded.category_id,brand_id=excluded.brand_id,unit_id=excluded.unit_id,description=excluded.description,physical=excluded.physical,committed=excluded.committed,safety=excluded.safety,service_factor=excluded.service_factor,demand_std_dev=excluded.demand_std_dev,lead_time_days=excluded.lead_time_days,unit=excluded.unit,location=excluded.location;
 
 insert into bom_items (id,body_type_id,stage_id,material_code,piece_code,description,length_mm,quantity) values
 ('bom-1','body-van-ribbed','stage-cut','MAT-0043','PZA-1101','Panel lateral acanalado',6200,8),('bom-2','body-van-ribbed','stage-assembly','MAT-0044','PZA-1102','Perfil estructural',6000,16),('bom-3','body-van-ribbed','stage-paint','MAT-0042','PZA-1103','Pintura poliuretano',0,12),
-('bom-4','body-van-flat','stage-cut','MAT-0043','PZA-1201','Panel lateral liso',6200,6),('bom-5','body-van-flat','stage-paint','MAT-0042','PZA-1203','Pintura poliuretano',0,10),
-('bom-6','body-tank-5000','stage-assembly','MAT-0043','PZA-2101','Cilindro rolado',5800,10),('bom-7','body-tank-5000','stage-finish','MAT-0046','PZA-2103','Válvula descarga',0,2),('bom-8','body-tank-5000','stage-welding','MAT-0045','PZA-2104','Consumible de soldadura',0,45),
-('bom-9','body-mixed-rail','stage-cut','MAT-0043','PZA-3101','Plancha de baranda',2400,5),('bom-10','body-mixed-rail','stage-assembly','MAT-0044','PZA-3102','Tubos estructurales',6000,12),('bom-11','body-mixed-rail','stage-paint','MAT-0042','PZA-3103','Pintura de acabado',0,8)
+('bom-4','body-van-ribbed','stage-prepaint','MAT-0047','PZA-1104','Thinner de preparación',0,3),
+('bom-5','body-van-flat','stage-cut','MAT-0043','PZA-1201','Panel lateral liso',6200,6),('bom-6','body-van-flat','stage-paint','MAT-0042','PZA-1203','Pintura poliuretano',0,10),
+('bom-7','body-tank-5000','stage-assembly','MAT-0043','PZA-2101','Cilindro rolado',5800,10),('bom-8','body-tank-5000','stage-systems','MAT-0046','PZA-2103','Válvula descarga 3 pulgadas',0,2),('bom-9','body-tank-5000','stage-assembly','MAT-0045','PZA-2104','Consumible de soldadura',0,45),
+('bom-10','body-mixed-rail','stage-cut','MAT-0043','PZA-3101','Plancha de baranda',2400,5),('bom-11','body-mixed-rail','stage-assembly','MAT-0044','PZA-3102','Tubos estructurales',6000,12),('bom-12','body-mixed-rail','stage-paint','MAT-0042','PZA-3103','Pintura de acabado',0,8)
 on conflict (id) do update set stage_id=excluded.stage_id,material_code=excluded.material_code,description=excluded.description,quantity=excluded.quantity;
 
 insert into ceco_orders (id,ceco,customer,body_type_id,progress,line,status,stage_id,plant_state,priority,due_date) values
 ('order-260180','260180','Andes Cargo','body-van-ribbed',68,'Línea 1','green','stage-paint','En proceso',1,'2026-07-16'),
 ('order-260181','260181','Sur Express','body-van-flat',18,'Línea 2','orange','stage-prepaint','En cola',3,'2026-07-18'),
-('order-260182','260182','Pacífico Oil','body-tank-5000',42,'Línea 3','green','stage-welding','En proceso',2,'2026-07-21'),
+('order-260182','260182','Pacífico Oil','body-tank-5000',42,'Línea 3','green','stage-assembly','En proceso',2,'2026-07-21'),
 ('order-260183','260183','Norte Farma','body-van-ribbed',37,'Línea 1','red','stage-assembly','Bloqueado por material',4,'2026-07-23'),
 ('order-260184','260184','Minerales SAC','body-mixed-rail',31,'Línea 3','orange','stage-cut','En proceso',5,'2026-07-25')
 on conflict (id) do update set progress=excluded.progress,status=excluded.status,stage_id=excluded.stage_id,plant_state=excluded.plant_state,due_date=excluded.due_date;
 
 insert into stage_inventory (id,stage_id,ceco,item,quantity,unit,status) values
 ('wip-1','stage-paint','260180','Carrocería lista para acabado',1,'und','processing'),('wip-2','stage-prepaint','260181','Componentes preparados',26,'pzas','waiting'),
-('wip-3','stage-welding','260182','Conjunto de cisterna',1,'und','processing'),('wip-4','stage-assembly','260183','Estructura parcial',1,'und','blocked'),('wip-5','stage-cut','260184','Piezas cortadas',18,'pzas','processing')
+('wip-3','stage-assembly','260182','Conjunto de cisterna',1,'und','processing'),('wip-4','stage-assembly','260183','Estructura parcial',1,'und','blocked'),('wip-5','stage-cut','260184','Piezas cortadas',18,'pzas','processing')
 on conflict (id) do update set stage_id=excluded.stage_id,item=excluded.item,quantity=excluded.quantity,status=excluded.status;
 
 insert into ceco_activity_progress (id,ceco,activity_id,status,progress,started_at,finished_at) values
@@ -73,9 +95,9 @@ insert into ceco_activity_progress (id,ceco,activity_id,status,progress,started_
 ('cap-180-3','260180','act-paint-3','in_progress',65,'2026-07-12 11:30',null),
 ('cap-181-1','260181','act-prepaint-1','completed',100,'2026-07-12 07:50','2026-07-12 08:25'),
 ('cap-181-2','260181','act-prepaint-2','in_progress',40,'2026-07-12 08:35',null),
-('cap-182-1','260182','act-welding-1','completed',100,'2026-07-11 08:00','2026-07-11 09:10'),
-('cap-182-2','260182','act-welding-2','completed',100,'2026-07-11 09:20','2026-07-11 13:00'),
-('cap-182-3','260182','act-welding-3','in_progress',55,'2026-07-12 08:05',null),
+('cap-182-1','260182','act-assembly-1','completed',100,'2026-07-11 08:00','2026-07-11 09:10'),
+('cap-182-2','260182','act-assembly-2','completed',100,'2026-07-11 09:20','2026-07-11 13:00'),
+('cap-182-3','260182','act-assembly-3','in_progress',55,'2026-07-12 08:05',null),
 ('cap-183-1','260183','act-assembly-1','completed',100,'2026-07-10 08:00','2026-07-10 12:10'),
 ('cap-183-2','260183','act-assembly-2','blocked',25,'2026-07-11 08:15',null),
 ('cap-184-1','260184','act-cut-1','completed',100,'2026-07-12 07:45','2026-07-12 08:35'),
@@ -87,6 +109,12 @@ insert into inventory_movements (id,type,code,ceco,quantity,timestamp,note) valu
 ('mov-3','salida','MAT-0042','260180',12,'2026-07-10 08:35','Entrega de almacén a planta'),('mov-4','consumo','MAT-0045','260182',20,'2026-07-10 15:40','Uso reportado en soldado')
 on conflict (id) do nothing;
 
+insert into warehouse_exits (id,ticket,ceco,material_code,quantity,timestamp) values
+('wh-1','SAL-7001','260180','MAT-0042',12,'2026-07-10 08:35'),
+('wh-2','SAL-7002','260182','MAT-0045',80,'2026-07-10 11:20'),
+('wh-3','SAL-7003','260184','MAT-0043',24,'2026-07-11 09:10')
+on conflict (id) do update set ticket=excluded.ticket,ceco=excluded.ceco,material_code=excluded.material_code,quantity=excluded.quantity,timestamp=excluded.timestamp;
+
 insert into operation_logs (id,date,ceco,worker,activity,total_hours) values
 ('op-1','2026-07-12','260180','Luis Medina','Aplicación de pintura final',7.5),
 ('op-2','2026-07-12','260182','Rosa Paredes','Soldeo de estructura',8),
@@ -96,6 +124,6 @@ on conflict (id) do nothing;
 
 insert into quality_checks (id,ceco,stage_id,inspector,approval,observations) values
 ('qa-1','260180','stage-paint','Claudia Soto','approved','Espesor conforme.'),
-('qa-2','260182','stage-welding','Jorge Díaz','observed','Revisar cordón en soporte.'),
+('qa-2','260182','stage-assembly','Jorge Díaz','observed','Revisar cordón en soporte.'),
 ('qa-3','260183','stage-assembly','Claudia Soto','pending','Bloqueado por material.')
 on conflict (id) do nothing;
