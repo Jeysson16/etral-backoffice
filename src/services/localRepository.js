@@ -30,16 +30,33 @@ function addMovement(dataset, movement) {
 }
 
 function reserveBom(dataset, order) {
+  dataset.orderMaterialReservations = dataset.orderMaterialReservations || [];
   dataset.bom
     .filter((piece) => piece.bodyTypeId === order.bodyTypeId)
     .forEach((piece) => {
-      dataset.inventory = dataset.inventory.map((item) => (
-        item.code === piece.materialCode
-          ? { ...item, committed: Number(item.committed) + Number(piece.quantity) }
-          : item
-      ));
-      addMovement(dataset, { type: "reserva", code: piece.materialCode, ceco: order.ceco, quantity: Number(piece.quantity), note: "Reserva automática por apertura CECO" });
+      const item = dataset.inventory.find((entry) => entry.code === piece.materialCode);
+      const available = Math.max(0, Number(item?.physical || 0) - Number(item?.committed || 0));
+      const reserved = Math.min(Number(piece.quantity), available);
+      dataset.orderMaterialReservations.push({ id: `reservation-${order.ceco}-${piece.id}`, ceco: order.ceco, bomItemId: piece.id, stageId: piece.stageId, materialCode: piece.materialCode, requiredQuantity: Number(piece.quantity), reservedQuantity: reserved, issuedQuantity: 0, consumedQuantity: 0, status: reserved === 0 ? "pending" : reserved < Number(piece.quantity) ? "partial" : "reserved" });
+      if (reserved > 0) {
+        dataset.inventory = dataset.inventory.map((entry) => entry.code === piece.materialCode ? { ...entry, committed: Number(entry.committed) + reserved } : entry);
+        addMovement(dataset, { type: "reserva", code: piece.materialCode, ceco: order.ceco, quantity: reserved, note: "Reserva automática por apertura CECO" });
+      }
     });
+}
+
+function recalculateOrder(dataset, ceco) {
+  const order = dataset.orders.find((item) => item.ceco === ceco);
+  if (!order) return;
+  const product = dataset.bodyTypes.find((item) => item.id === order.bodyTypeId);
+  const activities = dataset.stageActivities.filter((item) => product?.route.includes(item.stageId) && item.active !== false);
+  const progresses = activities.map((activity) => dataset.activityProgress?.find((item) => item.ceco === ceco && item.activityId === activity.id) || { progress: 0, status: "pending" });
+  order.progress = activities.length ? Math.round((progresses.reduce((sum, item) => sum + Number(item.progress), 0) / activities.length) * 100) / 100 : 0;
+  const shortage = dataset.orderMaterialReservations?.some((item) => item.ceco === ceco && item.reservedQuantity < item.requiredQuantity);
+  const blocked = progresses.some((item) => item.status === "blocked");
+  const completed = activities.length > 0 && progresses.every((item) => item.status === "completed");
+  order.status = shortage || blocked ? "red" : completed ? "green" : "orange";
+  order.plantState = shortage ? "Bloqueado por material" : blocked ? "Actividad bloqueada" : completed ? "Completado" : "En proceso";
 }
 
 export const localRepository = {
@@ -62,20 +79,50 @@ export const localRepository = {
     const sortedStages = [...dataset.flowStages].sort((a, b) => a.order - b.order);
     const order = dataset.orders.find((item) => item.ceco === ceco);
     if (order) {
-      const stageIndex = sortedStages.findIndex((stage) => stage.id === stageId);
+      const product = dataset.bodyTypes.find((item) => item.id === order.bodyTypeId);
+      const currentIndex = product?.route.indexOf(order.stageId) ?? -1;
+      const targetIndex = product?.route.indexOf(stageId) ?? -1;
+      if (targetIndex < 0) throw new Error("La fase no pertenece a la ruta del producto");
+      if (targetIndex > currentIndex + 1) throw new Error("La orden solo puede avanzar a la siguiente fase");
+      if (targetIndex === currentIndex + 1) {
+        const incomplete = dataset.stageActivities.filter((item) => item.stageId === order.stageId && item.active !== false).some((activity) => dataset.activityProgress?.find((item) => item.ceco === ceco && item.activityId === activity.id)?.status !== "completed");
+        if (incomplete) throw new Error("Completa todas las actividades de la fase actual antes de avanzar");
+      }
       order.stageId = stageId;
-      order.progress = Math.min(100, Math.max(order.progress, (stageIndex + 1) * 15));
       order.plantState = order.status === "red" ? "Bloqueado MRP" : "En proceso";
     }
     save(dataset);
     return dataset;
   },
+  async updateOrder(ceco, patch) {
+    const dataset = load();
+    const order = dataset.orders.find((item) => item.ceco === ceco);
+    if (!order) throw new Error("CECO no encontrado");
+    Object.assign(order, patch);
+    save(dataset);
+    return dataset;
+  },
+  async updateActivityProgress(ceco, activityId, patch) {
+    const dataset = load();
+    dataset.activityProgress = dataset.activityProgress || [];
+    const index = dataset.activityProgress.findIndex((item) => item.ceco === ceco && item.activityId === activityId);
+    const current = index >= 0 ? dataset.activityProgress[index] : { id: `progress-${ceco}-${activityId}`, ceco, activityId, status: "pending", progress: 0, startedAt: null, finishedAt: null };
+    const progress = Math.max(0, Math.min(100, Number(patch.progress ?? current.progress)));
+    const status = patch.status ?? (progress === 100 ? "completed" : progress > 0 ? "in_progress" : "pending");
+    const next = { ...current, ...patch, progress, status, startedAt: status === "pending" ? null : current.startedAt || new Date().toISOString().slice(0, 16).replace("T", " "), finishedAt: status === "completed" ? new Date().toISOString().slice(0, 16).replace("T", " ") : null };
+    if (index >= 0) dataset.activityProgress[index] = next; else dataset.activityProgress.push(next);
+    recalculateOrder(dataset, ceco);
+    save(dataset);
+    return dataset;
+  },
   async createOrder(payload) {
     const dataset = load();
-    const ceco = nextCecoCode(dataset.orders, new Date("2026-07-12T12:00:00"));
+    const ceco = nextCecoCode(dataset.orders, new Date("2026-07-26T12:00:00"));
     const order = {
       id: `order-${ceco}`,
       ceco,
+      customerId: payload.customerId || null,
+      customer: dataset.customers?.find((item) => item.id === payload.customerId)?.name || payload.customer,
       progress: 0,
       status: "orange",
       stageId: dataset.flowStages[0]?.id ?? "stage-supply",
@@ -85,13 +132,15 @@ export const localRepository = {
     };
     dataset.orders.unshift(order);
     reserveBom(dataset, order);
+    recalculateOrder(dataset, ceco);
     save(dataset);
     return dataset;
   },
   async createInventory(payload) {
     const dataset = load();
     const code = nextInventoryCode(dataset.inventory, payload.category || "MAT");
-    dataset.inventory.unshift({ id: `inv-${code}`, code, committed: 0, ...payload });
+    const safety = payload.serviceFactor && payload.demandStdDev && payload.leadTimeDays ? Math.ceil(Number(payload.serviceFactor) * Number(payload.demandStdDev) * Math.sqrt(Number(payload.leadTimeDays))) : Number(payload.safety || 0);
+    dataset.inventory.unshift({ id: `inv-${code}`, code, committed: 0, ...payload, safety });
     save(dataset);
     return dataset;
   },
@@ -108,6 +157,25 @@ export const localRepository = {
     const id = `${prefix}-${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now()}`;
     const item = { id, name, ...(payload.type === "units" ? { symbol: String(payload.symbol || "").trim() || name.toLowerCase() } : {}) };
     collection.push(item);
+    save(dataset);
+    return dataset;
+  },
+  async updateCatalogItem(payload) {
+    const dataset = load();
+    const item = dataset.catalogs[payload.type]?.find((entry) => entry.id === payload.id);
+    if (!item) throw new Error("Opción no encontrada");
+    item.name = String(payload.name || "").trim() || item.name;
+    if (payload.type === "units") item.symbol = String(payload.symbol || "").trim() || item.symbol;
+    save(dataset);
+    return dataset;
+  },
+  async deleteCatalogItem(payload) {
+    const dataset = load();
+    const collection = dataset.catalogs[payload.type];
+    if (!collection?.some((item) => item.id === payload.id)) throw new Error("Opción no encontrada");
+    const linked = dataset.inventory.some((item) => item[payload.type === "categories" ? "categoryId" : payload.type === "units" ? "unitId" : "brandId"] === payload.id);
+    if (linked) throw new Error("No se puede eliminar una opción que está asignada a materiales");
+    dataset.catalogs[payload.type] = collection.filter((item) => item.id !== payload.id);
     save(dataset);
     return dataset;
   },
@@ -133,6 +201,14 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async updateBodyType(id, payload) {
+    const dataset = load();
+    const item = dataset.bodyTypes.find((entry) => entry.id === id);
+    if (!item) throw new Error("Producto no encontrado");
+    Object.assign(item, payload, { targetDays: Number(payload.targetDays) });
+    save(dataset);
+    return dataset;
+  },
   async createStageActivity(payload) {
     const dataset = load();
     const sequence = dataset.stageActivities.filter((item) => item.stageId === payload.stageId).length + 1;
@@ -140,11 +216,33 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async updateStageActivity(id, payload) {
+    const dataset = load();
+    const item = dataset.stageActivities.find((entry) => entry.id === id);
+    if (!item) throw new Error("Actividad no encontrada");
+    Object.assign(item, payload, { standardMinutes: Number(payload.standardMinutes) });
+    save(dataset); return dataset;
+  },
   async updateInventory(code, patch) {
     const dataset = load();
-    dataset.inventory = dataset.inventory.map((item) => (item.code === code ? { ...item, ...patch } : item));
+    const calculatedSafety = patch.serviceFactor && patch.demandStdDev && patch.leadTimeDays ? Math.ceil(Number(patch.serviceFactor) * Number(patch.demandStdDev) * Math.sqrt(Number(patch.leadTimeDays))) : Number(patch.safety || 0);
+    dataset.inventory = dataset.inventory.map((item) => (item.code === code ? { ...item, ...patch, safety: calculatedSafety } : item));
     save(dataset);
     return dataset;
+  },
+  async createCustomer(payload) {
+    const dataset = load();
+    dataset.customers = dataset.customers || [];
+    dataset.customers.push({ id: `customer-${Date.now()}`, active: true, ...payload });
+    save(dataset); return dataset;
+  },
+  async updateCustomer(id, payload) {
+    const dataset = load();
+    const customer = dataset.customers?.find((item) => item.id === id);
+    if (!customer) throw new Error("Cliente no encontrado");
+    Object.assign(customer, payload);
+    dataset.orders.filter((item) => item.customerId === id).forEach((item) => { item.customer = customer.name; });
+    save(dataset); return dataset;
   },
   async registerPurchase(code, quantity) {
     const dataset = load();
@@ -157,6 +255,11 @@ export const localRepository = {
   },
   async createWarehouseExit(payload) {
     const dataset = load();
+    const reservations = dataset.orderMaterialReservations?.filter((item) => item.ceco === payload.ceco && item.materialCode === payload.materialCode) || [];
+    const pending = reservations.reduce((sum, item) => sum + Number(item.reservedQuantity) - Number(item.issuedQuantity || 0), 0);
+    if (pending < Number(payload.quantity)) throw new Error("La cantidad supera la reserva pendiente de la orden");
+    let left = Number(payload.quantity);
+    reservations.forEach((item) => { const take = Math.min(left, Number(item.reservedQuantity) - Number(item.issuedQuantity || 0)); item.issuedQuantity = Number(item.issuedQuantity || 0) + take; item.status = item.issuedQuantity >= item.requiredQuantity ? "issued" : "partial"; left -= take; });
     const ticket = nextWarehouseTicket(dataset.warehouse);
     dataset.warehouse.unshift({ id: `wh-${ticket}`, ticket, timestamp: new Date().toISOString().slice(0, 16).replace("T", " "), ...payload });
     dataset.inventory = dataset.inventory.map((item) => (
@@ -193,6 +296,20 @@ export const localRepository = {
   async createBomItem(payload) {
     const dataset = load();
     dataset.bom.unshift({ id: `bom-${Date.now()}`, ...payload, quantity: Number(payload.quantity), lengthMm: Number(payload.lengthMm) });
+    save(dataset);
+    return dataset;
+  },
+  async updateBomItem(id, patch) {
+    const dataset = load();
+    const item = dataset.bom.find((entry) => entry.id === id);
+    if (!item) throw new Error("Componente no encontrado");
+    Object.assign(item, { ...patch, quantity: Number(patch.quantity), lengthMm: Number(patch.lengthMm || 0) });
+    save(dataset);
+    return dataset;
+  },
+  async deleteBomItem(id) {
+    const dataset = load();
+    dataset.bom = dataset.bom.filter((item) => item.id !== id);
     save(dataset);
     return dataset;
   },

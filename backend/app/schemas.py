@@ -124,6 +124,11 @@ class SimulationInput(BaseModel):
     demand_percent: Decimal = Field(default=100, gt=0, le=300)
     material_adjustments: dict[str, Decimal] = Field(default_factory=dict)
     priority_overrides: dict[str, int] = Field(default_factory=dict)
+    order_complexity_map: dict[str, Decimal] = Field(default_factory=dict)
+    order_worker_assignments: dict[str, list[str]] = Field(default_factory=dict)
+    worker_inconsistency_mode: str = Field(default="stochastic")
+    inconsistency_std_dev: Decimal = Field(default=Decimal("10"), ge=0, le=50)
+    absenteeism_rate: Decimal = Field(default=Decimal("5"), ge=0, le=50)
 
 
 class SimulationRun(BaseModel):
@@ -132,3 +137,4 @@ class SimulationRun(BaseModel):
 
 
 OrderState = Literal["ready", "blocked"]
+

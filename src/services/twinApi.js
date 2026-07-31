@@ -39,7 +39,12 @@ export async function runTwinSimulation(dataset, draft) {
     body: JSON.stringify({ name: "Simulación desde interfaz", input: {
       snapshot: snapshotFromDataset(dataset), horizon_days: Number(draft.horizonDays),
       labor_availability: Number(draft.laborAvailability), shifts_per_day: Number(draft.shiftsPerDay),
-      demand_percent: Number(draft.demandPercent), material_adjustments, priority_overrides
+      demand_percent: Number(draft.demandPercent), material_adjustments, priority_overrides,
+      order_complexity_map: draft.orderComplexityMap ?? {},
+      order_worker_assignments: draft.orderWorkerAssignments ?? {},
+      worker_inconsistency_mode: draft.workerInconsistencyMode ?? "stochastic",
+      inconsistency_std_dev: Number(draft.inconsistencyStdDev ?? 10),
+      absenteeism_rate: Number(draft.absenteeismRate ?? 5)
     } })
   });
   if (!response.ok) {
@@ -48,3 +53,4 @@ export async function runTwinSimulation(dataset, draft) {
   }
   return (await response.json()).result;
 }
+

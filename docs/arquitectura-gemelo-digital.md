@@ -54,17 +54,45 @@ flowchart TB
 
 ## Patrones de diseño utilizados
 
+### Diagrama de los patrones en una acción del front
+
+```mermaid
+sequenceDiagram
+  participant UI as React · pantalla/formulario
+  participant R as Repository (contrato)
+  participant SR as SupabaseRepository o LocalRepository
+  participant DB as Supabase / localStorage
+  participant TA as twinApi (Adapter)
+  participant EN as Motor JS o API Python (Strategy)
+
+  UI->>R: createOrder(), createInventory(), getDataset()
+  R->>SR: selecciona implementación activa
+  SR->>DB: leer o persistir datos
+  DB-->>SR: filas / dataset
+  SR-->>UI: dataset normalizado
+  UI->>TA: runTwinSimulation(snapshot, parámetros)
+  TA->>EN: ejecutar motor seleccionado
+  EN-->>TA: resultado normalizado
+  TA-->>UI: comparación base vs. escenario
+```
+
 ### Repository
 
 `getRepository()` selecciona la implementación de persistencia. Los componentes trabajan con operaciones de negocio y no con consultas SQL o tablas concretas.
+
+**Aplicación en el front:** `App.jsx` solicita un único dataset y llama métodos como `createInventory`, `createOrder` o `createCatalogItem`. No conoce si los datos vienen de Supabase o de `localStorage`.
 
 ### Strategy
 
 `VITE_TWIN_ENGINE` selecciona el motor `browser` o `python`. Ambos entregan el mismo contrato de resultados al frontend.
 
+**Beneficio:** se puede usar el cálculo ligero de JavaScript para una demostración o la API Python para reglas de simulación más avanzadas, sin cambiar las pantallas.
+
 ### Adapter
 
 `twinApi.js` transforma el dataset de React en el snapshot esperado por FastAPI y adapta la respuesta del motor a la interfaz.
+
+**Beneficio:** el formato interno de la API no se filtra a los componentes React.
 
 ### Service Layer
 
@@ -94,3 +122,13 @@ flowchart TD
 ```
 
 El motor es determinístico y auditable. No usa machine learning: cada resultado se deriva de datos registrados, reglas MRP y fórmulas explícitas.
+
+## Responsabilidad por capa
+
+| Capa | Responsabilidad | Ejemplos |
+|---|---|---|
+| Presentación | Captura y muestra la operación. | Formularios, Kanban de CECO, inventario, fases, resultados del gemelo. |
+| Aplicación | Coordina acciones y normaliza datos. | `App.jsx`, `repository.js`, `twinApi.js`. |
+| Persistencia | Lee y escribe el estado operativo. | `supabaseRepository.js`, `localRepository.js`. |
+| Dominio | Calcula reglas y escenarios sin alterar la operación real. | MRP, capacidad, alertas y simulación What-if. |
+| Datos | Conserva maestros y transacciones. | PostgreSQL/Supabase y sus relaciones. |

@@ -167,3 +167,135 @@ insert into quality_checks (id,ceco,stage_id,inspector,approval,observations) va
 ('qa-2','260182','stage-assembly','Jorge Díaz','observed','Revisar cordón en soporte.'),
 ('qa-3','260183','stage-assembly','Claudia Soto','pending','Bloqueado por material.')
 on conflict (id) do nothing;
+
+-- Refuerzo de datos para tesis: histórico real de CECO 2026 + operación posterior con MRP.
+insert into body_types (id,code,family,name,target_days,output_unit) values
+('body-rail-telera','PROD-BTE','Barandas','Baranda Telera',13,'und'),
+('body-platform','PROD-PLA','Plataformas','Plataforma y cortaviento',18,'und'),
+('body-service-maint','SERV-MAN','Servicios','Mantenimiento de carrocería',5,'serv'),
+('body-eco-box','PROD-ECO','Especiales','Caja ecológica semicircular',22,'und')
+on conflict (id) do update set code=excluded.code,family=excluded.family,name=excluded.name,target_days=excluded.target_days,output_unit=excluded.output_unit;
+
+insert into product_routes (product_id,stage_id,sequence) values
+('body-rail-telera','stage-supply',1),('body-rail-telera','stage-prepaint',2),('body-rail-telera','stage-cut',3),('body-rail-telera','stage-assembly',4),('body-rail-telera','stage-paint',5),('body-rail-telera','stage-mount',6),('body-rail-telera','stage-delivery',7),
+('body-platform','stage-supply',1),('body-platform','stage-cut',2),('body-platform','stage-assembly',3),('body-platform','stage-paint',4),('body-platform','stage-mount',5),('body-platform','stage-systems',6),('body-platform','stage-delivery',7),
+('body-service-maint','stage-supply',1),('body-service-maint','stage-paint',2),('body-service-maint','stage-systems',3),('body-service-maint','stage-delivery',4),
+('body-eco-box','stage-supply',1),('body-eco-box','stage-cut',2),('body-eco-box','stage-assembly',3),('body-eco-box','stage-paint',4),('body-eco-box','stage-systems',5),('body-eco-box','stage-delivery',6)
+on conflict (product_id,stage_id) do update set sequence=excluded.sequence;
+
+insert into inventory_items (id,code,category,category_id,brand_id,unit_id,description,physical,committed,safety,service_factor,demand_std_dev,lead_time_days,unit,location) values
+('inv-0115','MAT-0115','Pinturas','cat-paint','brand-aurora','unit-gal','Base epóxica Aurora',14,4,5,1.65,1.50,7,'gal','ALM-PIN'),
+('inv-0116','MAT-0116','Pinturas','cat-paint','brand-generic','unit-kg','Waype de limpieza',58,11,12,1.65,3.20,5,'kg','ALM-CON'),
+('inv-0117','MAT-0117','Fijaciones','cat-fastener','brand-generic','unit-und','Gancho lateral tipo C para interior de carrocería',140,38,34,1.65,18.00,5,'und','ALM-FIJ'),
+('inv-0118','MAT-0118','Herramientas y consumibles','cat-welding','brand-generic','unit-und','Tiza calderera',28,6,6,1.65,1.40,4,'und','ALM-HER'),
+('inv-0119','MAT-0119','Planchas','cat-steel','brand-generic','unit-und','Refuerzo frontal tipo 2',32,10,8,1.65,2.20,9,'und','ALM-PLA'),
+('inv-0120','MAT-0120','Fijaciones','cat-fastener','brand-generic','unit-und','Anclaje de carrocería',190,54,45,1.65,16.00,5,'und','ALM-FIJ'),
+('inv-0121','MAT-0121','Soldadura','cat-welding','brand-generic','unit-roll','Alambre MIG MAG de 1 mm',18,6,5,1.65,1.40,7,'rollo','ALM-SOL'),
+('inv-0122','MAT-0122','Fijaciones','cat-fastener','brand-generic','unit-und','Bisagra BP-006',62,18,14,1.65,5.60,4,'und','ALM-ACC'),
+('inv-0123','MAT-0123','Fijaciones','cat-fastener','brand-generic','unit-und','Bisagra BL-002',74,24,18,1.65,6.50,4,'und','ALM-ACC'),
+('inv-0124','MAT-0124','Sistema eléctrico','cat-electric','brand-generic','unit-und','Guardafango tipo 2',24,8,6,1.65,2.00,7,'und','ALM-ACC'),
+('inv-0125','MAT-0125','Fijaciones','cat-fastener','brand-generic','unit-m','Jebe de hermeticidad 1 1/2 pulg.',210,52,42,1.65,15.00,5,'m','ALM-REV'),
+('inv-0126','MAT-0126','Fijaciones','cat-fastener','brand-generic','unit-und','Autoperforante #10 x 3/4 pulg.',980,240,230,1.65,62.00,5,'und','ALM-FIJ'),
+('inv-0127','MAT-0127','Pinturas','cat-paint','brand-3m','unit-und','Pegamento 3M',22,5,6,1.65,1.70,7,'und','ALM-PIN'),
+('inv-0128','MAT-0128','Soldadura','cat-welding','brand-generic','unit-kg','Soldadura Cellocord 6011',86,20,20,1.65,7.00,5,'kg','ALM-SOL')
+on conflict (id) do update set category=excluded.category,category_id=excluded.category_id,brand_id=excluded.brand_id,unit_id=excluded.unit_id,description=excluded.description,physical=excluded.physical,committed=excluded.committed,safety=excluded.safety,service_factor=excluded.service_factor,demand_std_dev=excluded.demand_std_dev,lead_time_days=excluded.lead_time_days,unit=excluded.unit,location=excluded.location;
+
+insert into bom_items (id,body_type_id,stage_id,material_code,piece_code,description,length_mm,quantity) values
+('bom-13','body-van-ribbed','stage-doors','MAT-0122','PZA-1105','Bisagras BP-006 para puertas',0,6),('bom-14','body-van-ribbed','stage-doors','MAT-0123','PZA-1106','Bisagras BL-002 para hoja posterior',0,9),('bom-15','body-van-ribbed','stage-systems','MAT-0125','PZA-1107','Jebe de hermeticidad de puertas',0,13),('bom-16','body-van-ribbed','stage-systems','MAT-0126','PZA-1108','Autoperforantes para terminaciones',0,240),
+('bom-17','body-van-flat','stage-prepaint','MAT-0115','PZA-1204','Base epóxica de imprimación',0,2),('bom-18','body-van-flat','stage-doors','MAT-0108','PZA-1205','Kit de cierre posterior',0,4),
+('bom-19','body-mixed-rail','stage-assembly','MAT-0117','PZA-3104','Ganchos laterales tipo C',0,38),('bom-20','body-mixed-rail','stage-mount','MAT-0120','PZA-3105','Anclajes de carrocería',0,18),
+('bom-21','body-rail-telera','stage-cut','MAT-0044','PZA-4101','Perfiles para baranda telera',6000,14),('bom-22','body-rail-telera','stage-assembly','MAT-0121','PZA-4102','Alambre MIG MAG para ensamble',0,1),('bom-23','body-rail-telera','stage-paint','MAT-0102','PZA-4103','Base zincromato Anypsa X3',0,2),
+('bom-24','body-platform','stage-cut','MAT-0043','PZA-5101','Planchas para plataforma',6200,10),('bom-25','body-platform','stage-assembly','MAT-0119','PZA-5102','Refuerzos frontales tipo 2',0,2),('bom-26','body-platform','stage-systems','MAT-0124','PZA-5103','Guardafangos tipo 2',0,2),
+('bom-27','body-service-maint','stage-paint','MAT-0103','PZA-6101','Lijas para fierro #80',0,4),('bom-28','body-service-maint','stage-paint','MAT-0116','PZA-6102','Waype y limpieza de superficie',0,1),('bom-29','body-service-maint','stage-delivery','MAT-0127','PZA-6103','Pegamento 3M para terminaciones',0,1),
+('bom-30','body-eco-box','stage-cut','MAT-0043','PZA-7101','Planchas para caja semicircular',6200,12),('bom-31','body-eco-box','stage-assembly','MAT-0128','PZA-7102','Soldadura Cellocord 6011',0,8),('bom-32','body-eco-box','stage-paint','MAT-0113','PZA-7103','Sellador 3M 550',0,2)
+on conflict (id) do update set body_type_id=excluded.body_type_id,stage_id=excluded.stage_id,material_code=excluded.material_code,piece_code=excluded.piece_code,description=excluded.description,length_mm=excluded.length_mm,quantity=excluded.quantity;
+
+insert into customers (id,name,document_number,contact_name,phone,email,active) values
+('customer-tunesa','TUNESA EXPRES S.A.C','20477167307','Coordinación de flota','','',true),
+('customer-lucca','TRANSPORTES LUCCA S.A.C','20611418087','Operaciones','','',true),
+('customer-soluciones-ambientales','SOLUCIONES AMBIENTALES PERU E.I.R.L','20496108664','Logística','','',true),
+('customer-las-americas','DISTRIBUIDORA DROGUERIA LAS AMERICAS S.A.C','20481555371','Mantenimiento de unidades','','',true),
+('customer-salvatierra','JAVIER SALVATIERRA FERREL','18083958','','','',true),
+('customer-jucasa','JUCASA SERVICIOS GENERALES E.I.R.L','20529474211','','','',true),
+('customer-jam','JAM DISTRIBUCIONES SAC',null,'','','',true),
+('customer-luchito','LUCHITO SANDOVAL',null,'','','',true),
+('customer-itango','GRUPO ITANGO E.I.R.L','20602564038','','','',true),
+('customer-prefabricasas','J.S. PREFABRICASAS CONTRATISTAS S.A.C.','20606298278','','','',true),
+('customer-ivan-cruzado','IVAN CRUZADO',null,'','','',true)
+on conflict (id) do update set name=excluded.name,document_number=excluded.document_number,contact_name=excluded.contact_name,phone=excluded.phone,email=excluded.email,active=excluded.active;
+
+delete from order_material_reservations where ceco in ('260180','260181','260182','260183','260184');
+delete from resource_assignments where ceco in ('260180','260181','260182','260183','260184');
+delete from operational_incidents where ceco in ('260180','260181','260182','260183','260184');
+delete from stage_inventory where ceco in ('260180','260181','260182','260183','260184');
+delete from ceco_activity_progress where ceco in ('260180','260181','260182','260183','260184');
+delete from operation_logs where ceco in ('260180','260181','260182','260183','260184');
+delete from warehouse_exits where ceco in ('260180','260181','260182','260183','260184');
+delete from quality_checks where ceco in ('260180','260181','260182','260183','260184');
+delete from ceco_orders where ceco in ('260180','260181','260182','260183','260184');
+
+insert into ceco_orders (id,ceco,customer,customer_id,body_type_id,progress,line,status,stage_id,plant_state,priority,due_date) values
+('order-260240','260240','TUNESA EXPRES S.A.C','customer-tunesa','body-van-ribbed',78,'Línea 1','green','stage-paint','En proceso controlado',1,'2026-08-02'),
+('order-260250','260250','TRANSPORTES LUCCA S.A.C','customer-lucca','body-rail-telera',64,'Línea 2','green','stage-assembly','En proceso controlado',2,'2026-08-06'),
+('order-260260','260260','SOLUCIONES AMBIENTALES PERU E.I.R.L','customer-soluciones-ambientales','body-eco-box',46,'Línea 3','orange','stage-cut','Reserva completa, pendiente de capacidad',3,'2026-08-12'),
+('order-260270','260270','DISTRIBUIDORA DROGUERIA LAS AMERICAS S.A.C','customer-las-americas','body-van-ribbed',71,'Línea 1','green','stage-systems','En proceso controlado',4,'2026-08-14'),
+('order-260210','260210','JAVIER SALVATIERRA FERREL','customer-salvatierra','body-rail-telera',58,'Línea 2','red','stage-assembly','Backlog histórico sin liberación final',8,'2026-05-15'),
+('order-260230','260230','JUCASA SERVICIOS GENERALES E.I.R.L','customer-jucasa','body-mixed-rail',100,'Línea 2','green','stage-delivery','Completado',20,'2026-05-14'),
+('order-260220','260220','JAM DISTRIBUCIONES SAC','customer-jam','body-service-maint',100,'Línea 3','green','stage-delivery','Completado en fecha',21,'2026-04-09'),
+('order-260200','260200','LUCHITO SANDOVAL','customer-luchito','body-service-maint',100,'Línea 3','green','stage-delivery','Completado con atraso histórico',22,'2026-03-27'),
+('order-260100','260100','GRUPO ITANGO E.I.R.L','customer-itango','body-platform',100,'Línea 1','green','stage-delivery','Completado con atraso histórico',23,'2026-03-07'),
+('order-260070','260070','J.S. PREFABRICASAS CONTRATISTAS S.A.C.','customer-prefabricasas','body-platform',100,'Línea 1','green','stage-delivery','Completado con atraso histórico',24,'2026-02-23'),
+('order-260060','260060','IVAN CRUZADO','customer-ivan-cruzado','body-mixed-rail',100,'Línea 2','green','stage-delivery','Completado antes de fecha',25,'2026-01-28')
+on conflict (id) do update set customer=excluded.customer,customer_id=excluded.customer_id,body_type_id=excluded.body_type_id,progress=excluded.progress,line=excluded.line,status=excluded.status,stage_id=excluded.stage_id,plant_state=excluded.plant_state,priority=excluded.priority,due_date=excluded.due_date;
+
+insert into order_material_reservations (id,ceco,bom_item_id,stage_id,material_code,required_quantity,reserved_quantity,issued_quantity,consumed_quantity,status) values
+('reservation-260240-bom-1','260240','bom-1','stage-cut','MAT-0043',8,8,8,8,'consumed'),('reservation-260240-bom-2','260240','bom-2','stage-assembly','MAT-0044',16,16,16,14,'issued'),('reservation-260240-bom-3','260240','bom-3','stage-paint','MAT-0042',12,12,6,4,'partial'),('reservation-260240-bom-4','260240','bom-4','stage-prepaint','MAT-0047',3,3,3,3,'consumed'),('reservation-260240-bom-13','260240','bom-13','stage-doors','MAT-0122',6,6,0,0,'reserved'),('reservation-260240-bom-14','260240','bom-14','stage-doors','MAT-0123',9,9,0,0,'reserved'),('reservation-260240-bom-15','260240','bom-15','stage-systems','MAT-0125',13,13,0,0,'reserved'),('reservation-260240-bom-16','260240','bom-16','stage-systems','MAT-0126',240,240,0,0,'reserved'),
+('reservation-260250-bom-21','260250','bom-21','stage-cut','MAT-0044',14,14,14,14,'consumed'),('reservation-260250-bom-22','260250','bom-22','stage-assembly','MAT-0121',1,1,1,1,'consumed'),('reservation-260250-bom-23','260250','bom-23','stage-paint','MAT-0102',2,2,0,0,'reserved'),
+('reservation-260260-bom-30','260260','bom-30','stage-cut','MAT-0043',12,12,6,0,'partial'),('reservation-260260-bom-31','260260','bom-31','stage-assembly','MAT-0128',8,8,0,0,'reserved'),('reservation-260260-bom-32','260260','bom-32','stage-paint','MAT-0113',2,2,0,0,'reserved'),
+('reservation-260270-bom-1','260270','bom-1','stage-cut','MAT-0043',8,8,8,8,'consumed'),('reservation-260270-bom-2','260270','bom-2','stage-assembly','MAT-0044',16,16,16,16,'consumed'),('reservation-260270-bom-15','260270','bom-15','stage-systems','MAT-0125',13,13,13,6,'issued'),('reservation-260270-bom-16','260270','bom-16','stage-systems','MAT-0126',240,240,120,80,'partial'),
+('reservation-260210-bom-21','260210','bom-21','stage-cut','MAT-0044',14,8,8,8,'partial'),('reservation-260210-bom-22','260210','bom-22','stage-assembly','MAT-0121',1,1,1,1,'consumed'),('reservation-260210-bom-23','260210','bom-23','stage-paint','MAT-0102',2,0,0,0,'pending')
+on conflict (id) do update set ceco=excluded.ceco,bom_item_id=excluded.bom_item_id,stage_id=excluded.stage_id,material_code=excluded.material_code,required_quantity=excluded.required_quantity,reserved_quantity=excluded.reserved_quantity,issued_quantity=excluded.issued_quantity,consumed_quantity=excluded.consumed_quantity,status=excluded.status;
+
+insert into stage_inventory (id,stage_id,ceco,item,quantity,unit,status) values
+('wip-1','stage-paint','260240','Furgón acanalado sellado',1,'und','processing'),('wip-2','stage-assembly','260250','Baranda telera en soldadura',1,'und','processing'),('wip-3','stage-cut','260260','Piezas de caja semicircular',22,'pzas','processing'),('wip-4','stage-systems','260270','Accesorios eléctricos y cierres',1,'set','processing'),('wip-5','stage-assembly','260210','Estructura telera incompleta',1,'und','blocked')
+on conflict (id) do update set stage_id=excluded.stage_id,ceco=excluded.ceco,item=excluded.item,quantity=excluded.quantity,unit=excluded.unit,status=excluded.status;
+
+insert into ceco_activity_progress (id,ceco,activity_id,status,progress,started_at,finished_at) values
+('cap-240-1','260240','act-paint-1','completed',100,'2026-07-23 08:10','2026-07-23 09:05'),('cap-240-2','260240','act-paint-2','completed',100,'2026-07-23 09:15','2026-07-23 11:20'),('cap-240-3','260240','act-paint-3','completed',100,'2026-07-24 08:00','2026-07-24 10:10'),('cap-240-4','260240','act-paint-4','completed',100,'2026-07-24 10:20','2026-07-24 12:05'),('cap-240-5','260240','act-paint-5','in_progress',65,'2026-07-25 08:10',null),
+('cap-250-1','260250','act-assembly-1','completed',100,'2026-07-22 08:00','2026-07-22 10:00'),('cap-250-2','260250','act-assembly-2','completed',100,'2026-07-22 10:15','2026-07-22 12:00'),('cap-250-3','260250','act-assembly-3','in_progress',70,'2026-07-24 08:00',null),
+('cap-260-1','260260','act-cut-1','completed',100,'2026-07-25 07:45','2026-07-25 08:30'),('cap-260-2','260260','act-cut-2','in_progress',55,'2026-07-25 08:45',null),
+('cap-270-1','260270','act-systems-1','completed',100,'2026-07-23 08:00','2026-07-23 10:00'),('cap-270-2','260270','act-systems-2','completed',100,'2026-07-23 10:15','2026-07-23 12:15'),('cap-270-3','260270','act-systems-3','completed',100,'2026-07-24 08:15','2026-07-24 09:30'),('cap-270-4','260270','act-systems-4','in_progress',45,'2026-07-25 09:00',null),
+('cap-210-1','260210','act-assembly-1','completed',100,'2026-04-02 08:00','2026-04-02 10:30'),('cap-210-2','260210','act-assembly-2','blocked',25,'2026-04-03 08:00',null)
+on conflict (id) do update set ceco=excluded.ceco,activity_id=excluded.activity_id,status=excluded.status,progress=excluded.progress,started_at=excluded.started_at,finished_at=excluded.finished_at;
+
+insert into operation_logs (id,date,ceco,worker,activity,total_hours) values
+('op-1','2026-07-24','260240','Ana Reyes','Aplicación de sellador',6.5),('op-2','2026-07-24','260250','Luis Medina','Soldeo de carrocería telera',8),('op-3','2026-07-25','260260','Marco Rojas','Corte de planchas para caja semicircular',6),('op-4','2026-07-25','260270','Jorge Díaz','Verificación de accesorios eléctricos',4),('op-5','2026-04-09','260220','Claudia Soto','Entrega documentada según fecha real',2),('op-6','2026-04-02','260200','Ana Reyes','Cierre de mantenimiento con atraso histórico',3),('op-7','2026-04-03','260100','Luis Medina','Liberación de plataforma reprogramada',5)
+on conflict (id) do update set date=excluded.date,ceco=excluded.ceco,worker=excluded.worker,activity=excluded.activity,total_hours=excluded.total_hours;
+
+insert into warehouse_exits (id,ticket,ceco,material_code,quantity,timestamp) values
+('wh-1','SAL-7001','260240','MAT-0043',8,'2026-07-20 08:35'),('wh-2','SAL-7002','260240','MAT-0044',16,'2026-07-20 09:10'),('wh-3','SAL-7003','260250','MAT-0044',14,'2026-07-21 10:20'),('wh-4','SAL-7004','260270','MAT-0125',13,'2026-07-23 11:15'),('wh-5','SAL-7005','260220','MAT-0103',4,'2026-04-09 08:30')
+on conflict (id) do update set ticket=excluded.ticket,ceco=excluded.ceco,material_code=excluded.material_code,quantity=excluded.quantity,timestamp=excluded.timestamp;
+
+insert into inventory_movements (id,type,code,ceco,quantity,timestamp,note) values
+('mov-1','ingreso','MAT-0043','',80,'2026-07-18 08:10','Reposición planificada por MRP para lote agosto'),('mov-2','ingreso','MAT-0044','',60,'2026-07-18 08:30','Reposición de perfiles críticos'),('mov-3','reserva','MAT-0043','260240',8,'2026-07-19 09:20','Reserva automática por BOM'),('mov-4','reserva','MAT-0044','260250',14,'2026-07-19 09:45','Reserva automática por BOM'),('mov-5','salida','MAT-0043','260240',8,'2026-07-20 08:35','Entrega de almacén a planta · SAL-7001'),('mov-6','salida','MAT-0044','260250',14,'2026-07-21 10:20','Entrega de almacén a planta · SAL-7003'),('mov-7','consumo','MAT-0121','260250',1,'2026-07-24 16:10','Uso reportado en soldado telera'),('mov-8','ajuste','MAT-0044','260210',6,'2026-07-26 11:40','Regularización de faltante heredado antes del MRP')
+on conflict (id) do update set type=excluded.type,code=excluded.code,ceco=excluded.ceco,quantity=excluded.quantity,timestamp=excluded.timestamp,note=excluded.note;
+
+insert into quality_checks (id,ceco,stage_id,inspector,approval,observations) values
+('qa-1','260240','stage-paint','Claudia Soto','approved','Sellado liberado; continúa dentro de fecha pactada.'),('qa-2','260250','stage-assembly','Jorge Díaz','approved','Cordones conformes en muestra de baranda telera.'),('qa-3','260260','stage-cut','Claudia Soto','pending','Pendiente de verificación dimensional final.'),('qa-4','260220','stage-delivery','Jorge Díaz','approved','Entrega 2026-04-09 según fecha real registrada.'),('qa-5','260200','stage-delivery','Claudia Soto','approved','Entrega real 2026-04-02; atraso histórico frente a pactada 2026-03-27.'),('qa-6','260100','stage-delivery','Jorge Díaz','approved','Entrega real 2026-04-03; caso usado como línea base antes del control de reservas.')
+on conflict (id) do update set ceco=excluded.ceco,stage_id=excluded.stage_id,inspector=excluded.inspector,approval=excluded.approval,observations=excluded.observations;
+
+insert into equipment (id,code,name,stage_id,status,capacity_hours,maintenance_due) values
+('equipment-cut-01','EQ-COR-01','Cizalla hidráulica','stage-cut','operational',44,'2026-08-10'),('equipment-weld-01','EQ-SOL-01','Soldadora MIG','stage-assembly','operational',50,'2026-08-07'),('equipment-paint-01','EQ-PIN-01','Cabina de pintura','stage-paint','operational',36,'2026-08-12'),('equipment-lift-01','EQ-MON-01','Puente grúa','stage-mount','operational',38,'2026-08-18')
+on conflict (id) do update set code=excluded.code,name=excluded.name,stage_id=excluded.stage_id,status=excluded.status,capacity_hours=excluded.capacity_hours,maintenance_due=excluded.maintenance_due;
+
+insert into work_calendar (id,calendar_date,day_type,available_hours,note) values
+('calendar-2026-07-27','2026-07-27','working',8,'Jornada regular con secuencia MRP'),('calendar-2026-07-28','2026-07-28','working',8,'Liberaciones de calidad programadas'),('calendar-2026-07-29','2026-07-29','working',8,'Jornada regular'),('calendar-2026-07-30','2026-07-30','working',8,'Ventana de entregas a planta'),('calendar-2026-07-31','2026-07-31','reduced',6,'Mantenimiento preventivo planificado'),('calendar-2026-08-03','2026-08-03','working',8,'Inicio de lote posterior')
+on conflict (id) do update set calendar_date=excluded.calendar_date,day_type=excluded.day_type,available_hours=excluded.available_hours,note=excluded.note;
+
+insert into resource_assignments (id,personnel_id,ceco,activity_id,assigned_date,planned_hours,status) values
+('assignment-001','person-004','260240','act-paint-5','2026-07-27',7,'planned'),('assignment-002','person-001','260250','act-assembly-3','2026-07-27',8,'in_progress'),('assignment-003','person-003','260260','act-cut-2','2026-07-27',6,'in_progress'),('assignment-004','person-005','260270','act-systems-4','2026-07-28',4,'planned'),('assignment-005','person-002','260210','act-assembly-2','2026-07-28',6,'blocked')
+on conflict (id) do update set personnel_id=excluded.personnel_id,ceco=excluded.ceco,activity_id=excluded.activity_id,assigned_date=excluded.assigned_date,planned_hours=excluded.planned_hours,status=excluded.status;
+
+insert into operational_incidents (id,occurred_at,type,severity,stage_id,ceco,equipment_id,downtime_hours,description,status) values
+('incident-001','2026-03-28 10:10','material','high','stage-assembly','260100',null,18,'Falta de anclajes y refuerzos obligó a reprogramar la plataforma.','resolved'),('incident-002','2026-07-25 09:20','quality','low','stage-paint','260240',null,1,'Observación menor corregida antes de liberar pintura.','resolved'),('incident-003','2026-07-26 11:40','material','medium','stage-assembly','260210',null,4,'Backlog anterior al control MRP con reserva parcial de perfiles.','investigating')
+on conflict (id) do update set occurred_at=excluded.occurred_at,type=excluded.type,severity=excluded.severity,stage_id=excluded.stage_id,ceco=excluded.ceco,equipment_id=excluded.equipment_id,downtime_hours=excluded.downtime_hours,description=excluded.description,status=excluded.status;

@@ -348,6 +348,7 @@ begin
   end loop;
 end $$;
 
+
 drop policy if exists simulation_read on simulation_runs;
 drop policy if exists simulation_write on simulation_runs;
 create policy simulation_read on simulation_runs for select to authenticated using (created_by = auth.uid());

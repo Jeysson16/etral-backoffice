@@ -10,8 +10,8 @@ export const supabaseRepository = {
       throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
     }
     const requiredTables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands"];
-    const resourceTables = ["work_shifts", "personnel", "equipment", "work_calendar", "resource_assignments", "operational_incidents"];
-    const tables = [...requiredTables, ...resourceTables];
+    const optionalTables = ["customers", "order_material_reservations", "work_shifts", "personnel", "equipment", "work_calendar", "resource_assignments", "operational_incidents"];
+    const tables = [...requiredTables, ...optionalTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
     const failed = results.slice(0, requiredTables.length).find((result) => result.error);
     if (failed) throw failed.error;
@@ -28,6 +28,8 @@ export const supabaseRepository = {
       inventory: rows.inventory_items.map(mapInventory),
       bom: rows.bom_items.map(mapBom),
       orders: rows.ceco_orders.map(mapOrder),
+      customers: rows.customers.length ? rows.customers.map(mapCustomer) : legacyCustomers(rows.ceco_orders),
+      orderMaterialReservations: rows.order_material_reservations.map(mapReservation),
       operations: rows.operation_logs.map(mapOperation),
       warehouse: rows.warehouse_exits.map(mapWarehouse),
       quality: rows.quality_checks.map(mapQuality),
@@ -57,41 +59,28 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async moveOrder(ceco, stageId) {
-    const { error } = await supabase.from("ceco_orders").update({ stage_id: stageId, plant_state: "En proceso" }).eq("ceco", ceco);
+    const { error } = await supabase.rpc("move_order_to_stage", { p_ceco: ceco, p_stage_id: stageId });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updateOrder(ceco, patch) {
+    const customer = patch.customerId ? await supabase.from("customers").select("name").eq("id", patch.customerId).single() : null;
+    if (customer?.error) throw customer.error;
+    const { error } = await supabase.from("ceco_orders").update({ customer_id: patch.customerId || null, customer: customer?.data?.name || patch.customer, line: patch.line, due_date: patch.dueDate }).eq("ceco", ceco);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updateActivityProgress(ceco, activityId, patch) {
+    const { error } = await supabase.rpc("set_order_activity_progress", { p_ceco: ceco, p_activity_id: activityId, p_status: patch.status, p_progress: Number(patch.progress) });
     if (error) throw error;
     return this.getDataset();
   },
   async createOrder(payload) {
-    const { data: ceco, error: rpcError } = await supabase.rpc("next_ceco_code");
-    if (rpcError) throw rpcError;
-    const { error } = await supabase.from("ceco_orders").insert({
-      id: `order-${ceco}`,
-      ceco,
-      customer: payload.customer,
-      body_type_id: payload.bodyTypeId,
-      progress: 0,
-      line: payload.line,
-      status: "orange",
-      stage_id: payload.stageId,
-      plant_state: "En cola",
-      priority: 999,
-      due_date: payload.dueDate
+    const { error } = await supabase.rpc("create_order_with_reservations", {
+      p_customer_id: payload.customerId || "", p_customer_name: payload.customer || "",
+      p_body_type_id: payload.bodyTypeId, p_line: payload.line, p_due_date: payload.dueDate
     });
     if (error) throw error;
-    const dataset = await this.getDataset();
-    const pieces = dataset.bom.filter((piece) => piece.bodyTypeId === payload.bodyTypeId);
-    await Promise.all(pieces.map(async (piece) => {
-      const item = dataset.inventory.find((entry) => entry.code === piece.materialCode);
-      await supabase.from("inventory_items").update({ committed: Number(item?.committed || 0) + Number(piece.quantity) }).eq("code", piece.materialCode);
-      await supabase.from("inventory_movements").insert({
-        id: `mov-${Date.now()}-${piece.id}`,
-        type: "reserva",
-        code: piece.materialCode,
-        ceco,
-        quantity: Number(piece.quantity),
-        note: "Reserva automática por apertura CECO"
-      });
-    }));
     return this.getDataset();
   },
   async createInventory(payload) {
@@ -109,7 +98,10 @@ export const supabaseRepository = {
       unit: payload.unit,
       unit_id: payload.unitId || null,
       brand_id: payload.brandId || null,
-      location: payload.location
+      location: payload.location,
+      service_factor: nullableNumber(payload.serviceFactor),
+      demand_std_dev: nullableNumber(payload.demandStdDev),
+      lead_time_days: nullableNumber(payload.leadTimeDays)
     });
     if (error) throw error;
     await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: "ingreso", code, ceco: "", quantity: Number(payload.physical), note: "Alta inicial de insumo" });
@@ -128,6 +120,22 @@ export const supabaseRepository = {
     const row = { id: `${config.prefix}-${safeName}-${Date.now()}`, name };
     if (payload.type === "units") row.symbol = String(payload.symbol || "").trim() || name.toLowerCase();
     const { error } = await supabase.from(config.table).insert(row);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updateCatalogItem(payload) {
+    const config = { categories: { table: "material_categories" }, units: { table: "measurement_units" }, brands: { table: "brands" } }[payload.type];
+    if (!config) throw new Error("Catálogo no válido");
+    const row = { name: String(payload.name || "").trim() };
+    if (payload.type === "units") row.symbol = String(payload.symbol || "").trim();
+    const { error } = await supabase.from(config.table).update(row).eq("id", payload.id);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async deleteCatalogItem(payload) {
+    const config = { categories: "material_categories", units: "measurement_units", brands: "brands" }[payload.type];
+    if (!config) throw new Error("Catálogo no válido");
+    const { error } = await supabase.from(config).delete().eq("id", payload.id);
     if (error) throw error;
     return this.getDataset();
   },
@@ -152,12 +160,13 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async createBodyType(payload) {
-    const id = `body-${String(payload.code).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-    const { error } = await supabase.from("body_types").insert({ id, code: payload.code, family: payload.family, name: payload.name, target_days: Number(payload.targetDays), output_unit: payload.outputUnit });
+    const { error } = await supabase.rpc("save_product_template", { p_id: "", p_code: payload.code, p_family: payload.family, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit: payload.outputUnit, p_route: payload.route });
     if (error) throw error;
-    const routes = payload.route.map((stageId, index) => ({ product_id: id, stage_id: stageId, sequence: index + 1 }));
-    const { error: routeError } = await supabase.from("product_routes").insert(routes);
-    if (routeError) throw routeError;
+    return this.getDataset();
+  },
+  async updateBodyType(id, payload) {
+    const { error } = await supabase.rpc("save_product_template", { p_id: id, p_code: payload.code, p_family: payload.family, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit: payload.outputUnit, p_route: payload.route });
+    if (error) throw error;
     return this.getDataset();
   },
   async createStageActivity(payload) {
@@ -167,13 +176,24 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async updateStageActivity(id, payload) {
+    const { error } = await supabase.from("stage_activities").update({ stage_id: payload.stageId, name: payload.name, standard_minutes: Number(payload.standardMinutes), active: payload.active !== false }).eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
   async updateInventory(code, patch) {
     const { error } = await supabase.from("inventory_items").update({
       description: patch.description,
-      physical: patch.physical,
-      committed: patch.committed,
-      safety: patch.safety,
-      unit: patch.unit
+      category: patch.category,
+      category_id: patch.categoryId || null,
+      unit: patch.unit,
+      unit_id: patch.unitId || null,
+      brand_id: patch.brandId || null,
+      location: patch.location,
+      safety: Number(patch.safety || 0),
+      service_factor: nullableNumber(patch.serviceFactor),
+      demand_std_dev: nullableNumber(patch.demandStdDev),
+      lead_time_days: nullableNumber(patch.leadTimeDays)
     }).eq("code", code);
     if (error) throw error;
     return this.getDataset();
@@ -188,24 +208,8 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async createWarehouseExit(payload) {
-    const { data, error: rpcError } = await supabase.rpc("next_warehouse_ticket");
-    if (rpcError) throw rpcError;
-    const ticket = data || `SAL-${Date.now()}`;
-    const { error } = await supabase.from("warehouse_exits").insert({
-      id: `wh-${ticket}`,
-      ticket,
-      ceco: payload.ceco,
-      material_code: payload.materialCode,
-      quantity: Number(payload.quantity)
-    });
+    const { error } = await supabase.rpc("issue_material_to_order", { p_ceco: payload.ceco, p_material_code: payload.materialCode, p_quantity: Number(payload.quantity) });
     if (error) throw error;
-    const dataset = await this.getDataset();
-    const item = dataset.inventory.find((entry) => entry.code === payload.materialCode);
-    if (item) await supabase.from("inventory_items").update({
-      physical: Math.max(0, Number(item.physical) - Number(payload.quantity)),
-      committed: Math.max(0, Number(item.committed) - Number(payload.quantity))
-    }).eq("code", payload.materialCode);
-    await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: "salida", code: payload.materialCode, ceco: payload.ceco, quantity: Number(payload.quantity), note: `Ticket ${ticket}` });
     return this.getDataset();
   },
   async consumeMaterial(payload) {
@@ -256,6 +260,30 @@ export const supabaseRepository = {
       quantity: Number(payload.quantity)
     });
     if (error) throw error;
+    return this.getDataset();
+  },
+  async updateBomItem(id, patch) {
+    const { error } = await supabase.from("bom_items").update({ material_code: patch.materialCode, piece_code: patch.pieceCode, description: patch.description, stage_id: patch.stageId, length_mm: Number(patch.lengthMm || 0), quantity: Number(patch.quantity) }).eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async deleteBomItem(id) {
+    const { error } = await supabase.from("bom_items").delete().eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async createCustomer(payload) {
+    const name = String(payload.name || "").trim();
+    const id = `customer-${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+    const { error } = await supabase.from("customers").insert({ id, name, document_number: payload.documentNumber || null, contact_name: payload.contactName || null, phone: payload.phone || null, email: payload.email || null, active: true });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updateCustomer(id, payload) {
+    const { error } = await supabase.from("customers").update({ name: payload.name, document_number: payload.documentNumber || null, contact_name: payload.contactName || null, phone: payload.phone || null, email: payload.email || null, active: payload.active !== false }).eq("id", id);
+    if (error) throw error;
+    const { error: orderError } = await supabase.from("ceco_orders").update({ customer: payload.name }).eq("customer_id", id);
+    if (orderError) throw orderError;
     return this.getDataset();
   },
   async createShift(payload) {
@@ -327,7 +355,14 @@ function mapActivityProgress(row) {
 }
 
 function mapOrder(row) {
-  return { id: row.id, ceco: row.ceco, customer: row.customer, bodyTypeId: row.body_type_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, dueDate: row.due_date };
+  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, dueDate: row.due_date };
+}
+
+function mapCustomer(row) { return { id: row.id, documentNumber: row.document_number, name: row.name, contactName: row.contact_name, phone: row.phone, email: row.email, active: row.active }; }
+function mapReservation(row) { return { id: row.id, ceco: row.ceco, bomItemId: row.bom_item_id, stageId: row.stage_id, materialCode: row.material_code, requiredQuantity: Number(row.required_quantity), reservedQuantity: Number(row.reserved_quantity), issuedQuantity: Number(row.issued_quantity), consumedQuantity: Number(row.consumed_quantity), status: row.status }; }
+function nullableNumber(value) { return value === "" || value == null ? null : Number(value); }
+function legacyCustomers(orders) {
+  return [...new Map(orders.map((row) => [row.customer, { id: `legacy-${String(row.customer).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name: row.customer, documentNumber: null, contactName: null, phone: null, email: null, active: true }])).values()];
 }
 
 function mapOperation(row) {

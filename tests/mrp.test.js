@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { initialDataset } from "../src/data/seed.js";
 import { buildMaterialExplosion, calculateSafetyStock, evaluateMrp, inventoryHeatmap, materialRequirementSummary } from "../src/lib/mrp.js";
-import { runDigitalTwin } from "../src/lib/simulator.js";
+import { calibrateDigitalTwin, runDigitalTwin } from "../src/lib/simulator.js";
 
 test("explota BOM por carrocería y calcula faltantes", () => {
-  const order = initialDataset.orders.find((item) => item.ceco === "260183");
+  const order = initialDataset.orders.find((item) => item.ceco === "260240");
   const explosion = buildMaterialExplosion(order, initialDataset.bodyTypes, initialDataset.bom, initialDataset.inventory);
   assert.ok(explosion.some((item) => item.materialCode === "MAT-0042"));
-  assert.ok(explosion.every((item) => item.ceco === "260183"));
+  assert.ok(explosion.every((item) => item.ceco === "260240"));
 });
 
 test("MRP genera alertas cuando disponibilidad queda bajo seguridad", () => {
@@ -23,7 +23,7 @@ test("mapa de calor clasifica stock disponible", () => {
   assert.equal(paint.available, 6);
   assert.ok(paint.required > 0);
   assert.equal(paint.projected, paint.physical - paint.required);
-  assert.equal(paint.tone, "danger");
+  assert.equal(paint.tone, "warning");
 });
 
 test("stock de seguridad usa Z por desviación de demanda y raíz del lead time", () => {
@@ -34,8 +34,9 @@ test("stock de seguridad usa Z por desviación de demanda y raíz del lead time"
 
 test("requerimiento abierto se calcula desde órdenes activas y BOM", () => {
   const requirements = materialRequirementSummary(initialDataset.orders, initialDataset.bom);
-  assert.equal(requirements["MAT-0042"], 42);
-  assert.equal(requirements["MAT-0046"], 2);
+  assert.equal(requirements["MAT-0042"], 24);
+  assert.equal(requirements["MAT-0044"], 60);
+  assert.equal(requirements["MAT-0126"], 480);
 });
 
 test("gemelo digital muestra el efecto de menor disponibilidad de personal", () => {
@@ -67,8 +68,24 @@ test("personal, equipos e incidencias alimentan la capacidad real del gemelo", (
   unrestrictedDataset.equipment = unrestrictedDataset.equipment.map((item) => ({ ...item, status: "operational" }));
   unrestrictedDataset.incidents = unrestrictedDataset.incidents.map((item) => ({ ...item, status: "resolved" }));
   const unrestricted = runDigitalTwin(unrestrictedDataset, { laborAvailability: 100, horizonDays: 14 });
-  const constrainedPaint = constrained.scenario.stageCapacity.find((item) => item.stageId === "stage-paint");
-  const unrestrictedPaint = unrestricted.scenario.stageCapacity.find((item) => item.stageId === "stage-paint");
-  assert.ok(constrainedPaint.availableHours < unrestrictedPaint.availableHours);
-  assert.equal(constrainedPaint.incidentHours, 2);
+  const constrainedAssembly = constrained.scenario.stageCapacity.find((item) => item.stageId === "stage-assembly");
+  const unrestrictedAssembly = unrestricted.scenario.stageCapacity.find((item) => item.stageId === "stage-assembly");
+  assert.ok(constrainedAssembly.availableHours < unrestrictedAssembly.availableHours);
+  assert.equal(constrainedAssembly.incidentHours, 4);
 });
+
+test("entrenamiento del gemelo digital calcula métricas de calibración desde Supabase", () => {
+  const calibration = calibrateDigitalTwin(initialDataset);
+  assert.ok(calibration.reliabilityScore > 50);
+  assert.ok(calibration.workerInconsistencyStdDev >= 4);
+  assert.ok(calibration.sampleSizeOperations > 0);
+});
+
+test("parámetros específicos por orden incrementan la demanda en la fase correspondiente", () => {
+  const normal = runDigitalTwin(initialDataset, { orderComplexityMap: { "260240": 1.0 } });
+  const complex = runDigitalTwin(initialDataset, { orderComplexityMap: { "260240": 2.0 } });
+  const normalPaint = normal.scenario.stageCapacity.find((s) => s.stageId === "stage-paint");
+  const complexPaint = complex.scenario.stageCapacity.find((s) => s.stageId === "stage-paint");
+  assert.ok(complexPaint.demandHours > normalPaint.demandHours);
+});
+

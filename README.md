@@ -1,6 +1,6 @@
 # ETRAL · Control de producción y gemelo digital
 
-La descripción del flujo, arquitectura y patrones del gemelo se encuentra en [`docs/arquitectura-gemelo-digital.md`](docs/arquitectura-gemelo-digital.md).
+La descripción del flujo, arquitectura y patrones del gemelo se encuentra en [`docs/arquitectura-gemelo-digital.md`](docs/arquitectura-gemelo-digital.md). El detalle de tablas, relaciones y su uso en el frontend está en [`docs/modelo-datos-y-flujo.md`](docs/modelo-datos-y-flujo.md).
 
 Aplicación React para registrar productos, rutas variables, fases, actividades, materiales, inventario, BOM, órdenes CECO y ejecución de planta. El simulador compara el plan vigente contra un escenario sin alterar los registros operativos.
 
@@ -44,7 +44,7 @@ $env:SUPABASE_DB_URL="postgresql://postgres:TU_PASSWORD@db.TU_PROYECTO.supabase.
 npm run supabase:setup
 ```
 
-El instalador exige `psql`, detiene la ejecución ante el primer error y aplica, en orden, `src/supabase/schema.sql` y `src/supabase/seed.sql`.
+El instalador exige `psql`, detiene la ejecución ante el primer error y aplica, en orden, `src/supabase/schema.sql`, la migración de ejecución de órdenes y `src/supabase/seed.sql`.
 
 Para instalar solo el esquema:
 
@@ -52,7 +52,7 @@ Para instalar solo el esquema:
 powershell -ExecutionPolicy Bypass -File scripts/setup-supabase.ps1 -SkipSeed
 ```
 
-También puedes ejecutar ambos SQL manualmente desde Supabase SQL Editor. Las políticas incluidas permiten acceso `anon` para la demostración; deben restringirse por usuario/rol antes de producción.
+También puedes ejecutar manualmente esos SQL desde Supabase SQL Editor respetando el mismo orden. Las políticas incluidas permiten acceso `anon` para la demostración; deben restringirse por usuario/rol antes de producción.
 
 3. Para la versión simple, inicia solo el frontend. Esta versión sirve para validar flujos, data, selectores y toma de decisiones operativa sin depender de Python:
 
