@@ -1,6 +1,8 @@
 # ETRAL · Control de producción y gemelo digital
 
-La descripción del flujo, arquitectura y patrones del gemelo se encuentra en [`docs/arquitectura-gemelo-digital.md`](docs/arquitectura-gemelo-digital.md). El detalle de tablas, relaciones y su uso en el frontend está en [`docs/modelo-datos-y-flujo.md`](docs/modelo-datos-y-flujo.md).
+Documentacion para tesis: [entregables de registro](docs/entregables-registro-sistema-web-y-gemelo-digital.md), [guion de construccion](docs/estructura-explicacion-construccion-aplicacion.md), [arquitectura del gemelo](docs/arquitectura-gemelo-digital.md), [modelo de datos](docs/modelo-datos-y-flujo.md) y [anexo tecnico con diagramas y codigo](docs/anexo-tecnico-arquitectura-diagramas-y-codigo.md).
+
+La descripción del flujo, arquitectura y patrones del gemelo se encuentra en [`docs/arquitectura-gemelo-digital.md`](docs/arquitectura-gemelo-digital.md). El detalle de tablas, relaciones y su uso en el frontend está en [`docs/modelo-datos-y-flujo.md`](docs/modelo-datos-y-flujo.md). Para la tesis, los entregables de registro están en [`docs/entregables-registro-sistema-web-y-gemelo-digital.md`](docs/entregables-registro-sistema-web-y-gemelo-digital.md) y la guía para explicar la construcción de la aplicación está en [`docs/estructura-explicacion-construccion-aplicacion.md`](docs/estructura-explicacion-construccion-aplicacion.md).
 
 Aplicación React para registrar productos, rutas variables, fases, actividades, materiales, inventario, BOM, órdenes CECO y ejecución de planta. El simulador compara el plan vigente contra un escenario sin alterar los registros operativos.
 

@@ -286,7 +286,10 @@ export default function App() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <button className="brand" onClick={() => { setView("overview"); setMenuOpen(false); }} aria-label="Ir al inicio">
-          <img src="/assets/etral-logo.png" alt="ETRAL" />
+          <span className="brand-mark" aria-hidden="true">
+            <span>ET</span>
+            <img src="/assets/etral-logo.png" alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+          </span>
           <span><strong>ETRAL</strong><small>Control de planta</small></span>
         </button>
         <nav aria-label="Navegación principal">
