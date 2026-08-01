@@ -111,12 +111,8 @@ export const equipmentSeed = [
 ];
 
 export const workCalendarSeed = [
-  { id: "calendar-2026-07-27", date: "2026-07-27", dayType: "working", availableHours: 8, note: "Jornada regular con secuencia MRP" },
-  { id: "calendar-2026-07-28", date: "2026-07-28", dayType: "working", availableHours: 8, note: "Liberaciones de calidad programadas" },
-  { id: "calendar-2026-07-29", date: "2026-07-29", dayType: "working", availableHours: 8, note: "Jornada regular" },
-  { id: "calendar-2026-07-30", date: "2026-07-30", dayType: "working", availableHours: 8, note: "Ventana de entregas a planta" },
   { id: "calendar-2026-07-31", date: "2026-07-31", dayType: "reduced", availableHours: 6, note: "Mantenimiento preventivo planificado" },
-  { id: "calendar-2026-08-03", date: "2026-08-03", dayType: "working", availableHours: 8, note: "Inicio de lote posterior" }
+  { id: "calendar-2026-08-30", date: "2026-08-30", dayType: "holiday", availableHours: 0, note: "Feriado nacional" }
 ];
 
 export const assignmentsSeed = [

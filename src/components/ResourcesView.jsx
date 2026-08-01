@@ -9,7 +9,7 @@ const labels = {
   available: "Disponible", assigned: "Asignado", absent: "Ausente", leave: "Permiso",
   operational: "Operativo", restricted: "Restringido", maintenance: "Mantenimiento", out_of_service: "Fuera de servicio",
   planned: "Planificado", in_progress: "En proceso", completed: "Completado", blocked: "Bloqueado",
-  working: "Laborable", reduced: "Reducido", holiday: "Feriado", shutdown: "Parada",
+  working: "Laborable", reduced: "Jornada corta", holiday: "Feriado", shutdown: "No laborable",
   open: "Abierta", investigating: "En análisis", resolved: "Resuelta",
   equipment: "Equipo", material: "Material", quality: "Calidad", personnel: "Personal", safety: "Seguridad", other: "Otro"
 };
@@ -18,6 +18,10 @@ function stageOf(dataset, id) { return dataset.flowStages.find((item) => item.id
 function personOf(dataset, id) { return dataset.personnel.find((item) => item.id === id); }
 function activityOf(dataset, id) { return dataset.stageActivities.find((item) => item.id === id); }
 function shiftOf(dataset, id) { return dataset.shifts.find((item) => item.id === id); }
+function calendarLabel(day) {
+  if (day.dayType === "reduced") return `${day.availableHours} h disponibles`;
+  return "Sin jornada";
+}
 
 function Header({ eyebrow, title, detail, action }) {
   return <header className="resource-header"><div><span>{eyebrow}</span><h2>{title}</h2><p>{detail}</p></div>{action}</header>;
@@ -28,6 +32,7 @@ function Badge({ value }) { return <span className={`resource-badge ${value}`}>{
 
 export default function ResourcesView({ dataset, openDrawer }) {
   const [tab, setTab] = useState("personnel");
+  const calendarExceptions = dataset.workCalendar.filter((day) => day.dayType !== "working");
   const metrics = useMemo(() => {
     const active = dataset.personnel.filter((item) => item.active);
     const available = active.filter((item) => item.status !== "absent" && item.status !== "leave");
@@ -51,7 +56,7 @@ export default function ResourcesView({ dataset, openDrawer }) {
       <article><span className="metric-symbol alert">△</span><div><small>Tiempo detenido</small><strong>{metrics.downtime} h</strong><p>Incidencias abiertas</p></div></article>
     </section>
 
-    <div className="resource-tabs" role="tablist">{tabs.map(([id, label, icon]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}><span>{icon}</span>{label}<b>{dataset[id === "calendar" ? "workCalendar" : id]?.length ?? 0}</b></button>)}</div>
+    <div className="resource-tabs" role="tablist">{tabs.map(([id, label, icon]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}><span>{icon}</span>{label}<b>{id === "calendar" ? calendarExceptions.length : dataset[id]?.length ?? 0}</b></button>)}</div>
 
     {tab === "personnel" && <section className="panel resource-section">
       <Header eyebrow="Maestro de recursos" title="Personal de planta" detail="Disponibilidad, especialidad, turno y eficiencia usada por el gemelo." action={<ActionButton onClick={() => openDrawer({ type: "personnel" })}>+ Nuevo trabajador</ActionButton>} />
@@ -64,7 +69,7 @@ export default function ResourcesView({ dataset, openDrawer }) {
 
     {tab === "assignments" && <section className="panel resource-section"><Header eyebrow="Carga diaria" title="Asignaciones a CECO" detail="Vincula personas con órdenes y actividades para medir la capacidad comprometida." action={<ActionButton onClick={() => openDrawer({ type: "assignment" })}>+ Asignar recurso</ActionButton>} /><div className="assignment-list">{dataset.assignments.map((item) => <article key={item.id}><time>{item.assignedDate}</time><div><strong>{personOf(dataset, item.personnelId)?.name}</strong><span>CECO {item.ceco} · {activityOf(dataset, item.activityId)?.name}</span></div><p><b>{item.plannedHours} h</b><Badge value={item.status} /></p></article>)}</div></section>}
 
-    {tab === "calendar" && <section className="panel resource-section"><Header eyebrow="Horizonte operativo" title="Calendario laboral" detail="Días disponibles que delimitan la capacidad real de los escenarios." action={<ActionButton onClick={() => openDrawer({ type: "calendar" })}>+ Configurar día</ActionButton>} /><div className="calendar-grid">{[...dataset.workCalendar].sort((a, b) => a.date.localeCompare(b.date)).map((day) => <article key={day.id} className={day.dayType}><time><b>{new Date(`${day.date}T12:00:00`).toLocaleDateString("es-PE", { day: "2-digit" })}</b><span>{new Date(`${day.date}T12:00:00`).toLocaleDateString("es-PE", { month: "short" })}</span></time><div><Badge value={day.dayType} /><strong>{day.availableHours} horas disponibles</strong><small>{day.note}</small></div></article>)}</div></section>}
+    {tab === "calendar" && <section className="panel resource-section"><Header eyebrow="Restricciones del calendario" title="Calendario laboral" detail="La semana base trabaja de lunes a viernes; aquí solo se registran feriados, paradas o jornadas especiales." action={<ActionButton onClick={() => openDrawer({ type: "calendar" })}>+ Registrar excepción</ActionButton>} /><div className="workweek-strip"><strong>Días laborables base</strong><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><small>Sábado y domingo no laborables</small></div><div className="calendar-grid">{[...calendarExceptions].sort((a, b) => a.date.localeCompare(b.date)).map((day) => <article key={day.id} className={day.dayType}><time><b>{new Date(`${day.date}T12:00:00`).toLocaleDateString("es-PE", { day: "2-digit" })}</b><span>{new Date(`${day.date}T12:00:00`).toLocaleDateString("es-PE", { month: "short" })}</span></time><div><Badge value={day.dayType} /><strong>{calendarLabel(day)}</strong><small>{day.note || "Sin descripción"}</small></div></article>)}</div>{calendarExceptions.length === 0 && <div className="empty-state">No hay feriados ni paradas registradas.</div>}</section>}
 
     {tab === "incidents" && <section className="panel resource-section"><Header eyebrow="Pérdidas de capacidad" title="Incidencias operativas" detail="Las horas detenidas afectan el estado base que recibe la simulación." action={<ActionButton onClick={() => openDrawer({ type: "incident" })}>+ Registrar incidencia</ActionButton>} /><div className="incident-list">{dataset.incidents.map((item) => <article key={item.id} className={item.severity}><span className="incident-mark">!</span><div><header><Badge value={item.type} /><Badge value={item.status} /></header><strong>{item.description}</strong><p>{stageOf(dataset, item.stageId)?.name}{item.ceco ? ` · CECO ${item.ceco}` : ""}</p></div><aside><strong>{item.downtimeHours} h</strong><small>detención</small><time>{item.occurredAt}</time></aside></article>)}</div></section>}
   </div>;
