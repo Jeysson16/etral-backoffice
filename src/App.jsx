@@ -5,6 +5,7 @@ import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { getRepository } from "./services/repository.js";
 import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
 import ResourcesView from "./components/ResourcesView.jsx";
+import etralLogo from "../assets/etral-logo.png";
 
 
 const views = {
@@ -288,7 +289,7 @@ export default function App() {
         <button className="brand" onClick={() => { setView("overview"); setMenuOpen(false); }} aria-label="Ir al inicio">
           <span className="brand-mark" aria-hidden="true">
             <span>ET</span>
-            <img src="/assets/etral-logo.png" alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+            <img src={etralLogo} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />
           </span>
           <span><strong>ETRAL</strong><small>Control de planta</small></span>
         </button>
