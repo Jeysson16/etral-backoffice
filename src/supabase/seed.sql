@@ -4,6 +4,11 @@ insert into material_categories (id,name,description) values
 on conflict (id) do update set name=excluded.name, description=excluded.description;
 insert into measurement_units (id,name,symbol) values ('unit-und','Unidad','und'),('unit-gal','Galón','gal'),('unit-kg','Kilogramo','kg'),('unit-m','Metro','m'),('unit-roll','Rollo','rollo'),('unit-cylinder','Balón','balón') on conflict (id) do update set name=excluded.name, symbol=excluded.symbol;
 insert into brands (id,name) values ('brand-anypsa','Anypsa'),('brand-3m','3M'),('brand-aurora','Aurora'),('brand-fene','Fene'),('brand-etral','ETRAL'),('brand-generic','Genérico') on conflict (id) do update set name=excluded.name;
+insert into product_families (id,name) values
+('family-furgones','Furgones'),('family-cisternas','Cisternas'),('family-barandas','Barandas'),('family-plataformas','Plataformas'),('family-servicios','Servicios'),('family-especiales','Especiales')
+on conflict (name) do update set active=true;
+insert into production_lines (id,name) values ('line-1','Línea 1'),('line-2','Línea 2'),('line-3','Línea 3')
+on conflict (name) do update set active=true;
 insert into activity_types (code,name,diagram_symbol) values ('operation','Operación','círculo'),('inspection','Inspección','cuadrado'),('transport','Transporte','flecha'),('delay','Demora','semicírculo'),('storage','Almacén','triángulo') on conflict (code) do update set name=excluded.name, diagram_symbol=excluded.diagram_symbol;
 
 insert into flow_stages (id,code,"order",name,short_name,capacity_hours,standard_hours,color,gated_by_quality) values
@@ -26,6 +31,10 @@ insert into body_types (id,code,family,name,target_days,output_unit) values
 ('body-van-ribbed','PROD-FAC','Furgones','Furgón Acanalado',16,'und'),('body-van-flat','PROD-FLI','Furgones','Furgón Liso',14,'und'),
 ('body-tank-5000','PROD-CIS','Cisternas','Cisterna 5000G',20,'und'),('body-mixed-rail','PROD-BMI','Barandas','Baranda Mixta',12,'und')
 on conflict (id) do update set code=excluded.code,family=excluded.family,name=excluded.name,target_days=excluded.target_days,output_unit=excluded.output_unit;
+
+update body_types p set family_id=f.id from product_families f where lower(trim(p.family))=lower(trim(f.name));
+update body_types p set output_unit_id=u.id from measurement_units u where lower(trim(p.output_unit))=lower(trim(u.symbol));
+update body_types set brand_id='brand-etral' where brand_id is null;
 
 insert into product_routes (product_id,stage_id,sequence) values
 ('body-van-ribbed','stage-supply',1),('body-van-ribbed','stage-prepaint',2),('body-van-ribbed','stage-cut',3),('body-van-ribbed','stage-assembly',4),('body-van-ribbed','stage-paint',5),('body-van-ribbed','stage-doors',6),('body-van-ribbed','stage-mount',7),('body-van-ribbed','stage-systems',8),('body-van-ribbed','stage-delivery',9),
@@ -175,6 +184,10 @@ insert into body_types (id,code,family,name,target_days,output_unit) values
 ('body-service-maint','SERV-MAN','Servicios','Mantenimiento de carrocería',5,'serv'),
 ('body-eco-box','PROD-ECO','Especiales','Caja ecológica semicircular',22,'und')
 on conflict (id) do update set code=excluded.code,family=excluded.family,name=excluded.name,target_days=excluded.target_days,output_unit=excluded.output_unit;
+
+update body_types p set family_id=f.id from product_families f where lower(trim(p.family))=lower(trim(f.name));
+update body_types p set output_unit_id=u.id from measurement_units u where lower(trim(p.output_unit))=lower(trim(u.symbol));
+update body_types set brand_id='brand-etral' where brand_id is null;
 
 insert into product_routes (product_id,stage_id,sequence) values
 ('body-rail-telera','stage-supply',1),('body-rail-telera','stage-prepaint',2),('body-rail-telera','stage-cut',3),('body-rail-telera','stage-assembly',4),('body-rail-telera','stage-paint',5),('body-rail-telera','stage-mount',6),('body-rail-telera','stage-delivery',7),

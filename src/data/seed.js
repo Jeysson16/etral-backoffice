@@ -42,6 +42,14 @@ export const bodyTypes = [
   { id: "body-eco-box", code: "PROD-ECO", family: "Especiales", name: "Caja ecológica semicircular", targetDays: 22, outputUnit: "und", route: ["stage-supply", "stage-cut", "stage-assembly", "stage-paint", "stage-systems", "stage-delivery"] }
 ];
 
+export const productFamiliesSeed = ["Furgones", "Cisternas", "Barandas", "Plataformas", "Servicios", "Especiales"].map((name) => ({
+  id: `family-${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-")}`,
+  name,
+  active: true
+}));
+
+export const productionLinesSeed = ["Línea 1", "Línea 2", "Línea 3"].map((name, index) => ({ id: `line-${index + 1}`, name, active: true }));
+
 export const inventorySeed = [
   { id: "inv-paint", code: "MAT-0042", category: "Pinturas", description: "Pintura poliuretano naranja ETRAL", physical: 38, committed: 32, safety: 15, serviceFactor: 1.65, demandStdDev: 3.4, leadTimeDays: 7, unit: "gal", location: "ALM-PIN" },
   { id: "inv-steel", code: "MAT-0043", category: "Planchas", description: "Plancha galvanizada 1.9 mm x 1200 x 2400", physical: 260, committed: 174, safety: 40, serviceFactor: 1.65, demandStdDev: 9.16, leadTimeDays: 7, unit: "und", location: "ALM-PLA" },
@@ -85,7 +93,7 @@ export const catalogsSeed = {
     { id: "cat-welding", name: "Soldadura" }, { id: "cat-fastener", name: "Fijaciones y herrajes" },
     { id: "cat-electric", name: "Sistema eléctrico" }, { id: "cat-wood", name: "Madera y revestimiento" }
   ],
-  units: [{ id: "unit-und", name: "Unidad", symbol: "und" }, { id: "unit-gal", name: "Galón", symbol: "gal" }, { id: "unit-kg", name: "Kilogramo", symbol: "kg" }, { id: "unit-m", name: "Metro", symbol: "m" }, { id: "unit-roll", name: "Rollo", symbol: "rollo" }, { id: "unit-cylinder", name: "Balón", symbol: "balón" }],
+  units: [{ id: "unit-und", name: "Unidad", symbol: "und" }, { id: "unit-serv", name: "Servicio", symbol: "serv" }, { id: "unit-gal", name: "Galón", symbol: "gal" }, { id: "unit-kg", name: "Kilogramo", symbol: "kg" }, { id: "unit-m", name: "Metro", symbol: "m" }, { id: "unit-roll", name: "Rollo", symbol: "rollo" }, { id: "unit-cylinder", name: "Balón", symbol: "balón" }],
   brands: [{ id: "brand-anypsa", name: "Anypsa" }, { id: "brand-3m", name: "3M" }, { id: "brand-aurora", name: "Aurora" }, { id: "brand-fene", name: "Fene" }, { id: "brand-etral", name: "ETRAL" }, { id: "brand-generic", name: "Genérico" }]
 };
 
@@ -287,6 +295,8 @@ export const initialDataset = {
   stageInventory: stageInventorySeed,
   activityProgress: activityProgressSeed,
   bodyTypes,
+  productFamilies: productFamiliesSeed,
+  productionLines: productionLinesSeed,
   inventory: inventorySeed,
   bom: bomSeed,
   orders: ordersSeed,

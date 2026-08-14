@@ -9,7 +9,7 @@ export const supabaseRepository = {
     if (!supabase) {
       throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
     }
-    const requiredTables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands"];
+    const requiredTables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands", "product_families", "production_lines"];
     const optionalTables = ["customers", "order_material_reservations", "work_shifts", "personnel", "equipment", "work_calendar", "resource_assignments", "operational_incidents"];
     const tables = [...requiredTables, ...optionalTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
@@ -35,6 +35,8 @@ export const supabaseRepository = {
       quality: rows.quality_checks.map(mapQuality),
       inventoryMovements: rows.inventory_movements.map(mapMovement),
       catalogs: { categories: rows.material_categories, units: rows.measurement_units, brands: rows.brands },
+      productFamilies: rows.product_families,
+      productionLines: rows.production_lines,
       shifts: rows.work_shifts.map(mapShift),
       personnel: rows.personnel.map(mapPerson),
       equipment: rows.equipment.map(mapEquipment),
@@ -160,12 +162,12 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async createBodyType(payload) {
-    const { error } = await supabase.rpc("save_product_template", { p_id: "", p_code: payload.code, p_family: payload.family, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit: payload.outputUnit, p_route: payload.route });
+    const { error } = await supabase.rpc("save_product_template", { p_id: "", p_code: payload.code, p_family_id: payload.familyId, p_brand_id: payload.brandId, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit_id: payload.outputUnitId, p_route: payload.route });
     if (error) throw error;
     return this.getDataset();
   },
   async updateBodyType(id, payload) {
-    const { error } = await supabase.rpc("save_product_template", { p_id: id, p_code: payload.code, p_family: payload.family, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit: payload.outputUnit, p_route: payload.route });
+    const { error } = await supabase.rpc("save_product_template", { p_id: id, p_code: payload.code, p_family_id: payload.familyId, p_brand_id: payload.brandId, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit_id: payload.outputUnitId, p_route: payload.route });
     if (error) throw error;
     return this.getDataset();
   },
@@ -331,7 +333,7 @@ function mapStage(row) {
 }
 
 function mapBodyType(row, routes) {
-  return { id: row.id, code: row.code, family: row.family, name: row.name, targetDays: Number(row.target_days), outputUnit: row.output_unit, route: routes.filter((item) => item.product_id === row.id).sort((a, b) => a.sequence - b.sequence).map((item) => item.stage_id) };
+  return { id: row.id, code: row.code, family: row.family, familyId: row.family_id, brandId: row.brand_id, name: row.name, targetDays: Number(row.target_days), outputUnit: row.output_unit, outputUnitId: row.output_unit_id, route: routes.filter((item) => item.product_id === row.id).sort((a, b) => a.sequence - b.sequence).map((item) => item.stage_id) };
 }
 
 function mapInventory(row) {
@@ -355,7 +357,7 @@ function mapActivityProgress(row) {
 }
 
 function mapOrder(row) {
-  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, dueDate: row.due_date };
+  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, dueDate: row.due_date };
 }
 
 function mapCustomer(row) { return { id: row.id, documentNumber: row.document_number, name: row.name, contactName: row.contact_name, phone: row.phone, email: row.email, active: row.active }; }
