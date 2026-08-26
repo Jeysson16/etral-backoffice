@@ -154,6 +154,52 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async importCatalogData(payload) {
+    const dataset = load();
+    const slug = (value) => String(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const ensureCatalog = (type, name, symbol = "") => {
+      if (!name) return null;
+      const existing = dataset.catalogs[type].find((item) => item.name.toLowerCase() === name.toLowerCase() || (type === "units" && item.symbol === name));
+      if (existing) return existing;
+      const id = `${type === "categories" ? "cat" : type === "units" ? "unit" : "brand"}-import-${slug(name)}`;
+      const item = { id, name, ...(type === "units" ? { symbol: symbol || name } : {}) };
+      dataset.catalogs[type].push(item);
+      return item;
+    };
+    const importedCodes = new Map();
+    for (const row of payload.materials || []) {
+      const category = ensureCatalog("categories", row.category);
+      const unit = ensureCatalog("units", row.unit, row.unit);
+      const brand = ensureCatalog("brands", row.brand);
+      const existing = dataset.inventory.find((item) => (row.code && item.code === row.code) || item.description.toLowerCase() === row.description.toLowerCase());
+      const code = existing?.code || row.code || nextInventoryCode(dataset.inventory, row.category || "MAT");
+      const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety || 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor, demandStdDev: row.demandStdDev, leadTimeDays: row.leadTimeDays, unitCost: row.unitCost, currency: row.currency || "PEN" };
+      if (existing) Object.assign(existing, material); else dataset.inventory.unshift(material);
+      importedCodes.set(row.code, code);
+    }
+    for (const row of payload.products || []) {
+      const family = dataset.productFamilies.find((item) => item.name.toLowerCase() === row.family.toLowerCase());
+      const brand = ensureCatalog("brands", row.brand || "Genérico");
+      const unit = ensureCatalog("units", row.outputUnit, row.outputUnit);
+      const route = row.route.map((code) => dataset.flowStages.find((stage) => stage.id === code || stage.code === code)?.id).filter(Boolean);
+      if (!row.code || !row.name || !family || !route.length) throw new Error(`Producto fila ${row.row}: código, nombre, familia y ruta válida son obligatorios.`);
+      const product = dataset.bodyTypes.find((item) => item.code === row.code);
+      const data = { code: row.code, name: row.name, family: family.name, familyId: family.id, brandId: brand.id, outputUnit: unit.symbol, outputUnitId: unit.id, targetDays: Number(row.targetDays || 1), route };
+      if (product) Object.assign(product, data); else dataset.bodyTypes.push({ id: `body-import-${slug(row.code)}`, ...data });
+    }
+    for (const row of payload.bom || []) {
+      const product = dataset.bodyTypes.find((item) => item.code === row.productCode);
+      const materialCode = importedCodes.get(row.materialCode) || row.materialCode;
+      const material = dataset.inventory.find((item) => item.code === materialCode);
+      const stage = dataset.flowStages.find((item) => item.id === row.stageCode || item.code === row.stageCode);
+      if (!product || !material || !stage || !row.pieceCode || Number(row.quantity) <= 0) throw new Error(`BOM fila ${row.row}: producto, material, fase, código de pieza y cantidad deben ser válidos.`);
+      const existing = dataset.bom.find((item) => item.bodyTypeId === product.id && item.pieceCode === row.pieceCode);
+      const data = { bodyTypeId: product.id, stageId: stage.id, materialCode: material.code, pieceCode: row.pieceCode, description: row.description || material.description, lengthMm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
+      if (existing) Object.assign(existing, data); else dataset.bom.unshift({ id: `bom-import-${slug(product.code)}-${slug(row.pieceCode)}`, ...data });
+    }
+    save(dataset);
+    return dataset;
+  },
   async createCatalogItem(payload) {
     const dataset = load();
     const collection = dataset.catalogs[payload.type];

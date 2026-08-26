@@ -5,6 +5,7 @@ import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { availableDateRange, buildExcelReport, calculateProductivityReport } from "./lib/productivity.js";
 import { getRepository } from "./services/repository.js";
 import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
+import { downloadCatalogWorkbook, parseCatalogWorkbook } from "./lib/excelCatalogs.js";
 import { supabase } from "./supabase/client.js";
 import ResourcesView from "./components/ResourcesView.jsx";
 import etralLogo from "../assets/etral-logo.png";
@@ -208,6 +209,19 @@ export default function App() {
     }
   }
 
+  async function importExcelCatalog(file) {
+    try {
+      const payload = await parseCatalogWorkbook(file);
+      const updated = await repo.importCatalogData(payload);
+      setDataset(normalizeDataset(updated));
+      setError("");
+      setNotice(`Excel importado: ${payload.materials.length} materiales, ${payload.products.length} productos y ${payload.bom.length} componentes BOM.`);
+      window.setTimeout(() => setNotice(""), 4800);
+    } catch (err) {
+      setError(`No se pudo importar el Excel: ${err.message}`);
+    }
+  }
+
   async function advanceOrder(order) {
     const product = productOf(dataset, order.bodyTypeId);
     const current = product?.route.indexOf(order.stageId) ?? -1;
@@ -385,7 +399,8 @@ export default function App() {
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} />}
           {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} />}
           {view === "orders" && <OrdersView dataset={dataset} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), "Datos de la orden actualizados.")} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
-          {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
+          {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "products")} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
+          {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "materials")} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Catálogo actualizado.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada del catálogo.")} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
           {view === "resources" && <ResourcesView dataset={dataset} openDrawer={setDrawer} setView={setView} />}
         </div>
@@ -988,12 +1003,17 @@ function OrdersView({ dataset, openDrawer, advanceOrder, onMoveOrder, onProgress
   </div>;
 }
 
-function ProductsView({ dataset, openDrawer, onUpdateBom, onDeleteBom }) {
+function ExcelActions({ onImport, onExport, label }) {
+  const inputRef = useRef(null);
+  return <div className="excel-actions"><input ref={inputRef} type="file" accept=".xlsx,.xls" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = ""; }} /><Button variant="secondary" onClick={() => inputRef.current?.click()}>Importar Excel</Button><Button variant="secondary" onClick={onExport}>Exportar Excel</Button><a className="button secondary" href="/plantillas/plantilla-materiales-productos.xlsx" download>Plantilla {label}</a></div>;
+}
+
+function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onUpdateBom, onDeleteBom }) {
   const [productId, setProductId] = useState(dataset.bodyTypes[0]?.id ?? "");
   const product = productOf(dataset, productId);
   const materials = dataset.bom.filter((item) => item.bodyTypeId === productId);
   return <div className="stack-lg">
-    <PageActions><div><strong>{dataset.bodyTypes.length} plantillas de producto</strong><span>Una plantilla define la ruta y BOM; las órdenes son quienes recorren el flujo.</span></div><Button onClick={() => openDrawer({ type: "product" })}>+ Producto maestro</Button></PageActions>
+    <PageActions><div><strong>{dataset.bodyTypes.length} plantillas de producto</strong><span>Una plantilla define la ruta y BOM; las órdenes son quienes recorren el flujo.</span></div><div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} label="productos" /><Button onClick={() => openDrawer({ type: "product" })}>+ Producto maestro</Button></div></PageActions>
     <section className="template-grid">{dataset.bodyTypes.map((item) => <button key={item.id} className={`panel template-card ${item.id === productId ? "selected" : ""}`} onClick={() => setProductId(item.id)}><span>{item.code}</span><strong>{item.name}</strong><small>{item.family} · {item.targetDays} días</small><div>{item.route.map((stageId) => <i key={stageId} title={stageOf(dataset, stageId)?.name} style={{ background: stageOf(dataset, stageId)?.color }} />)}</div><b>{dataset.bom.filter((piece) => piece.bodyTypeId === item.id).length} materiales</b></button>)}</section>
     {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
   </div>;
@@ -1168,11 +1188,11 @@ function StagesView({ dataset, openDrawer }) {
   return <div className="stack-lg"><PageActions><div><strong>{dataset.flowStages.length} fases configuradas</strong><span>Modelo obtenido del DOP y de los avances por actividad.</span></div><Button onClick={() => openDrawer({ type: "activity" })}>+ Añadir actividad</Button></PageActions><div className="stage-detail-grid">{byOrder(dataset).map((stage) => { const activities = dataset.stageActivities.filter((item) => item.stageId === stage.id).sort((a, b) => a.sequence - b.sequence); const wip = dataset.stageInventory.filter((item) => item.stageId === stage.id); return <article className="panel stage-detail" key={stage.id}><header style={{ "--stage-color": stage.color }}><span>{stage.shortName}</span><div><h2>{stage.name}</h2><p>{stage.capacityHours} h/semana · estándar {stage.standardHours} h/orden</p></div>{stage.gatedByQuality && <b>Control de calidad</b>}</header><ol>{activities.map((activity) => <li key={activity.id}><span>{String(activity.sequence).padStart(2, "0")}</span><p>{activity.name}</p><small>{activity.standardMinutes} min</small><button className="row-action" onClick={() => openDrawer({ type: "activity", activity })}>Editar</button></li>)}</ol><div className="wip-box"><strong>Inventario en proceso</strong>{wip.length === 0 ? <small>Sin unidades en esta fase.</small> : wip.map((item) => <div key={item.id}><span className={`wip-dot ${item.status}`} /><p><b>CECO {item.ceco}</b>{item.item}</p><strong>{item.quantity} {item.unit}</strong></div>)}</div></article>; })}</div></div>;
 }
 
-function InventoryView({ dataset, heatmap, openDrawer, onCreateCatalog, onUpdateCatalog, onDeleteCatalog }) {
+function InventoryView({ dataset, heatmap, openDrawer, onImportExcel, onExportExcel, onCreateCatalog, onUpdateCatalog, onDeleteCatalog }) {
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState("materials");
   const filtered = heatmap.filter((item) => `${item.code} ${item.description} ${item.category}`.toLowerCase().includes(search.toLowerCase()));
-  return <div className="stack-lg"><PageActions><div className="view-switch"><button className={mode === "materials" ? "active" : ""} onClick={() => setMode("materials")}>Materiales</button><button className={mode === "catalogs" ? "active" : ""} onClick={() => setMode("catalogs")}>Catálogos</button></div>{mode === "materials" && <div><Button variant="secondary" onClick={() => openDrawer({ type: "movement" })}>Registrar movimiento</Button><Button onClick={() => openDrawer({ type: "material" })}>+ Nuevo material</Button></div>}</PageActions>{mode === "materials" ? <><div className="search-box inventory-search"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar código, descripción o categoría" /></div><section className="panel"><SectionHeader eyebrow="Maestro de materiales" title="Existencias y cobertura" detail="Disponible = físico − comprometido. El stock de seguridad se calcula con factor de servicio × variabilidad × √plazo." /><div className="table-scroll"><table><thead><tr><th>Código / material</th><th>Categoría</th><th>Ubicación</th><th>Físico</th><th>Comprometido</th><th>Disponible</th><th>Proyección</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.category}</td><td>{item.location ?? "—"}</td><td>{item.physical} {item.unit}</td><td>{item.committed} {item.unit}</td><td>{item.available} {item.unit}</td><td><strong className={item.projected < 0 ? "negative" : ""}>{item.projected} {item.unit}</strong><small>Mínimo {item.safety}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span></td><td><button className="row-action" onClick={() => openDrawer({ type: "material", item })}>Editar</button></td></tr>)}</tbody></table></div></section><section className="panel"><SectionHeader eyebrow="Kardex" title="Movimientos recientes" /><MovementsTable rows={dataset.inventoryMovements} /></section></> : <section className="panel catalog-workspace"><SectionHeader eyebrow="Configuración de inventario" title="Categorías, unidades y marcas" detail="Opciones maestras utilizadas al registrar y clasificar materiales." /><CatalogManager standalone catalogs={dataset.catalogs} onCreate={onCreateCatalog} onUpdate={onUpdateCatalog} onDelete={onDeleteCatalog} /></section>}</div>;
+  return <div className="stack-lg"><PageActions><div className="view-switch"><button className={mode === "materials" ? "active" : ""} onClick={() => setMode("materials")}>Materiales</button><button className={mode === "catalogs" ? "active" : ""} onClick={() => setMode("catalogs")}>Catálogos</button></div>{mode === "materials" && <div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} label="materiales" /><Button variant="secondary" onClick={() => openDrawer({ type: "movement" })}>Registrar movimiento</Button><Button onClick={() => openDrawer({ type: "material" })}>+ Nuevo material</Button></div>}</PageActions>{mode === "materials" ? <><div className="search-box inventory-search"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar código, descripción o categoría" /></div><section className="panel"><SectionHeader eyebrow="Maestro de materiales" title="Existencias y cobertura" detail="Disponible = físico − comprometido. El stock de seguridad se calcula con factor de servicio × variabilidad × √plazo." /><div className="table-scroll"><table><thead><tr><th>Código / material</th><th>Categoría</th><th>Ubicación</th><th>Físico</th><th>Comprometido</th><th>Disponible</th><th>Proyección</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.category}</td><td>{item.location ?? "—"}</td><td>{item.physical} {item.unit}</td><td>{item.committed} {item.unit}</td><td>{item.available} {item.unit}</td><td><strong className={item.projected < 0 ? "negative" : ""}>{item.projected} {item.unit}</strong><small>Mínimo {item.safety}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span></td><td><button className="row-action" onClick={() => openDrawer({ type: "material", item })}>Editar</button></td></tr>)}</tbody></table></div></section><section className="panel"><SectionHeader eyebrow="Kardex" title="Movimientos recientes" /><MovementsTable rows={dataset.inventoryMovements} /></section></> : <section className="panel catalog-workspace"><SectionHeader eyebrow="Configuración de inventario" title="Categorías, unidades y marcas" detail="Opciones maestras utilizadas al registrar y clasificar materiales." /><CatalogManager standalone catalogs={dataset.catalogs} onCreate={onCreateCatalog} onUpdate={onUpdateCatalog} onDelete={onDeleteCatalog} /></section>}</div>;
 }
 
 function MovementsTable({ rows }) {

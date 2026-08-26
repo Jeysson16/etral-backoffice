@@ -583,6 +583,8 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .context-select label { font-size: 10px; font-weight: 800; }
 .context-select select { width: 340px; }
 .section-actions { display: flex; align-items: center; gap: 8px; }
+.excel-actions { display: flex; align-items: center; gap: 6px; }
+.excel-actions .button { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
 .section-actions select { width: min(300px, 38vw); min-height: 38px; }
 .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
 .template-card { appearance: none; min-height: 150px; display: grid; justify-items: start; gap: 7px; padding: 18px; text-align: left; cursor: pointer; border: 1px solid #dfe5eb; }

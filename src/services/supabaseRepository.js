@@ -116,6 +116,68 @@ export const supabaseRepository = {
     await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: "ingreso", code, ceco: "", quantity: Number(payload.physical), note: "Alta inicial de insumo" });
     return this.getDataset();
   },
+  async importCatalogData(payload) {
+    const dataset = await this.getDataset();
+    const stamp = Date.now();
+    const slug = (value) => String(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const ensureCatalog = async (type, name, symbol = "") => {
+      if (!name) return null;
+      const collection = dataset.catalogs[type];
+      let current = collection.find((item) => item.name.toLowerCase() === name.toLowerCase() || (type === "units" && item.symbol === name));
+      if (current) return current;
+      const config = { categories: { table: "material_categories", prefix: "cat" }, units: { table: "measurement_units", prefix: "unit" }, brands: { table: "brands", prefix: "brand" } }[type];
+      const row = { id: `${config.prefix}-import-${slug(name)}-${stamp}-${collection.length}`, name };
+      if (type === "units") row.symbol = symbol || name;
+      const { error } = await supabase.from(config.table).insert(row);
+      if (error) throw error;
+      current = { ...row };
+      collection.push(current);
+      return current;
+    };
+    const importedCodes = new Map();
+    for (const row of payload.materials || []) {
+      const category = await ensureCatalog("categories", row.category);
+      const unit = await ensureCatalog("units", row.unit, row.unit);
+      const brand = await ensureCatalog("brands", row.brand);
+      const existing = dataset.inventory.find((item) => (row.code && item.code === row.code) || item.description.toLowerCase() === row.description.toLowerCase());
+      const generated = !existing && !row.code ? await supabase.rpc("next_inventory_code", { category_prefix: row.category || "MAT" }) : null;
+      if (generated?.error) throw generated.error;
+      const code = existing?.code || row.code || generated?.data;
+      if (!code) throw new Error(`No se pudo generar el código para material fila ${row.row}.`);
+      const data = { category: category.name, category_id: category.id, description: row.description, physical: Number(row.physical || 0), safety: Number(row.safety || 0), unit: unit.symbol, unit_id: unit.id, brand_id: brand?.id || null, location: row.location || null, service_factor: nullableNumber(row.serviceFactor), demand_std_dev: nullableNumber(row.demandStdDev), lead_time_days: nullableNumber(row.leadTimeDays), unit_cost: nullableNumber(row.unitCost), currency: row.currency || "PEN" };
+      const result = existing ? await supabase.from("inventory_items").update(data).eq("code", code) : await supabase.from("inventory_items").insert({ id: `inv-${code}`, code, committed: 0, ...data });
+      if (result.error) throw result.error;
+      importedCodes.set(row.code, code);
+      if (!existing && Number(row.physical) > 0) {
+        const { error } = await supabase.from("inventory_movements").insert({ id: `mov-import-${stamp}-${row.row}`, type: "ingreso", code, ceco: "", quantity: Number(row.physical), note: "Carga inicial mediante Excel" });
+        if (error) throw error;
+      }
+    }
+    const refreshed = await this.getDataset();
+    for (const row of payload.products || []) {
+      const family = refreshed.productFamilies.find((item) => item.name.toLowerCase() === row.family.toLowerCase());
+      const brand = await ensureCatalog("brands", row.brand || "Genérico");
+      const unit = await ensureCatalog("units", row.outputUnit, row.outputUnit);
+      const route = row.route.map((code) => refreshed.flowStages.find((stage) => stage.id === code || stage.code === code)?.id).filter(Boolean);
+      const existing = refreshed.bodyTypes.find((item) => item.code === row.code);
+      if (!row.code || !row.name || !family || !route.length) throw new Error(`Producto fila ${row.row}: código, nombre, familia y ruta válida son obligatorios.`);
+      const { error } = await supabase.rpc("save_product_template", { p_id: existing?.id || "", p_code: row.code, p_family_id: family.id, p_brand_id: brand.id, p_name: row.name, p_target_days: Number(row.targetDays || 1), p_output_unit_id: unit.id, p_route: route });
+      if (error) throw error;
+    }
+    const finalDataset = await this.getDataset();
+    for (const row of payload.bom || []) {
+      const product = finalDataset.bodyTypes.find((item) => item.code === row.productCode);
+      const materialCode = importedCodes.get(row.materialCode) || row.materialCode;
+      const material = finalDataset.inventory.find((item) => item.code === materialCode);
+      const stage = finalDataset.flowStages.find((item) => item.id === row.stageCode || item.code === row.stageCode);
+      if (!product || !material || !stage || !row.pieceCode || Number(row.quantity) <= 0) throw new Error(`BOM fila ${row.row}: producto, material, fase, código de pieza y cantidad deben ser válidos.`);
+      const existing = finalDataset.bom.find((item) => item.bodyTypeId === product.id && item.pieceCode === row.pieceCode);
+      const data = { body_type_id: product.id, stage_id: stage.id, material_code: material.code, piece_code: row.pieceCode, description: row.description || material.description, length_mm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
+      const result = existing ? await supabase.from("bom_items").update(data).eq("id", existing.id) : await supabase.from("bom_items").insert({ id: `bom-import-${stamp}-${row.row}`, ...data });
+      if (result.error) throw result.error;
+    }
+    return this.getDataset();
+  },
   async createCatalogItem(payload) {
     const config = {
       categories: { table: "material_categories", prefix: "cat" },
@@ -336,7 +398,7 @@ export const supabaseRepository = {
 };
 
 function mapStage(row) {
-  return { id: row.id, order: row.order, name: row.name, shortName: row.short_name, capacityHours: Number(row.capacity_hours), standardHours: Number(row.standard_hours), color: row.color, gatedByQuality: row.gated_by_quality };
+  return { id: row.id, code: row.code, order: row.order, name: row.name, shortName: row.short_name, capacityHours: Number(row.capacity_hours), standardHours: Number(row.standard_hours), color: row.color, gatedByQuality: row.gated_by_quality };
 }
 
 function mapBodyType(row, routes) {
@@ -344,7 +406,7 @@ function mapBodyType(row, routes) {
 }
 
 function mapInventory(row) {
-  return { id: row.id, code: row.code, category: row.category, categoryId: row.category_id, brandId: row.brand_id, unitId: row.unit_id, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: Number(row.service_factor), demandStdDev: Number(row.demand_std_dev), leadTimeDays: Number(row.lead_time_days), unit: row.unit, location: row.location };
+  return { id: row.id, code: row.code, category: row.category, categoryId: row.category_id, brandId: row.brand_id, unitId: row.unit_id, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: Number(row.service_factor), demandStdDev: Number(row.demand_std_dev), leadTimeDays: Number(row.lead_time_days), unitCost: Number(row.unit_cost), currency: row.currency || "PEN", unit: row.unit, location: row.location };
 }
 
 function mapBom(row) {

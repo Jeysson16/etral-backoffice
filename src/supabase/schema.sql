@@ -79,6 +79,8 @@ create table if not exists inventory_items (
   service_factor numeric,
   demand_std_dev numeric,
   lead_time_days numeric,
+  unit_cost numeric,
+  currency text not null default 'PEN',
   unit text not null default 'und',
   location text
   ,category_id text references material_categories(id)
@@ -262,6 +264,8 @@ alter table inventory_items add column if not exists location text;
 alter table inventory_items add column if not exists service_factor numeric;
 alter table inventory_items add column if not exists demand_std_dev numeric;
 alter table inventory_items add column if not exists lead_time_days numeric;
+alter table inventory_items add column if not exists unit_cost numeric;
+alter table inventory_items add column if not exists currency text not null default 'PEN';
 alter table inventory_items add column if not exists category_id text references material_categories(id);
 alter table inventory_items add column if not exists unit_id text references measurement_units(id);
 alter table inventory_items add column if not exists brand_id text references brands(id);
