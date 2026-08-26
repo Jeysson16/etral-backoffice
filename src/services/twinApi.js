@@ -5,6 +5,11 @@ const configuredApiUrl = import.meta.env.VITE_TWIN_API_URL;
 const baseUrl = (configuredApiUrl || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "")).replace(/\/$/, "");
 const twinEngine = import.meta.env.VITE_TWIN_ENGINE || "browser";
 
+function positiveNumberOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
 export function getTwinEngine() {
   return twinEngine;
 }
@@ -13,8 +18,8 @@ function snapshotFromDataset(dataset) {
   return {
     materials: dataset.inventory.map((item) => ({
       code: item.code, description: item.description, physical: Number(item.physical), committed: Number(item.committed || 0),
-      safety: Number(item.safety || 0), service_factor: item.serviceFactor ?? null, demand_std_dev: item.demandStdDev ?? null,
-      lead_time_days: item.leadTimeDays ?? null, unit: item.unit
+      safety: Number(item.safety || 0), service_factor: positiveNumberOrNull(item.serviceFactor), demand_std_dev: item.demandStdDev == null ? null : Number(item.demandStdDev),
+      lead_time_days: positiveNumberOrNull(item.leadTimeDays), unit: item.unit
     })),
     bom: dataset.bom.map((item) => ({ body_type_id: item.bodyTypeId, stage_id: item.stageId, material_code: item.materialCode, quantity: Number(item.quantity) })),
     orders: dataset.orders.map((item) => ({ ceco: item.ceco, body_type_id: item.bodyTypeId, stage_id: item.stageId, priority: Number(item.priority), progress: Number(item.progress), due_date: item.dueDate || null })),

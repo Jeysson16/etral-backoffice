@@ -13,9 +13,9 @@ class Material(BaseModel):
     physical: Decimal = Field(ge=0)
     committed: Decimal = Field(default=0, ge=0)
     safety: Decimal = Field(default=0, ge=0)
-    service_factor: Decimal | None = Field(default=None, gt=0)
+    service_factor: Decimal | None = Field(default=None, ge=0)
     demand_std_dev: Decimal | None = Field(default=None, ge=0)
-    lead_time_days: Decimal | None = Field(default=None, gt=0)
+    lead_time_days: Decimal | None = Field(default=None, ge=0)
     unit: str = "und"
 
 
