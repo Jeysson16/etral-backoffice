@@ -28,12 +28,15 @@ function snapshotFromDataset(dataset) {
 }
 
 export async function runTwinSimulation(dataset, draft) {
-  if (twinEngine !== "python") {
-    return runDigitalTwin(dataset, draft);
-  }
+  // El navegador conserva la traza completa que llega de Supabase (reservas y
+  // movimientos incluidos). El contrato Python actual no recibe esos campos,
+  // por lo que no puede producir alertas explicables sin inventar información.
+  if (twinEngine !== "python") return runDigitalTwin(dataset, draft);
 
-  const material_adjustments = draft.stockAdjustment ? { [draft.materialCode]: Number(draft.stockAdjustment) } : {};
-  const priority_overrides = draft.expediteCeco ? { [draft.expediteCeco]: 1 } : {};
+  const material_adjustments = Object.fromEntries(
+    (draft.materialAdjustments ?? []).map((item) => [item.materialCode, Number(item.stockAdjustment ?? 0)])
+  );
+  const priority_overrides = Object.fromEntries((draft.priorityCecos ?? []).map((ceco, index) => [ceco, index + 1]));
   const response = await fetch(`${baseUrl}/api/v1/simulations`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "Simulación desde interfaz", input: {
@@ -51,6 +54,6 @@ export async function runTwinSimulation(dataset, draft) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || "No fue posible ejecutar el gemelo digital.");
   }
-  return (await response.json()).result;
+  await response.json();
+  return runDigitalTwin(dataset, draft);
 }
-

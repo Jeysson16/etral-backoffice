@@ -54,11 +54,49 @@ test("ajuste simulado de stock cambia la proyección del material elegido", () =
   assert.equal(scenario.projected - baseline.projected, 40);
 });
 
+test("simulación aplica un arreglo de ajustes de material", () => {
+  const adjustments = [
+    { materialCode: "MAT-0042", stockAdjustment: 40 },
+    { materialCode: "MAT-0044", stockAdjustment: -10 }
+  ];
+  const result = runDigitalTwin(initialDataset, { materialAdjustments: adjustments });
+  for (const adjustment of adjustments) {
+    const baseline = result.baseline.materials.find((item) => item.code === adjustment.materialCode);
+    const scenario = result.scenario.materials.find((item) => item.code === adjustment.materialCode);
+    assert.equal(scenario.projected - baseline.projected, adjustment.stockAdjustment);
+  }
+});
+
+test("simulación conserva el orden de los CECO seleccionados", () => {
+  const priorityCecos = ["260243", "260240"];
+  const result = runDigitalTwin(initialDataset, { priorityCecos });
+  assert.deepEqual(result.params.priorityCecos, priorityCecos);
+  assert.deepEqual(result.params.orderPriorityOverrides, { "260243": 1, "260240": 2 });
+  assert.match(result.changes.at(-1), /1\. CECO 260243; 2\. CECO 260240/);
+});
+
+test("simulación acepta prioridades individuales no consecutivas", () => {
+  const result = runDigitalTwin(initialDataset, { priorityCecos: [{ ceco: "260243", priority: 12 }, { ceco: "260240", priority: 3 }] });
+  assert.deepEqual(result.params.orderPriorityOverrides, { "260243": 12, "260240": 3 });
+  assert.match(result.changes.at(-1), /3\. CECO 260240; 12\. CECO 260243/);
+});
+
+test("proyección de material conserva la fecha y el CECO que originan el riesgo", () => {
+  const dataset = structuredClone(initialDataset);
+  const material = dataset.inventory.find((item) => item.code === "MAT-0042");
+  material.physical = 5;
+  const result = runDigitalTwin(dataset, { horizonDays: 14 });
+  const projected = result.scenario.materials.find((item) => item.code === "MAT-0042");
+  assert.ok(projected.firstRisk?.date);
+  assert.ok(projected.requirements.some((item) => item.ceco === "260240"));
+  assert.notEqual(projected.suggestedReplenishment, null);
+});
+
 test("simulador genera alertas auditables desde indicadores", () => {
   const result = runDigitalTwin(initialDataset, { laborAvailability: 55, horizonDays: 7 });
   assert.ok(result.notifications.length > 0);
   assert.ok(result.notifications.some((item) => item.category === "PMP" && item.equation.includes("órdenes terminables")));
-  assert.ok(result.notifications.some((item) => item.category === "Inventario" && item.equation.includes("SS = Z")));
+  assert.ok(result.notifications.every((item) => item.situation && item.period && item.reason && item.recommendedAction));
 });
 
 test("personal, equipos e incidencias alimentan la capacidad real del gemelo", () => {
@@ -88,4 +126,3 @@ test("parámetros específicos por orden incrementan la demanda en la fase corre
   const complexPaint = complex.scenario.stageCapacity.find((s) => s.stageId === "stage-paint");
   assert.ok(complexPaint.demandHours > normalPaint.demandHours);
 });
-

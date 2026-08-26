@@ -108,6 +108,7 @@ create table if not exists ceco_orders (
   stage_id text references flow_stages(id),
   plant_state text not null,
   priority int not null default 999,
+  planned_start_date date,
   due_date date,
   created_at timestamptz not null default now()
 );
@@ -273,6 +274,7 @@ create index if not exists idx_inventory_category on inventory_items(category_id
 create index if not exists idx_routes_product on product_routes(product_id, sequence);
 create index if not exists idx_orders_stage on ceco_orders(stage_id, status);
 create index if not exists idx_orders_due on ceco_orders(due_date);
+create index if not exists idx_orders_pmp_schedule on ceco_orders(planned_start_date, due_date);
 create index if not exists idx_bom_product on bom_items(body_type_id);
 create index if not exists idx_movements_code_time on inventory_movements(code, timestamp desc);
 create index if not exists idx_wip_stage on stage_inventory(stage_id, status);

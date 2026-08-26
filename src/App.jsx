@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { initialDataset } from "./data/seed.js";
 import { evaluateMrp, inventoryHeatmap } from "./lib/mrp.js";
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
+import { availableDateRange, buildExcelReport, calculateProductivityReport } from "./lib/productivity.js";
 import { getRepository } from "./services/repository.js";
 import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
 import ResourcesView from "./components/ResourcesView.jsx";
@@ -23,24 +24,15 @@ const twinEngine = getTwinEngine();
 const twinEngineLabel = twinEngine === "python" ? "Motor Python avanzado" : "Motor ligero JS";
 
 function normalizeDataset(value) {
+  if (!value) return initialDataset;
   return {
-    ...initialDataset,
-    ...value,
-    flowStages: value?.flowStages?.length ? value.flowStages : initialDataset.flowStages,
-    stageActivities: value?.stageActivities?.length ? value.stageActivities : initialDataset.stageActivities,
-    stageInventory: value?.stageInventory?.length ? value.stageInventory : initialDataset.stageInventory,
-    bodyTypes: value?.bodyTypes?.length ? value.bodyTypes : initialDataset.bodyTypes,
-    productFamilies: value?.productFamilies?.length ? value.productFamilies : initialDataset.productFamilies,
-    productionLines: value?.productionLines?.length ? value.productionLines : initialDataset.productionLines,
-    customers: value?.customers ?? initialDataset.customers,
-    orderMaterialReservations: value?.orderMaterialReservations ?? initialDataset.orderMaterialReservations,
-    catalogs: value?.catalogs?.categories?.length ? value.catalogs : initialDataset.catalogs,
-    shifts: value?.shifts?.length ? value.shifts : initialDataset.shifts,
-    personnel: value?.personnel?.length ? value.personnel : initialDataset.personnel,
-    equipment: value?.equipment?.length ? value.equipment : initialDataset.equipment,
-    workCalendar: value?.workCalendar?.length ? value.workCalendar : initialDataset.workCalendar,
-    assignments: value?.assignments?.length ? value.assignments : initialDataset.assignments,
-    incidents: value?.incidents?.length ? value.incidents : initialDataset.incidents
+    flowStages: value.flowStages ?? [], stageActivities: value.stageActivities ?? [], stageInventory: value.stageInventory ?? [],
+    activityProgress: value.activityProgress ?? [], bodyTypes: value.bodyTypes ?? [], productFamilies: value.productFamilies ?? [],
+    productionLines: value.productionLines ?? [], customers: value.customers ?? [], inventory: value.inventory ?? [], bom: value.bom ?? [],
+    orders: value.orders ?? [], orderMaterialReservations: value.orderMaterialReservations ?? [], operations: value.operations ?? [],
+    warehouse: value.warehouse ?? [], quality: value.quality ?? [], inventoryMovements: value.inventoryMovements ?? [],
+    catalogs: value.catalogs ?? { categories: [], units: [], brands: [] }, shifts: value.shifts ?? [], personnel: value.personnel ?? [],
+    equipment: value.equipment ?? [], workCalendar: value.workCalendar ?? [], assignments: value.assignments ?? [], incidents: value.incidents ?? []
   };
 }
 
@@ -72,6 +64,34 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "short" }).format(new Date(`${value}T12:00:00`));
 }
 
+function dateFrom(value) {
+  if (!value) return null;
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(value, days) {
+  const date = dateFrom(value) ?? new Date();
+  date.setDate(date.getDate() + days);
+  return dateKey(date);
+}
+
+function daysBetween(from, to) {
+  const start = dateFrom(from);
+  const end = dateFrom(to);
+  if (!start || !end) return 0;
+  return Math.round((end - start) / 86400000);
+}
+
+function pmpStartOf(order, product) {
+  if (order.plannedStartDate) return order.plannedStartDate;
+  return order.dueDate ? addDays(order.dueDate, -Math.max(0, Number(product?.targetDays ?? 1) - 1)) : dateKey(new Date());
+}
+
 export default function App() {
   const [dataset, setDataset] = useState(initialDataset);
   const [view, setView] = useState("overview");
@@ -84,9 +104,9 @@ export default function App() {
     laborAvailability: 85,
     shiftsPerDay: 1,
     demandPercent: 100,
-    materialCode: initialDataset.inventory[0].code,
-    stockAdjustment: 0,
-    expediteCeco: "",
+    materialAdjustments: [],
+    priorityCecos: [],
+    orderPriorityOverrides: {},
     orderComplexityMap: {},
     orderWorkerAssignments: {},
     workerInconsistencyMode: "stochastic",
@@ -105,9 +125,12 @@ export default function App() {
       .then((loaded) => {
         const normalized = normalizeDataset(loaded);
         setDataset(normalized);
-        setSimDraft((current) => normalized.inventory.some((item) => item.code === current.materialCode)
-          ? current
-          : { ...current, materialCode: normalized.inventory[0]?.code ?? "" });
+        setSimDraft((current) => ({
+          ...current,
+          materialAdjustments: (current.materialAdjustments ?? []).filter((adjustment) => normalized.inventory.some((item) => item.code === adjustment.materialCode)),
+          priorityCecos: (current.priorityCecos ?? []).filter((ceco) => normalized.orders.some((order) => order.ceco === ceco && Number(order.progress) < 100)),
+          orderPriorityOverrides: Object.fromEntries(Object.entries(current.orderPriorityOverrides ?? {}).filter(([ceco]) => normalized.orders.some((order) => order.ceco === ceco && Number(order.progress) < 100)))
+        }));
         setDataReady(true);
       })
       .catch((err) => { setDataReady(false); setError(err.message); });
@@ -213,6 +236,7 @@ export default function App() {
         customer: values.customer,
         bodyTypeId: values.bodyTypeId,
         line: values.line,
+        plannedStartDate: values.plannedStartDate,
         dueDate: values.dueDate,
         stageId: selectedProduct?.route[0] ?? dataset.flowStages[0]?.id
       }), "Orden CECO creada y materiales reservados.");
@@ -289,6 +313,17 @@ export default function App() {
     }
   }
 
+  async function saveOrderPriorities(entries) {
+    try {
+      const refreshed = await repo.updateOrderPriorities(entries);
+      setDataset(normalizeDataset(refreshed));
+      setNotice(`${entries.length} prioridad(es) CECO guardada(s) en Supabase.`);
+      setError("");
+    } catch (err) {
+      setError(`No se pudieron guardar las prioridades: ${err.message}`);
+    }
+  }
+
   const page = views[view];
   return (
     <div className="app-shell">
@@ -324,7 +359,7 @@ export default function App() {
 
         <div className="page-content">
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} />}
-          {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} simulationTime={simulationTime} dataReady={dataReady} />}
+          {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} />}
           {view === "orders" && <OrdersView dataset={dataset} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), "Datos de la orden actualizados.")} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
           {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
@@ -358,15 +393,51 @@ function StatusPill({ status }) {
 }
 
 function Overview({ dataset, kpis, heatmap, mrp, setView }) {
+  const availableRange = useMemo(() => availableDateRange(dataset), [dataset]);
+  const [dateRange, setDateRange] = useState(availableRange);
+  useEffect(() => setDateRange(availableRange), [availableRange.start, availableRange.end]);
+  const report = useMemo(() => calculateProductivityReport(dataset, dateRange.start, dateRange.end), [dataset, dateRange]);
   const critical = heatmap.filter((item) => item.tone !== "ok");
   const priorityOrders = [...dataset.orders].sort((a, b) => a.priority - b.priority).slice(0, 4);
+
+  function exportReport() {
+    const content = buildExcelReport(report);
+    const blob = new Blob([content], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ETRAL_indicadores_${dateRange.start}_${dateRange.end}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return <div className="stack-xl">
+    <section className="report-toolbar panel">
+      <div>
+        <p className="eyebrow">Periodo de análisis</p>
+        <strong>Contrasta los indicadores productivos</strong>
+        <span>El periodo anterior usa la misma cantidad de días.</span>
+      </div>
+      <div className="date-range">
+        <label>Desde<input type="date" value={dateRange.start} max={dateRange.end} onChange={(event) => event.target.value && setDateRange((current) => ({ ...current, start: event.target.value }))} /></label>
+        <label>Hasta<input type="date" value={dateRange.end} min={dateRange.start} onChange={(event) => event.target.value && setDateRange((current) => ({ ...current, end: event.target.value }))} /></label>
+        <Button variant="secondary" onClick={() => setDateRange(availableRange)}>Todo el histórico</Button>
+        <Button onClick={exportReport}>↓ Exportar Excel</Button>
+      </div>
+    </section>
+
     <section className="metric-grid four">
       <Metric label="Órdenes activas" value={kpis.activeOrders} detail={`${kpis.dueSoon} vencen en 7 días`} />
       <Metric label="CECO bloqueados" value={kpis.blocked} detail="Requieren intervención" tone={kpis.blocked ? "danger" : "success"} />
       <Metric label="Materiales en riesgo" value={critical.length} detail={`${mrp.alerts.length} afectaciones por CECO`} tone={critical.length ? "warning" : "success"} />
       <Metric label="Horas reportadas" value={`${dataset.operations.reduce((sum, item) => sum + item.totalHours, 0)} h`} detail="Últimos partes diarios" />
     </section>
+
+    <CurrentMaterialAlerts dataset={dataset} heatmap={heatmap} mrp={mrp} setView={setView} />
+
+    <ProductivityDashboard report={report} />
 
     <section className="split-grid overview-grid">
       <div className="panel">
@@ -410,9 +481,77 @@ function Overview({ dataset, kpis, heatmap, mrp, setView }) {
   </div>;
 }
 
-function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, dataReady }) {
+function CurrentMaterialAlerts({ dataset, heatmap, mrp, setView }) {
+  const immediate = heatmap.filter((item) => item.available < item.safety);
+  const planned = heatmap.filter((item) => item.available >= item.safety && item.projected < item.safety);
+  const alerts = [
+    ...immediate.map((item) => ({ ...item, scope: "Ahora", severity: item.available < 0 ? "critical" : "warning", projectedRisk: false, replenish: Math.max(0, item.safety - item.available) })),
+    ...planned.map((item) => ({ ...item, scope: "Con CECO abiertos", severity: item.projected < 0 ? "critical" : "warning", projectedRisk: true, replenish: Math.max(0, item.safety - item.projected) }))
+  ].sort((a, b) => (a.severity === "critical" ? 0 : 1) - (b.severity === "critical" ? 0 : 1));
+
+  return <section className="panel home-material-alerts">
+    <SectionHeader eyebrow="Alertas actuales de materiales" title="Riesgos visibles al iniciar" detail="Lectura directa de inventario, stock comprometido, mínimo y CECO abiertos cargados desde Supabase." action={<button className="text-button" onClick={() => setView("inventory")}>Ver inventario →</button>} />
+    <div className="alert-list">
+      {alerts.length === 0 && <EmptyState text="El stock disponible actual y el plan de CECO abiertos permanecen por encima del mínimo configurado." />}
+      {alerts.slice(0, 5).map((item) => {
+        const affected = mrp.alerts.filter((alert) => alert.materialCode === item.code).map((alert) => `CECO ${alert.ceco}`);
+        const linkedOrders = [...new Set(dataset.orders.filter((order) => Number(order.progress) < 100 && dataset.bom.some((piece) => piece.bodyTypeId === order.bodyTypeId && piece.materialCode === item.code)).map((order) => `CECO ${order.ceco}`))];
+        const cecos = affected.length ? affected : linkedOrders;
+        return <article className={item.severity} key={item.code}>
+          <div className="alert-symbol">{item.severity === "critical" ? "!" : "△"}</div>
+          <div className="alert-content"><div><span>{item.scope}</span><strong>{item.code} · {item.description}</strong></div><p><b>Situación:</b> {item.projectedRisk ? `El plan de pedidos abiertos dejaría ${item.projected} ${item.unit}, bajo el mínimo de ${item.safety} ${item.unit}.` : `Solo hay ${item.available} ${item.unit} disponibles hoy, por debajo del mínimo de ${item.safety} ${item.unit}.`}</p><p><b>Por qué:</b> Físico {item.physical} {item.unit} − comprometido {item.committed} {item.unit}{item.projectedRisk ? ` − ${item.required} ${item.unit} requeridos por CECO abiertos` : ""}.</p>{cecos.length > 0 && <small><b>Afectados:</b> {cecos.join(" · ")}</small>}<p><b>Acción recomendada:</b> Reponer al menos {item.replenish} {item.unit} para recuperar el mínimo; revisa las reservas de los CECO indicados.</p></div>
+          <b>{item.projectedRisk ? "Riesgo del plan" : "Atención ahora"}</b>
+        </article>;
+      })}
+    </div>
+  </section>;
+}
+
+function formatIndicator(value, suffix = "") {
+  if (value == null) return "Sin datos";
+  return `${new Intl.NumberFormat("es-PE", { maximumFractionDigits: 3 }).format(value)}${suffix}`;
+}
+
+function changeBetween(current, previous) {
+  if (current == null || previous == null) return null;
+  return Math.round((current - previous) * 10) / 10;
+}
+
+function ProductivityCard({ label, value, previous, suffix, detail, formula, tone = "neutral" }) {
+  const delta = changeBetween(value, previous);
+  const width = value == null ? 0 : Math.max(4, Math.min(100, suffix === "%" ? value : value * 100));
+  return <article className={`productive-card ${tone} ${value == null ? "unavailable" : ""}`}>
+    <header><span>{label}</span>{delta != null && delta !== 0 && <b className={delta > 0 ? "up" : "down"}>{delta > 0 ? "↑" : "↓"} {Math.abs(delta)}</b>}</header>
+    <strong>{formatIndicator(value, suffix)}</strong>
+    <div className="indicator-track"><i style={{ width: `${width}%` }} /></div>
+    <small>{detail}</small>
+    <p>{formula}</p>
+  </article>;
+}
+
+function ProductivityDashboard({ report }) {
+  const { current, previous } = report;
+  const rows = [
+    { label: "Cumplimiento PMP", value: current.pmpCompliance, previous: previous.pmpCompliance, suffix: "%", detail: `${current.producedUnits} producidas / ${current.plannedUnits} planificadas`, formula: "Unidades producidas ÷ unidades planificadas × 100", tone: "orange" },
+    { label: "Nivel de avance", value: current.progressRate, previous: previous.progressRate, suffix: "%", detail: `${current.executedActivities} ejecutadas / ${current.programmedActivities} programadas`, formula: "Actividades ejecutadas ÷ actividades programadas × 100", tone: "blue" },
+    { label: "Lead time promedio", value: current.averageLeadTime, previous: previous.averageLeadTime, suffix: " días", detail: current.leadTimeSamples ? `${current.leadTimeSamples} órdenes con fechas completas` : "Falta registrar fecha de pedido y entrega", formula: "Fecha de entrega − fecha de pedido", tone: "purple" },
+    { label: "Cobertura de seguridad", value: current.safetyCoverage, previous: previous.safetyCoverage, suffix: "%", detail: `${current.safetyCovered} de ${current.safetyTotal} materiales sobre el mínimo`, formula: "Disponible ≥ stock de seguridad calculado", tone: "green" },
+    { label: "Productividad de mano de obra", value: current.laborProductivity, previous: previous.laborProductivity, suffix: " und/HH", detail: `${current.producedUnits} unidades / ${current.reportedHours} horas reportadas`, formula: "Unidades producidas ÷ horas-hombre", tone: "teal" },
+    { label: "Productividad de materiales", value: current.materialProductivity, previous: previous.materialProductivity, suffix: " und/S/", detail: current.materialProductivity == null ? "Falta costo unitario de materiales e insumos" : `Costo trazado S/ ${current.materialCost}`, formula: "Unidades producidas ÷ costo de materiales", tone: "yellow" },
+    { label: "Productividad multifactorial", value: current.multifactorProductivity, previous: previous.multifactorProductivity, suffix: "", detail: current.multifactorProductivity == null ? "Faltan valor producido y costos de factores" : `Valor producido S/ ${current.outputValue}`, formula: "Producto total ÷ factores utilizados", tone: "navy" }
+  ];
+  const available = rows.filter((item) => item.value != null).length;
+  return <section className="panel productivity-panel">
+    <SectionHeader eyebrow="Indicadores de la investigación" title="MRP y productividad contrastados" detail="Cálculos basados en el Anexo 1 de la tesis. Cada tarjeta compara el periodo elegido con el periodo inmediatamente anterior." action={<span className="coverage-chip">{available}/7 calculables</span>} />
+    <div className="productivity-grid">{rows.map((item) => <ProductivityCard key={item.label} {...item} />)}</div>
+    <div className="data-quality-note"><span>i</span><p><strong>Calidad del dato:</strong> {current.estimatedProducedUnits} unidades terminadas se infieren por estado y fecha pactada. Los indicadores sin cifra se habilitarán al registrar costos, valor de salida y fecha real de pedido/entrega.</p></div>
+  </section>;
+}
+
+function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities, simulationTime, dataReady }) {
   const [tab, setTab] = useState("capacity");
   const [calibInfo, setCalibInfo] = useState(null);
+  const [adjustmentsReviewed, setAdjustmentsReviewed] = useState(false);
 
   useEffect(() => {
     if (dataReady) {
@@ -461,6 +600,63 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, d
       };
     });
   }
+
+  function toggleMaterialAdjustment(materialCode) {
+    setAdjustmentsReviewed(false);
+    setDraft((current) => {
+      const adjustments = current.materialAdjustments ?? [];
+      const isSelected = adjustments.some((item) => item.materialCode === materialCode);
+      return {
+        ...current,
+        materialAdjustments: isSelected
+          ? adjustments.filter((item) => item.materialCode !== materialCode)
+          : [...adjustments, { materialCode, stockAdjustment: 0 }]
+      };
+    });
+  }
+
+  function updateMaterialAdjustment(materialCode, stockAdjustment) {
+    setAdjustmentsReviewed(false);
+    setDraft((current) => ({
+      ...current,
+      materialAdjustments: (current.materialAdjustments ?? []).map((item) => (
+        item.materialCode === materialCode ? { ...item, stockAdjustment } : item
+      ))
+    }));
+  }
+
+  function togglePriorityCeco(ceco) {
+    setDraft((current) => ({
+      ...current,
+      priorityCecos: (current.priorityCecos ?? []).includes(ceco)
+        ? current.priorityCecos.filter((item) => item !== ceco)
+        : [...(current.priorityCecos ?? []), ceco],
+      orderPriorityOverrides: (current.priorityCecos ?? []).includes(ceco)
+        ? Object.fromEntries(Object.entries(current.orderPriorityOverrides ?? {}).filter(([item]) => item !== ceco))
+        : { ...(current.orderPriorityOverrides ?? {}), [ceco]: Number(dataset.orders.find((item) => item.ceco === ceco)?.priority ?? 1) }
+    }));
+  }
+
+  function updatePriorityCeco(ceco, priority) {
+    setDraft((current) => {
+      return { ...current, orderPriorityOverrides: { ...(current.orderPriorityOverrides ?? {}), [ceco]: priority === "" ? "" : Number(priority) } };
+    });
+  }
+
+  const materialAdjustmentErrors = (draft.materialAdjustments ?? []).flatMap((adjustment) => {
+    const material = dataset.inventory.find((item) => item.code === adjustment.materialCode);
+    const amount = Number(adjustment.stockAdjustment);
+    if (adjustment.stockAdjustment === "" || !Number.isFinite(amount)) return [`${adjustment.materialCode}: ingresa un número válido.`];
+    if (material && Number(material.physical) + amount < 0) return [`${adjustment.materialCode}: el ajuste dejaría el físico por debajo de cero.`];
+    return [];
+  });
+  const priorityValues = (draft.priorityCecos ?? []).map((ceco) => ({ ceco, priority: Number(draft.orderPriorityOverrides?.[ceco]) }));
+  const priorityErrors = priorityValues.flatMap(({ ceco, priority }, index, values) => {
+    if (!Number.isInteger(priority) || priority < 1) return [`CECO ${ceco}: usa un orden entero mayor que cero.`];
+    if (values.filter((item) => item.priority === priority).length > 1) return [`CECO ${ceco}: el orden ${priority} está repetido.`];
+    return [];
+  });
+  const canExecute = dataReady && materialAdjustmentErrors.length === 0 && priorityErrors.length === 0 && (!(draft.materialAdjustments ?? []).length || adjustmentsReviewed);
 
   const comparisons = result ? [
     ["Órdenes terminables", result.baseline.throughput, result.scenario.throughput, "órdenes"],
@@ -545,42 +741,55 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, d
           </div>
         </Field>
 
-        <div className="field-group">
+        <div className="field-group multi-scenario-field">
           <span>Ajuste extraordinario de material</span>
-          <div className="inline-fields">
-            <select value={draft.materialCode} onChange={(e) => update("materialCode", e.target.value)}>
-              {dataset.inventory.map((item) => <option value={item.code} key={item.code}>{item.code} · {item.description}</option>)}
-            </select>
-            <input aria-label="Ajuste de stock" type="number" value={draft.stockAdjustment} onChange={(e) => update("stockAdjustment", Number(e.target.value))} />
+          <div className="multi-picker" role="group" aria-label="Materiales para ajuste extraordinario">
+            {dataset.inventory.map((item) => <label key={item.code}><input type="checkbox" checked={(draft.materialAdjustments ?? []).some((adjustment) => adjustment.materialCode === item.code)} onChange={() => toggleMaterialAdjustment(item.code)} /><span><strong>{item.code}</strong><small>{item.description}</small></span></label>)}
           </div>
-          <small>Use un valor positivo para un ingreso y negativo para una pérdida simulada.</small>
+          <small>Seleccione uno o varios materiales. Use un valor positivo para un ingreso y negativo para una pérdida simulada. No altera el inventario real.</small>
+          {(draft.materialAdjustments ?? []).length > 0 && <div className="scenario-selection-list material-adjustment-list">
+            {draft.materialAdjustments.map((adjustment) => {
+              const material = dataset.inventory.find((item) => item.code === adjustment.materialCode);
+              return <div key={adjustment.materialCode}>
+                <span><strong>{adjustment.materialCode}</strong><small>{material?.description}</small></span>
+                <input aria-label={`Ajuste de stock para ${adjustment.materialCode}`} type="number" value={adjustment.stockAdjustment} onChange={(event) => updateMaterialAdjustment(adjustment.materialCode, event.target.value)} />
+              </div>;
+            })}
+          </div>}
+          {(draft.materialAdjustments ?? []).length > 0 && <div className="scenario-review">
+            <strong>Revisión antes de aplicar al escenario</strong>
+            {materialAdjustmentErrors.length > 0 ? <small className="form-error">{materialAdjustmentErrors.join(" ")}</small> : <small>{draft.materialAdjustments.map((item) => `${item.materialCode} ${Number(item.stockAdjustment) > 0 ? "+" : ""}${item.stockAdjustment}`).join(" · ")}</small>}
+            <button type="button" className="text-button" disabled={materialAdjustmentErrors.length > 0} onClick={() => setAdjustmentsReviewed(true)}>{adjustmentsReviewed ? "Ajustes revisados" : "Revisar y aplicar al escenario"}</button>
+          </div>}
         </div>
 
-        <Field label="CECO prioritario en cola" hint="Prioriza la orden sin alterar el consumo total.">
-          <select value={draft.expediteCeco} onChange={(e) => update("expediteCeco", e.target.value)}>
-            <option value="">Mantener prioridades vigentes</option>
-            {activeOrders.map((order) => (
-              <option key={order.ceco} value={order.ceco}>CECO {order.ceco} · {productOf(dataset, order.bodyTypeId)?.name}</option>
-            ))}
-          </select>
-        </Field>
+        <div className="field-group multi-scenario-field">
+          <span>Prioridades de CECO en cola</span>
+          <div className="multi-picker" role="group" aria-label="CECO prioritarios en cola">
+            {activeOrders.map((order) => <label key={order.ceco}><input type="checkbox" checked={(draft.priorityCecos ?? []).includes(order.ceco)} onChange={() => togglePriorityCeco(order.ceco)} /><span><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></span></label>)}
+          </div>
+          <small>Seleccione varios CECO y asigne el orden exacto de cada uno. Se aceptan órdenes no consecutivos, por ejemplo 1, 12 y 3.</small>
+          {(draft.priorityCecos ?? []).length > 0 && <div className="scenario-selection-list priority-order-list">
+            {draft.priorityCecos.map((ceco) => {
+              const order = activeOrders.find((item) => item.ceco === ceco);
+              return <div key={ceco}>
+                <span><strong>CECO {ceco}</strong><small>{productOf(dataset, order?.bodyTypeId)?.name}</small></span>
+                <input aria-label={`Prioridad de CECO ${ceco}`} type="number" min="1" step="1" value={draft.orderPriorityOverrides?.[ceco] ?? order?.priority ?? ""} onChange={(event) => updatePriorityCeco(ceco, event.target.value)} />
+              </div>;
+            })}
+          </div>}
+          {priorityErrors.length > 0 && <small className="form-error">{priorityErrors.join(" ")}</small>}
+          {(draft.priorityCecos ?? []).length > 0 && <button type="button" className="text-button" disabled={priorityErrors.length > 0} onClick={() => onSavePriorities(priorityValues)}>Guardar prioridades reales</button>}
+        </div>
       </div>
 
-      <Button onClick={execute} disabled={!dataReady}>{dataReady ? "Ejecutar simulación gemela" : "Esperando datos…"}</Button>
+      <Button onClick={execute} disabled={!canExecute}>{dataReady ? "Ejecutar simulación gemela" : "Esperando datos…"}</Button>
       <p className="run-stamp">{simulationTime}</p>
     </aside>
 
     <div className="simulation-results stack-lg">
       {!result && <section className="panel"><EmptyState text={`Ejecuta el escenario para calcularlo con ${twinEngineLabel.toLowerCase()}.`} /></section>}
       {result && <>
-        <div className="simulation-note">
-          <span>i</span>
-          <div>
-            <strong>Simulación Adaptada y Calibrada</strong>
-            <p>Se evalúa el comportamiento real del taller integrando calibración empírica, parámetros específicos por CECO y simulación estocástica Monte Carlo.</p>
-          </div>
-        </div>
-
         <section className="comparison-grid">
           {comparisons.map(([label, base, scenario, unit]) => {
             const baseNum = typeof base === "number" ? base : parseFloat(base);
@@ -606,6 +815,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, d
           <div className="tabs">
             <button className={tab === "capacity" ? "active" : ""} onClick={() => setTab("capacity")}>Capacidad por fase</button>
             <button className={tab === "materials" ? "active" : ""} onClick={() => setTab("materials")}>Impacto en materiales</button>
+            <button className={tab === "demand" ? "active" : ""} onClick={() => setTab("demand")}>Demanda y productos</button>
             <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>Parámetros por orden CECO</button>
             <button className={tab === "calibration" ? "active" : ""} onClick={() => setTab("calibration")}>Calibración Supabase</button>
             <button className={tab === "trace" ? "active" : ""} onClick={() => setTab("trace")}>Supuestos</button>
@@ -613,6 +823,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, d
 
           {tab === "capacity" && <CapacityChart rows={result.scenario.stageCapacity} bottleneck={result.scenario.bottleneck} />}
           {tab === "materials" && <MaterialSimulation rows={result.scenario.materials} />}
+          {tab === "demand" && <DemandSimulation insights={result.scenario.demandInsights} />}
           
           {tab === "orders" && (
             <div className="order-params-panel">
@@ -718,22 +929,27 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, d
 
 
 function CapacityChart({ rows, bottleneck }) {
-  return <div className="chart-block"><div className="chart-summary"><div><span>Cuello de botella</span><strong>{bottleneck}</strong></div><p>Una fase supera 100% cuando las horas requeridas son mayores que las horas disponibles en el horizonte.</p></div><div className="capacity-list">{rows.map((row) => <article key={row.stageId}><div className="capacity-label"><strong>{row.name}</strong><span>{row.demandHours} h requeridas / {row.availableHours} h disponibles</span></div><div className="bar-track"><span style={{ width: `${Math.min(100, row.utilization)}%`, background: row.utilization > 100 ? "#dc2626" : row.color }} /></div><b className={row.utilization > 100 ? "over" : ""}>{row.utilization}%</b></article>)}</div></div>;
+  return <div className="chart-block"><div className="chart-summary"><div><span>Mayor carga proyectada</span><strong>{bottleneck}</strong></div><p>La carga se calcula con los CECO que aún recorren cada fase y la capacidad disponible del período.</p></div><div className="capacity-list">{rows.map((row) => <article key={row.stageId}><div className="capacity-label"><strong>{row.name}</strong><span>{row.demandHours} h requeridas / {row.availableHours} h disponibles · {row.period}</span></div><div className="bar-track"><span style={{ width: `${Math.min(100, row.utilization)}%`, background: row.utilization > 100 ? "#dc2626" : row.color }} /></div><b className={row.utilization > 100 ? "over" : ""}>{row.utilization}%</b>{row.orders.length > 0 && <small>CECO: {row.orders.map((item) => `${item.ceco} (${item.hours} h)`).join(" · ")}</small>}</article>)}</div></div>;
 }
 
 function MaterialSimulation({ rows }) {
-  return <div className="table-scroll"><table><thead><tr><th>Material</th><th>Físico</th><th>Requerimiento</th><th>Proyección</th><th>Resultado</th></tr></thead><tbody>{rows.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.physical} {item.unit}</td><td>{item.required} {item.unit}</td><td>{item.projected} {item.unit}</td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span></td></tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr><th>Material</th><th>Demanda real</th><th>Físico / mínimo</th><th>Consumo proyectado</th><th>Riesgo y reposición</th><th>Origen</th></tr></thead><tbody>{rows.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.demand?.records ? <><strong>{item.demand.day} / {item.demand.week} / {item.demand.month}</strong><small>día / 7 días / 30 días · salidas y consumos registrados</small></> : <small>Sin movimientos de salida o consumo fechados.</small>}</td><td><strong>{item.physical} {item.unit}</strong><small>Disponible {item.available} · mínimo {item.safety}</small></td><td><strong>{item.required} {item.unit}</strong><small>Saldo al cierre: {item.projected} {item.unit}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span>{item.firstRisk && <small>{item.firstRisk.date} · {item.suggestedReplenishment == null ? "Falta plazo de abastecimiento" : `reponer ${item.suggestedReplenishment} ${item.unit}`}</small>}</td><td>{item.requirements.length ? <small>{item.requirements.map((need) => `CECO ${need.ceco}: ${need.quantity} en ${need.stage}`).join(" · ")}</small> : <small>Sin consumo pendiente identificado en BOM/ruta.</small>}</td></tr>)}</tbody></table></div>;
+}
+
+function DemandSimulation({ insights }) {
+  const products = insights?.products;
+  return <div className="stack-lg"><section className="panel"><SectionHeader eyebrow="Historial disponible" title="Productos más solicitados y tendencia" detail={products?.available ? products.reference : "No hay pedidos cerrados con una fecha utilizable; no se muestra una tendencia inventada."} />{products?.available ? <div className="table-scroll"><table><thead><tr><th>Producto</th><th>Pedidos cerrados</th><th>Últimos 30 días del historial</th><th>Período anterior</th><th>Tendencia</th></tr></thead><tbody>{products.rows.map((item) => <tr key={item.productId}><td><strong>{item.product}</strong></td><td>{item.completed}</td><td>{item.recent}</td><td>{item.previous}</td><td>{item.trend}</td></tr>)}</tbody></table></div> : <EmptyState text="Registra pedidos cerrados con fecha para habilitar este reporte." />}</section><section className="panel"><SectionHeader eyebrow="Cómo leer la demanda" title="Fuente y límites del dato" detail="La demanda de materiales se muestra por día, 7 días y 30 días solo cuando existen movimientos de salida o consumo. La proyección futura usa CECO abiertos, su ruta y los materiales registrados en el BOM o en sus reservas." /></section></div>;
 }
 
 function SimulationAlerts({ notifications }) {
   const critical = notifications.filter((item) => item.severity === "critical").length;
   return <section className="panel alert-center">
-    <SectionHeader eyebrow="Indicadores automáticos" title="Alertas del escenario" detail="Cada alerta muestra el cálculo que la activa; no es un estado decorativo." action={<span className={`alert-count ${critical ? "critical" : "ok"}`}>{critical ? `${critical} críticas` : "Sin críticas"}</span>} />
+    <SectionHeader eyebrow="Alertas accionables" title="Situaciones previstas" action={<span className={`alert-count ${critical ? "critical" : "ok"}`}>{critical ? `${critical} críticas` : "Sin críticas"}</span>} />
     <div className="alert-list">
       {notifications.length === 0 && <EmptyState text="Los indicadores se mantienen dentro de los umbrales configurados." />}
       {notifications.slice(0, 8).map((alert) => <article className={alert.severity} key={alert.id}>
         <div className="alert-symbol">{alert.severity === "critical" ? "!" : "△"}</div>
-        <div className="alert-content"><div><span>{alert.category}</span><strong>{alert.title}</strong></div><p>{alert.detail}</p><code>{alert.equation}</code>{alert.affected.length > 0 && <small>CECO afectados: {alert.affected.join(" · ")}</small>}</div>
+        <div className="alert-content"><div><span>{alert.category}</span><strong>{alert.title}</strong></div><p><b>Situación:</b> {alert.situation}</p><p><b>Cuándo:</b> {alert.period}</p><p><b>Por qué:</b> {alert.reason}</p>{alert.affected.length > 0 && <small><b>Afectados:</b> {alert.affected.join(" · ")}</small>}<p><b>Acción recomendada:</b> {alert.recommendedAction}</p><code>{alert.calculation}</code></div>
         <b>{alert.value}</b>
       </article>)}
     </div>
@@ -744,8 +960,9 @@ function OrdersView({ dataset, openDrawer, advanceOrder, onMoveOrder, onProgress
   const [mode, setMode] = useState("kanban");
   const [selectedOrder, setSelectedOrder] = useState(null);
   return <div className="stack-lg">
-    <PageActions><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></PageActions>
+    <PageActions><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></PageActions>
     {mode === "kanban" && <ProductKanban dataset={dataset} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
+    {mode === "gantt" && <ProductionGantt dataset={dataset} onSelect={setSelectedOrder} />}
     {mode === "list" && <><ProductList dataset={dataset} onSelect={setSelectedOrder} /><ExecutionPanel dataset={dataset} openDrawer={openDrawer} /></>}
     {mode === "customers" && <CustomerCatalog dataset={dataset} openDrawer={openDrawer} />}
     <ProductFlowDrawer dataset={dataset} order={selectedOrder} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={onUpdateOrder} onCreateQuality={onCreateQuality} />
@@ -774,6 +991,64 @@ function activityProgressOf(dataset, ceco, activityId) {
 function currentActivity(dataset, order) {
   const activities = dataset.stageActivities.filter((item) => item.stageId === order.stageId).sort((a, b) => a.sequence - b.sequence);
   return activities.find((activity) => ["in_progress", "blocked"].includes(activityProgressOf(dataset, order.ceco, activity.id).status)) ?? activities.find((activity) => activityProgressOf(dataset, order.ceco, activity.id).status === "pending") ?? activities.at(-1);
+}
+
+function ProductionGantt({ dataset, onSelect }) {
+  const activeOrders = dataset.orders.filter((order) => Number(order.progress) < 100).sort((a, b) => a.priority - b.priority);
+  const [ceco, setCeco] = useState(activeOrders[0]?.ceco ?? dataset.orders[0]?.ceco ?? "");
+  const order = dataset.orders.find((item) => item.ceco === ceco) ?? activeOrders[0] ?? dataset.orders[0];
+  const product = productOf(dataset, order?.bodyTypeId);
+
+  useEffect(() => {
+    if (!order && activeOrders[0]) setCeco(activeOrders[0].ceco);
+  }, [order, activeOrders]);
+
+  if (!order || !product) return <EmptyState text="Registra una orden CECO para visualizar su cronograma PMP." />;
+
+  const plannedStart = pmpStartOf(order, product);
+  const plannedEnd = order.dueDate || addDays(plannedStart, Math.max(0, Number(product.targetDays || 1) - 1));
+  const route = product.route.map((stageId) => ({ stage: stageOf(dataset, stageId), activities: dataset.stageActivities.filter((activity) => activity.stageId === stageId && activity.active !== false).sort((a, b) => a.sequence - b.sequence) })).filter((item) => item.stage);
+  const totalMinutes = route.reduce((sum, item) => sum + Math.max(1, item.activities.reduce((stageMinutes, activity) => stageMinutes + Number(activity.standardMinutes || 0), 0) || Number(item.stage.standardHours || 1) * 60), 0);
+  const plannedDays = Math.max(1, daysBetween(plannedStart, plannedEnd) + 1);
+  let accumulatedMinutes = 0;
+  const rows = route.flatMap(({ stage, activities }) => {
+    const stageMinutes = Math.max(1, activities.reduce((sum, activity) => sum + Number(activity.standardMinutes || 0), 0) || Number(stage.standardHours || 1) * 60);
+    const stageStart = addDays(plannedStart, Math.floor((accumulatedMinutes / totalMinutes) * plannedDays));
+    accumulatedMinutes += stageMinutes;
+    const stageEnd = addDays(plannedStart, Math.max(0, Math.ceil((accumulatedMinutes / totalMinutes) * plannedDays) - 1));
+    let activityMinutes = accumulatedMinutes - stageMinutes;
+    const activityRows = activities.map((activity) => {
+      const progress = activityProgressOf(dataset, order.ceco, activity.id);
+      const assignmentDates = dataset.assignments.filter((item) => item.ceco === order.ceco && item.activityId === activity.id).map((item) => item.assignedDate).filter(Boolean).sort();
+      const baseStart = addDays(plannedStart, Math.floor((activityMinutes / totalMinutes) * plannedDays));
+      activityMinutes += Number(activity.standardMinutes || 0);
+      const baseEnd = addDays(plannedStart, Math.max(0, Math.ceil((activityMinutes / totalMinutes) * plannedDays) - 1));
+      const scheduleStart = assignmentDates[0] || baseStart;
+      const scheduleEnd = assignmentDates.length ? assignmentDates.at(-1) : baseEnd;
+      return { type: "activity", id: activity.id, label: activity.name, stage, progress, plannedStart: scheduleStart, plannedEnd: scheduleEnd, actualStart: progress.startedAt?.slice(0, 10), actualEnd: progress.finishedAt?.slice(0, 10) || (progress.status === "in_progress" || progress.status === "blocked" ? dateKey(new Date()) : null) };
+    });
+    const completed = activityRows.filter((item) => item.progress.status === "completed").length;
+    const actualStarts = activityRows.map((item) => item.actualStart).filter(Boolean).sort();
+    const actualEnds = activityRows.map((item) => item.actualEnd).filter(Boolean).sort();
+    return [{ type: "stage", id: stage.id, label: `${stage.shortName} · ${stage.name}`, stage, progress: { progress: activities.length ? Math.round(activityRows.reduce((sum, item) => sum + Number(item.progress.progress), 0) / activities.length) : 0, status: completed === activities.length && activities.length ? "completed" : stage.id === order.stageId ? "in_progress" : "pending" }, plannedStart: stageStart, plannedEnd: stageEnd, actualStart: actualStarts[0], actualEnd: actualEnds.at(-1) }, ...activityRows];
+  });
+  const today = dateKey(new Date());
+  const timelineStart = [plannedStart, ...rows.map((row) => row.actualStart).filter(Boolean)].sort()[0];
+  const timelineEnd = [plannedEnd, today, ...rows.map((row) => row.actualEnd).filter(Boolean)].sort().at(-1);
+  const days = Array.from({ length: Math.min(180, Math.max(1, daysBetween(timelineStart, timelineEnd) + 1)) }, (_, index) => addDays(timelineStart, index));
+  const rangeDays = Math.max(1, days.length);
+  const left = (date) => Math.max(0, Math.min(100, (daysBetween(timelineStart, date) / rangeDays) * 100));
+  const width = (from, to) => Math.max(1.8, Math.min(100, ((Math.max(0, daysBetween(from, to)) + 1) / rangeDays) * 100));
+  const plannedProgress = Math.max(0, Math.min(100, (daysBetween(plannedStart, today) + 1) / plannedDays * 100));
+  const variance = Math.round(Number(order.progress) - plannedProgress);
+  const todayLeft = left(today);
+
+  return <section className="panel gantt-panel">
+    <SectionHeader eyebrow="Plan maestro de producción" title="Cronograma Gantt por fase y actividad" detail="La programación nace en el inicio PMP; los partes y avances registrados muestran la ejecución real." action={<div className="gantt-actions"><select value={order.ceco} onChange={(event) => setCeco(event.target.value)} aria-label="Orden CECO para el cronograma">{(activeOrders.length ? activeOrders : dataset.orders).map((item) => <option key={item.ceco} value={item.ceco}>CECO {item.ceco} · {productOf(dataset, item.bodyTypeId)?.name}</option>)}</select><Button variant="secondary" onClick={() => onSelect(order)}>Abrir CECO</Button></div>} />
+    <div className="gantt-summary"><div><span>Inicio PMP</span><strong>{formatDate(plannedStart)}</strong><small>Base del plan de esta orden</small></div><div><span>Entrega comprometida</span><strong>{formatDate(plannedEnd)}</strong><small>{plannedDays} días programados</small></div><div><span>Avance real</span><strong>{order.progress}%</strong><small>{currentActivity(dataset, order)?.name ?? "Sin actividad en curso"}</small></div><div className={variance < 0 ? "at-risk" : "on-track"}><span>Desviación PMP</span><strong>{variance > 0 ? "+" : ""}{variance} pp</strong><small>Plan al día: {Math.round(plannedProgress)}%</small></div></div>
+    <div className="gantt-legend"><span><i className="planned" /> Plan PMP</span><span><i className="actual" /> Ejecución real / avance</span><span><i className="today" /> Hoy</span><span>Las fechas de asignación afinan el plan de cada actividad.</span></div>
+    <div className="gantt-scroll"><div className="gantt-grid" style={{ "--gantt-days": rangeDays }}><div className="gantt-label gantt-head-label">Fase / actividad</div><div className="gantt-days">{days.map((day, index) => <div className={dateFrom(day).getDay() === 0 || dateFrom(day).getDay() === 6 ? "weekend" : ""} key={day}><b>{dateFrom(day).getDate()}</b>{index === 0 || dateFrom(days[index - 1]).getMonth() !== dateFrom(day).getMonth() ? <small>{new Intl.DateTimeFormat("es-PE", { month: "short" }).format(dateFrom(day))}</small> : null}</div>)}</div>{rows.map((row) => <React.Fragment key={row.id}><div className={`gantt-label ${row.type}`}><i style={{ background: row.stage.color }} /> <span>{row.label}</span>{row.type === "activity" && <small>{row.progress.progress}%</small>}</div><div className={`gantt-track ${row.type}`}><span className="gantt-plan" style={{ left: `${left(row.plannedStart)}%`, width: `${width(row.plannedStart, row.plannedEnd)}%`, "--stage-color": row.stage.color }} />{row.actualStart && <span className={`gantt-actual ${row.progress.status}`} style={{ left: `${left(row.actualStart)}%`, width: `${width(row.actualStart, row.actualEnd || row.actualStart)}%`, "--stage-color": row.stage.color }}><i style={{ width: `${row.progress.progress}%` }} /></span>}<b className="gantt-today" style={{ left: `${todayLeft}%` }} aria-label="Hoy" /></div></React.Fragment>)}</div></div>
+  </section>;
 }
 
 function ProductKanban({ dataset, onSelect, onMoveOrder }) {
@@ -832,7 +1107,7 @@ function ProductFlowDrawer({ dataset, order, onClose, openDrawer, onProgress, on
   return <div className="product-detail-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="product-detail-drawer" role="dialog" aria-modal="true" aria-label={`Detalle del CECO ${order.ceco}`}>
     <header><div><p className="eyebrow">Pasaporte productivo</p><h2>{product?.name}</h2><span>CECO {order.ceco}</span></div><button onClick={onClose} aria-label="Cerrar detalle">×</button></header>
     <div className="product-detail-body">
-      <section className="detail-summary"><div><span>Cliente</span><strong>{order.customer}</strong></div><div><span>Fase actual</span><strong>{stage?.name}</strong></div><div><span>Entrega pactada</span><strong>{formatDate(order.dueDate)}</strong></div><div><span>Línea / prioridad</span><strong>{order.line} · P{order.priority}</strong></div></section>
+      <section className="detail-summary"><div><span>Cliente</span><strong>{order.customer}</strong></div><div><span>Fase actual</span><strong>{stage?.name}</strong></div><div><span>Inicio PMP</span><strong>{formatDate(pmpStartOf(order, product))}</strong></div><div><span>Entrega pactada</span><strong>{formatDate(order.dueDate)}</strong></div><div><span>Línea / prioridad</span><strong>{order.line} · P{order.priority}</strong></div></section>
       <section className="order-command-bar"><div><span>Operación de la orden</span><strong>Registra con el CECO y su ruta ya seleccionados</strong></div><div><Button variant="secondary" onClick={() => { onClose(); openDrawer({ type: "assignment", ceco: order.ceco, stageId: order.stageId }); }}>Asignar trabajador</Button><Button variant="secondary" onClick={() => { onClose(); openDrawer({ type: "operation", ceco: order.ceco, stageId: order.stageId }); }}>Registrar horas</Button><Button onClick={() => { onClose(); openDrawer({ type: "incident", ceco: order.ceco, stageId: order.stageId }); }}>Reportar incidencia</Button></div></section>
       <section className="detail-section"><SectionHeader eyebrow="Flujo completo" title="Ruta del producto" detail={`${route.length} fases configuradas para ${product?.name}.`} /><div className="drawer-route">{route.map((stageId, index) => { const routeStage = stageOf(dataset, stageId); const state = index < currentIndex ? "completed" : index === currentIndex ? "current" : "pending"; return <div className={state} key={stageId}><span>{state === "completed" ? "✓" : routeStage?.shortName}</span><p><strong>{routeStage?.name}</strong><small>{state === "completed" ? "Completada" : state === "current" ? "En proceso" : "Pendiente"}</small></p></div>; })}</div></section>
       <section className="detail-section"><SectionHeader eyebrow="Avance por etapa" title="Actividades de la orden" detail="La fase actual queda abierta; despliega las demás para revisar su historial." />{route.map((stageId) => <StageProgressEditor key={stageId} stage={stageOf(dataset, stageId)} activities={dataset.stageActivities.filter((item) => item.stageId === stageId).sort((a, b) => a.sequence - b.sequence)} ceco={order.ceco} dataset={dataset} onProgress={onProgress} current={stageId === order.stageId} />)}</section>
@@ -865,9 +1140,9 @@ function MaterialRequirementManager({ materials, dataset, onUpdate, onDelete }) 
 }
 
 function CustomerManager({ dataset, order, product, quality, onSave, onQuality }) {
-  const [draft, setDraft] = useState({ customerId: order.customerId || "", customer: order.customer, line: order.line, dueDate: order.dueDate });
+  const [draft, setDraft] = useState({ customerId: order.customerId || "", customer: order.customer, line: order.line, plannedStartDate: pmpStartOf(order, product), dueDate: order.dueDate });
   const [control, setControl] = useState({ inspector: "", approval: "approved", observations: "" });
-  return <div className="customer-manager"><div className="customer-detail"><div><span>Cliente</span><strong>{order.customer}</strong><small>Orden {order.ceco} · {product?.family}</small></div><div><span>Estado de planta</span><strong>{order.plantState}</strong><small>Avance global {order.progress}%</small></div><div><span>Calidad</span><strong>{quality?.approval === "approved" ? "Aprobado" : quality?.approval === "observed" ? "Observado" : "Pendiente"}</strong><small>{quality?.observations ?? "Sin inspección registrada"}</small></div></div><div className="customer-fields"><select value={draft.customerId} onChange={(event) => setDraft({ ...draft, customerId: event.target.value })} aria-label="Cliente"><option value="">Cliente original</option>{dataset.customers.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={draft.line} onChange={(event) => setDraft({ ...draft, line: event.target.value })}>{dataset.productionLines.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select><input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} aria-label="Fecha pactada" /><Button type="button" onClick={() => onSave(order.ceco, draft)}>Guardar orden</Button></div><div className="quality-control"><input value={control.inspector} onChange={(event) => setControl({ ...control, inspector: event.target.value })} placeholder="Inspector" /><select value={control.approval} onChange={(event) => setControl({ ...control, approval: event.target.value })}><option value="approved">Aprobado</option><option value="observed">Observado</option><option value="pending">Pendiente</option></select><input value={control.observations} onChange={(event) => setControl({ ...control, observations: event.target.value })} placeholder="Observación de calidad" /><Button type="button" onClick={() => onQuality({ ceco: order.ceco, stageId: order.stageId, ...control })} disabled={!control.inspector.trim()}>Registrar control</Button></div></div>;
+  return <div className="customer-manager"><div className="customer-detail"><div><span>Cliente</span><strong>{order.customer}</strong><small>Orden {order.ceco} · {product?.family}</small></div><div><span>Estado de planta</span><strong>{order.plantState}</strong><small>Avance global {order.progress}%</small></div><div><span>Calidad</span><strong>{quality?.approval === "approved" ? "Aprobado" : quality?.approval === "observed" ? "Observado" : "Pendiente"}</strong><small>{quality?.observations ?? "Sin inspección registrada"}</small></div></div><div className="customer-fields customer-fields-pmp"><select value={draft.customerId} onChange={(event) => setDraft({ ...draft, customerId: event.target.value })} aria-label="Cliente"><option value="">Cliente original</option>{dataset.customers.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={draft.line} onChange={(event) => setDraft({ ...draft, line: event.target.value })}>{dataset.productionLines.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select><input type="date" value={draft.plannedStartDate} onChange={(event) => setDraft({ ...draft, plannedStartDate: event.target.value })} aria-label="Inicio PMP" title="Inicio PMP" /><input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} aria-label="Fecha pactada" title="Fecha pactada" /><Button type="button" onClick={() => onSave(order.ceco, draft)}>Guardar orden</Button></div><div className="quality-control"><input value={control.inspector} onChange={(event) => setControl({ ...control, inspector: event.target.value })} placeholder="Inspector" /><select value={control.approval} onChange={(event) => setControl({ ...control, approval: event.target.value })}><option value="approved">Aprobado</option><option value="observed">Observado</option><option value="pending">Pendiente</option></select><input value={control.observations} onChange={(event) => setControl({ ...control, observations: event.target.value })} placeholder="Observación de calidad" /><Button type="button" onClick={() => onQuality({ ceco: order.ceco, stageId: order.stageId, ...control })} disabled={!control.inspector.trim()}>Registrar control</Button></div></div>;
 }
 
 function StagesView({ dataset, openDrawer }) {
@@ -895,7 +1170,69 @@ function ExecutionPanel({ dataset, openDrawer }) {
 }
 
 function Field({ label, hint, children }) {
-  return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
+  return <div className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</div>;
+}
+
+function SearchSelect({ name, options, value, defaultValue, onChange, required = false, placeholder = "Seleccionar", searchPlaceholder = "Buscar opción" }) {
+  const selectRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [internalValue, setInternalValue] = useState(defaultValue ?? options[0]?.value ?? "");
+  const selectedValue = value ?? internalValue;
+  const selected = options.find((item) => String(item.value) === String(selectedValue));
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return options;
+    return options.filter((item) => `${item.label} ${item.meta ?? ""}`.toLowerCase().includes(normalized));
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!options.length) return;
+    const exists = options.some((item) => String(item.value) === String(selectedValue));
+    if (!exists && value === undefined) setInternalValue(options[0].value);
+  }, [options, selectedValue, value]);
+
+  useEffect(() => {
+    function close(event) {
+      if (selectRef.current && !selectRef.current.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  function choose(nextValue) {
+    if (value === undefined) setInternalValue(nextValue);
+    onChange?.({ target: { name, value: nextValue } });
+    setOpen(false);
+    setQuery("");
+  }
+
+  function onKeyDown(event) {
+    if (event.key === "Escape") setOpen(false);
+    if ((event.key === "Enter" || event.key === " ") && !open) {
+      event.preventDefault();
+      setOpen(true);
+    }
+  }
+
+  return <div className="search-select" ref={selectRef}>
+    <input type="hidden" name={name} value={selectedValue} required={required} />
+    <button type="button" className={`search-select-trigger ${open ? "open" : ""}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={onKeyDown}>
+      <span>{selected?.label ?? placeholder}</span>
+      {selected?.meta && <small>{selected.meta}</small>}
+      <b aria-hidden="true">⌄</b>
+    </button>
+    {open && <div className="search-select-menu">
+      <div className="search-select-search"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} /></div>
+      <div className="search-select-results" role="listbox">
+        {filtered.length ? filtered.slice(0, 80).map((item) => <button type="button" key={item.value} role="option" aria-selected={String(item.value) === String(selectedValue)} className={String(item.value) === String(selectedValue) ? "selected" : ""} onClick={() => choose(item.value)}>
+          <span>{item.label}</span>
+          {item.meta && <small>{item.meta}</small>}
+        </button>) : <p>Sin resultados</p>}
+      </div>
+      <footer>{filtered.length} resultado{filtered.length === 1 ? "" : "s"}</footer>
+    </div>}
+  </div>;
 }
 
 function CatalogManager({ catalogs, onCreate, onUpdate, onDelete, standalone = false }) {
@@ -913,28 +1250,32 @@ function CatalogManager({ catalogs, onCreate, onUpdate, onDelete, standalone = f
 }
 
 function OrderSelect({ dataset, value, onChange, optional = false }) {
-  return <select name="ceco" value={value} onChange={onChange}>{optional && <option value="">Sin CECO asociado</option>}{dataset.orders.map((order) => <option key={order.ceco} value={order.ceco}>{orderLabel(dataset, order)}</option>)}</select>;
+  const options = [
+    ...(optional ? [{ value: "", label: "Sin CECO asociado" }] : []),
+    ...dataset.orders.map((order) => ({ value: order.ceco, label: `CECO ${order.ceco}`, meta: `${productOf(dataset, order.bodyTypeId)?.name ?? "Producto"} · ${order.customer}` }))
+  ];
+  return <SearchSelect name="ceco" value={value} onChange={onChange} options={options} placeholder="Selecciona una orden" searchPlaceholder="Buscar por CECO, producto o cliente" />;
 }
 
 function AssignmentFields({ drawer, dataset }) {
   const [ceco, setCeco] = useState(drawer.ceco || dataset.orders[0]?.ceco || "");
   const stages = stagesForOrder(dataset, ceco);
   const activities = stages.flatMap((stage) => dataset.stageActivities.filter((item) => item.stageId === stage.id).map((item) => ({ ...item, stage })));
-  return <><Field label="Trabajador"><select name="personnelId">{dataset.personnel.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.employeeCode} · {item.name} — {item.role}</option>)}</select></Field><Field label="Orden CECO" hint="Producto y cliente de la orden seleccionada"><OrderSelect dataset={dataset} value={ceco} onChange={(event) => setCeco(event.target.value)} /></Field><div className="form-row"><Field label="Actividad de su ruta"><select name="activityId" defaultValue={activities.find((item) => item.stageId === drawer.stageId)?.id}>{activities.map((item) => <option key={item.id} value={item.id}>{item.stage.shortName} · {item.stage.name} — {item.name}</option>)}</select></Field><Field label="Fecha"><input name="assignedDate" type="date" required /></Field></div><div className="form-row"><Field label="Horas planificadas"><input name="plannedHours" type="number" min="0.25" max="24" step="0.25" required /></Field><Field label="Estado"><select name="status"><option value="planned">Planificado</option><option value="in_progress">En proceso</option><option value="completed">Completado</option><option value="blocked">Bloqueado</option></select></Field></div><p className="form-info">Las actividades se filtran automáticamente según la ruta del producto asociado al CECO.</p></>;
+  return <><Field label="Trabajador"><SearchSelect name="personnelId" options={dataset.personnel.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, meta: `${item.employeeCode} · ${item.role}` }))} searchPlaceholder="Buscar trabajador" /></Field><Field label="Orden CECO" hint="Producto y cliente de la orden seleccionada"><OrderSelect dataset={dataset} value={ceco} onChange={(event) => setCeco(event.target.value)} /></Field><div className="form-row"><Field label="Actividad de su ruta"><SearchSelect name="activityId" defaultValue={activities.find((item) => item.stageId === drawer.stageId)?.id} options={activities.map((item) => ({ value: item.id, label: item.name, meta: `${item.stage.shortName} · ${item.stage.name}` }))} searchPlaceholder="Buscar actividad" /></Field><Field label="Fecha"><input name="assignedDate" type="date" required /></Field></div><div className="form-row"><Field label="Horas planificadas"><input name="plannedHours" type="number" min="0.25" max="24" step="0.25" required /></Field><Field label="Estado"><select name="status"><option value="planned">Planificado</option><option value="in_progress">En proceso</option><option value="completed">Completado</option><option value="blocked">Bloqueado</option></select></Field></div><p className="form-info">Las actividades se filtran automáticamente según la ruta del producto asociado al CECO.</p></>;
 }
 
 function OperationFields({ drawer, dataset }) {
   const [ceco, setCeco] = useState(drawer.ceco || dataset.orders[0]?.ceco || "");
   const stages = stagesForOrder(dataset, ceco);
   const activities = stages.flatMap((stage) => dataset.stageActivities.filter((item) => item.stageId === stage.id).map((item) => ({ ...item, stage })));
-  return <><Field label="Orden CECO"><OrderSelect dataset={dataset} value={ceco} onChange={(event) => setCeco(event.target.value)} /></Field><div className="form-row"><Field label="Fecha"><input name="date" type="date" required /></Field><Field label="Horas"><input name="totalHours" type="number" min="0.25" step="0.25" required /></Field></div><Field label="Responsable"><select name="worker">{dataset.personnel.filter((item) => item.active).map((item) => <option key={item.id} value={item.name}>{item.employeeCode} · {item.name} — {item.specialty || item.role}</option>)}</select></Field><Field label="Actividad ejecutada"><select name="activity" defaultValue={activities.find((item) => item.stageId === drawer.stageId)?.name}>{activities.map((item) => <option key={item.id} value={item.name}>{item.stage.shortName} · {item.stage.name} — {item.name}</option>)}</select></Field></>;
+  return <><Field label="Orden CECO"><OrderSelect dataset={dataset} value={ceco} onChange={(event) => setCeco(event.target.value)} /></Field><div className="form-row"><Field label="Fecha"><input name="date" type="date" required /></Field><Field label="Horas"><input name="totalHours" type="number" min="0.25" step="0.25" required /></Field></div><Field label="Responsable"><SearchSelect name="worker" options={dataset.personnel.filter((item) => item.active).map((item) => ({ value: item.name, label: item.name, meta: `${item.employeeCode} · ${item.specialty || item.role}` }))} searchPlaceholder="Buscar responsable" /></Field><Field label="Actividad ejecutada"><SearchSelect name="activity" defaultValue={activities.find((item) => item.stageId === drawer.stageId)?.name} options={activities.map((item) => ({ value: item.name, label: item.name, meta: `${item.stage.shortName} · ${item.stage.name}` }))} searchPlaceholder="Buscar actividad" /></Field></>;
 }
 
 function IncidentFields({ drawer, dataset }) {
   const [ceco, setCeco] = useState(drawer.ceco || "");
   const availableStages = ceco ? stagesForOrder(dataset, ceco) : byOrder(dataset);
   const defaultStage = availableStages.some((item) => item.id === drawer.stageId) ? drawer.stageId : availableStages[0]?.id;
-  return <><Field label="Fecha y hora"><input name="occurredAt" type="datetime-local" required /></Field><Field label="Orden CECO (opcional)" hint="Al elegirla, solo aparecen las fases de su producto"><OrderSelect dataset={dataset} value={ceco} onChange={(event) => setCeco(event.target.value)} optional /></Field><Field label="Fase afectada"><select key={`${ceco}-${defaultStage}`} name="stageId" defaultValue={defaultStage}>{availableStages.map((item) => <option key={item.id} value={item.id}>{item.shortName} · {item.name}</option>)}</select></Field><div className="form-row"><Field label="Tipo"><select name="type"><option value="equipment">Equipo</option><option value="material">Material</option><option value="quality">Calidad</option><option value="personnel">Personal</option><option value="safety">Seguridad</option><option value="other">Otro</option></select></Field><Field label="Severidad"><select name="severity"><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="critical">Crítica</option></select></Field></div><Field label="Equipo (opcional)"><select name="equipmentId"><option value="">Sin equipo</option>{dataset.equipment.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name} — {stageOf(dataset, item.stageId)?.name}</option>)}</select></Field><Field label="Horas de detención"><input name="downtimeHours" type="number" min="0" step="0.25" defaultValue="0" required /></Field><Field label="Descripción"><textarea name="description" required placeholder="Describe el evento y su impacto" /></Field></>;
+  return <><Field label="Fecha y hora"><input name="occurredAt" type="datetime-local" required /></Field><Field label="Orden CECO (opcional)" hint="Al elegirla, solo aparecen las fases de su producto"><OrderSelect dataset={dataset} value={ceco} onChange={(event) => setCeco(event.target.value)} optional /></Field><Field label="Fase afectada"><SearchSelect key={`${ceco}-${defaultStage}`} name="stageId" defaultValue={defaultStage} options={availableStages.map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><div className="form-row"><Field label="Tipo"><select name="type"><option value="equipment">Equipo</option><option value="material">Material</option><option value="quality">Calidad</option><option value="personnel">Personal</option><option value="safety">Seguridad</option><option value="other">Otro</option></select></Field><Field label="Severidad"><select name="severity"><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="critical">Crítica</option></select></Field></div><Field label="Equipo (opcional)"><SearchSelect name="equipmentId" options={[{ value: "", label: "Sin equipo" }, ...dataset.equipment.map((item) => ({ value: item.id, label: item.name, meta: `${item.code} · ${stageOf(dataset, item.stageId)?.name}` }))]} searchPlaceholder="Buscar equipo" /></Field><Field label="Horas de detención"><input name="downtimeHours" type="number" min="0" step="0.25" defaultValue="0" required /></Field><Field label="Descripción"><textarea name="description" required placeholder="Describe el evento y su impacto" /></Field></>;
 }
 
 function RecordDrawer({ drawer, dataset, onClose, onSubmit, onCreateCatalog, onUpdateCatalog, onDeleteCatalog }) {
@@ -942,13 +1283,13 @@ function RecordDrawer({ drawer, dataset, onClose, onSubmit, onCreateCatalog, onU
   const titles = { material: drawer.item ? "Editar material" : "Registrar material", movement: "Movimiento de inventario", warehouse: "Entregar material reservado", order: "Nueva orden CECO", product: drawer.product ? "Editar plantilla" : "Registrar producto", customer: drawer.customer ? "Editar cliente" : "Registrar cliente", activity: drawer.activity ? "Editar actividad" : "Añadir actividad", bom: "Añadir componente BOM", operation: "Registrar parte diario", personnel: "Registrar trabajador", shift: "Registrar turno", equipment: "Registrar equipo", calendar: "Registrar excepción", assignment: "Asignar recurso", incident: "Registrar incidencia" };
   return <div className="drawer-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><aside className="drawer" role="dialog" aria-modal="true" aria-label={titles[drawer.type]}><header><div><p className="eyebrow">Nuevo registro</p><h2>{titles[drawer.type]}</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><form onSubmit={onSubmit}>
     {drawer.type === "material" && <><Field label="Descripción"><input name="description" defaultValue={drawer.item?.description} required placeholder="Ej. Plancha galvanizada 1.5 mm" /></Field><div className="form-row"><Field label="Categoría"><select name="categoryId" defaultValue={drawer.item?.categoryId || dataset.catalogs.categories.find((item) => item.name === drawer.item?.category || drawer.item?.category?.startsWith(item.name.split(" ")[0]))?.id} required>{dataset.catalogs.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Unidad de medida"><select name="unitId" defaultValue={drawer.item?.unitId || dataset.catalogs.units.find((item) => item.symbol === drawer.item?.unit)?.id} required>{dataset.catalogs.units.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.symbol}</option>)}</select></Field></div><Field label="Marca"><select name="brandId" defaultValue={drawer.item?.brandId || ""}><option value="">Sin marca / genérico</option>{dataset.catalogs.brands.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><div className="form-row"><Field label={drawer.item ? "Stock físico (solo lectura)" : "Stock inicial"}><input name="physical" type="number" min="0" step="0.01" defaultValue={drawer.item?.physical ?? 0} disabled={Boolean(drawer.item)} required={!drawer.item} /></Field><Field label="Stock de seguridad calculado"><input name="safety" type="number" min="0" step="0.01" defaultValue={drawer.item?.safety ?? 0} readOnly={Boolean(drawer.item?.serviceFactor && drawer.item?.demandStdDev && drawer.item?.leadTimeDays)} /></Field></div><div className="form-row"><Field label="Factor de servicio"><input name="serviceFactor" type="number" min="0" step="0.01" defaultValue={drawer.item?.serviceFactor ?? "1.65"} /></Field><Field label="Variabilidad de demanda"><input name="demandStdDev" type="number" min="0" step="0.01" defaultValue={drawer.item?.demandStdDev ?? ""} /></Field><Field label="Plazo de reposición (días)"><input name="leadTimeDays" type="number" min="0" step="0.01" defaultValue={drawer.item?.leadTimeDays ?? ""} /></Field></div><Field label="Ubicación"><input name="location" defaultValue={drawer.item?.location} placeholder="Ej. ALM-PLA" /></Field><p className="form-info">El físico cambia mediante movimientos. Las categorías, unidades y marcas se administran desde Inventario → Catálogos.</p></>}
-    {drawer.type === "movement" && <><Field label="Tipo de movimiento"><select name="movementType"><option value="ingreso">Ingreso</option><option value="ajuste">Ajuste de inventario</option></select></Field><Field label="Material"><select name="code">{dataset.inventory.map((item) => <option value={item.code} key={item.code}>{item.code} · {item.description}</option>)}</select></Field><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field><Field label="Detalle"><textarea name="note" required placeholder="Motivo o documento de referencia" /></Field><p className="form-info">Las reservas se generan al crear la orden y las salidas se registran desde el detalle CECO para conservar su trazabilidad.</p></>}
+    {drawer.type === "movement" && <><Field label="Tipo de movimiento"><select name="movementType"><option value="ingreso">Ingreso</option><option value="ajuste">Ajuste de inventario</option></select></Field><Field label="Material"><SearchSelect name="code" options={dataset.inventory.map((item) => ({ value: item.code, label: item.description, meta: item.code }))} searchPlaceholder="Buscar material o código" /></Field><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field><Field label="Detalle"><textarea name="note" required placeholder="Motivo o documento de referencia" /></Field><p className="form-info">Las reservas se generan al crear la orden y las salidas se registran desde el detalle CECO para conservar su trazabilidad.</p></>}
     {drawer.type === "warehouse" && <><Field label="Orden CECO"><input name="ceco" value={drawer.reservation.ceco} readOnly /></Field><Field label="Material"><input name="materialCode" value={drawer.reservation.materialCode} readOnly /></Field><Field label="Cantidad a entregar"><input name="quantity" type="number" min="0.01" max={drawer.reservation.reservedQuantity - drawer.reservation.issuedQuantity} step="0.01" defaultValue={drawer.reservation.reservedQuantity - drawer.reservation.issuedQuantity} required /></Field><p className="form-info">La entrega descuenta físico y comprometido, actualiza la reserva y genera ticket y movimiento en una sola transacción.</p></>}
-    {drawer.type === "order" && <><Field label="Cliente"><select name="customerId" required>{dataset.customers.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}{item.documentNumber ? ` · ${item.documentNumber}` : ""}</option>)}</select><input type="hidden" name="customer" value="" /></Field><Field label="Producto"><select name="bodyTypeId" required>{dataset.bodyTypes.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></Field><div className="form-row"><Field label="Línea"><select name="line" required>{dataset.productionLines.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></Field><Field label="Fecha pactada"><input name="dueDate" type="date" required /></Field></div><p className="form-info">Clientes, productos y líneas se cargan desde sus catálogos. Al guardar, Supabase genera el CECO y reserva la BOM.</p></>}
+    {drawer.type === "order" && <><Field label="Cliente"><SearchSelect name="customerId" required options={dataset.customers.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, meta: item.documentNumber || "Sin documento" }))} searchPlaceholder="Buscar cliente o RUC" /><input type="hidden" name="customer" value="" /></Field><Field label="Producto"><SearchSelect name="bodyTypeId" required options={dataset.bodyTypes.map((item) => ({ value: item.id, label: item.name, meta: item.code }))} searchPlaceholder="Buscar producto" /></Field><div className="form-row"><Field label="Línea"><SearchSelect name="line" required options={dataset.productionLines.filter((item) => item.active !== false).map((item) => ({ value: item.name, label: item.name }))} searchPlaceholder="Buscar línea" /></Field><Field label="Inicio PMP" hint="Inicio programado del plan maestro"><input name="plannedStartDate" type="date" required /></Field><Field label="Fecha pactada"><input name="dueDate" type="date" required /></Field></div><p className="form-info">El inicio PMP establece la línea base del Gantt. Las asignaciones y avances de actividades mostrarán la ejecución real frente al plan.</p></>}
     {drawer.type === "product" && <><div className="form-row"><Field label="Código"><input name="code" defaultValue={drawer.product?.code} required placeholder="PROD-XXX" /></Field><Field label="Familia"><select name="familyId" defaultValue={drawer.product?.familyId || dataset.productFamilies.find((item) => item.name === drawer.product?.family)?.id} required>{dataset.productFamilies.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div><Field label="Nombre del producto"><input name="name" defaultValue={drawer.product?.name} required /></Field><div className="form-row"><Field label="Marca"><select name="brandId" defaultValue={drawer.product?.brandId || dataset.catalogs.brands.find((item) => item.name === "ETRAL")?.id} required>{dataset.catalogs.brands.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Unidad de salida"><select name="outputUnitId" defaultValue={drawer.product?.outputUnitId || dataset.catalogs.units.find((item) => item.symbol === drawer.product?.outputUnit)?.id || "unit-und"} required>{dataset.catalogs.units.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.symbol}</option>)}</select></Field></div><Field label="Días objetivo"><input name="targetDays" type="number" min="1" defaultValue={drawer.product?.targetDays} required /></Field><fieldset className="route-picker"><legend>Ruta de fabricación</legend><p>Marca solo las fases que aplican; se conservará el orden productivo.</p>{byOrder(dataset).map((stage) => <label key={stage.id}><input type="checkbox" name="route" value={stage.id} defaultChecked={drawer.product ? drawer.product.route.includes(stage.id) : true} /><span style={{ "--check-color": stage.color }}>{stage.shortName}</span><b>{stage.name}</b></label>)}</fieldset><p className="form-info">Familias, marcas y unidades se cargan desde sus catálogos maestros.</p></>}
     {drawer.type === "customer" && <><div className="form-row"><Field label="Razón social / nombre"><input name="name" defaultValue={drawer.customer?.name} required /></Field><Field label="RUC / documento"><input name="documentNumber" defaultValue={drawer.customer?.documentNumber} /></Field></div><Field label="Persona de contacto"><input name="contactName" defaultValue={drawer.customer?.contactName} /></Field><div className="form-row"><Field label="Teléfono"><input name="phone" defaultValue={drawer.customer?.phone} /></Field><Field label="Correo"><input name="email" type="email" defaultValue={drawer.customer?.email} /></Field></div>{drawer.customer && <Field label="Estado"><select name="active" defaultValue={String(drawer.customer.active)}><option value="true">Activo</option><option value="false">Inactivo</option></select></Field>}</>}
-    {drawer.type === "activity" && <><Field label="Fase"><select name="stageId" defaultValue={drawer.activity?.stageId}>{byOrder(dataset).map((item) => <option key={item.id} value={item.id}>{item.shortName} · {item.name}</option>)}</select></Field><Field label="Nombre de la actividad"><input name="name" defaultValue={drawer.activity?.name} required /></Field><Field label="Tiempo estándar"><div className="input-suffix"><input name="standardMinutes" type="number" min="1" defaultValue={drawer.activity?.standardMinutes} required /><span>min</span></div></Field>{drawer.activity && <Field label="Estado"><select name="active" defaultValue={String(drawer.activity.active)}><option value="true">Activa</option><option value="false">Inactiva</option></select></Field>}</>}
-    {drawer.type === "bom" && <><Field label="Producto"><select name="bodyTypeId" defaultValue={drawer.productId}>{dataset.bodyTypes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Material"><select name="materialCode">{dataset.inventory.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.description}</option>)}</select></Field><Field label="Fase de consumo"><select name="stageId">{byOrder(dataset).map((item) => <option key={item.id} value={item.id}>{item.shortName} · {item.name}</option>)}</select></Field><div className="form-row"><Field label="Código de pieza"><input name="pieceCode" required /></Field><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field></div><Field label="Descripción"><input name="description" required /></Field><Field label="Longitud (opcional)"><input name="lengthMm" type="number" min="0" /></Field></>}
+    {drawer.type === "activity" && <><Field label="Fase"><SearchSelect name="stageId" defaultValue={drawer.activity?.stageId} options={byOrder(dataset).map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><Field label="Nombre de la actividad"><input name="name" defaultValue={drawer.activity?.name} required /></Field><Field label="Tiempo estándar"><div className="input-suffix"><input name="standardMinutes" type="number" min="1" defaultValue={drawer.activity?.standardMinutes} required /><span>min</span></div></Field>{drawer.activity && <Field label="Estado"><select name="active" defaultValue={String(drawer.activity.active)}><option value="true">Activa</option><option value="false">Inactiva</option></select></Field>}</>}
+    {drawer.type === "bom" && <><Field label="Producto"><SearchSelect name="bodyTypeId" defaultValue={drawer.productId} options={dataset.bodyTypes.map((item) => ({ value: item.id, label: item.name, meta: item.code }))} searchPlaceholder="Buscar producto" /></Field><Field label="Material"><SearchSelect name="materialCode" options={dataset.inventory.map((item) => ({ value: item.code, label: item.description, meta: item.code }))} searchPlaceholder="Buscar material o código" /></Field><Field label="Fase de consumo"><SearchSelect name="stageId" options={byOrder(dataset).map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><div className="form-row"><Field label="Código de pieza"><input name="pieceCode" required /></Field><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field></div><Field label="Descripción"><input name="description" required /></Field><Field label="Longitud (opcional)"><input name="lengthMm" type="number" min="0" /></Field></>}
     {drawer.type === "operation" && <OperationFields drawer={drawer} dataset={dataset} />}
     {drawer.type === "personnel" && <><div className="form-row"><Field label="Código"><input name="employeeCode" required placeholder="ETR-007" /></Field><Field label="Estado"><select name="status"><option value="available">Disponible</option><option value="assigned">Asignado</option><option value="absent">Ausente</option><option value="leave">Permiso</option></select></Field></div><Field label="Nombre completo"><input name="name" required /></Field><div className="form-row"><Field label="Cargo"><input name="role" required placeholder="Ej. Soldador" /></Field><Field label="Turno"><select name="shiftId">{dataset.shifts.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></Field></div><Field label="Especialidad"><input name="specialty" placeholder="Competencia principal" /></Field><div className="form-row"><Field label="Eficiencia estimada"><div className="input-suffix"><input name="efficiency" type="number" min="1" max="150" defaultValue="100" required /><span>%</span></div></Field><Field label="Horas semanales"><input name="weeklyHours" type="number" min="0" max="84" defaultValue="48" required /></Field></div></>}
     {drawer.type === "shift" && <><div className="form-row"><Field label="Código"><input name="code" required placeholder="T3" /></Field><Field label="Nombre"><input name="name" required placeholder="Turno noche" /></Field></div><div className="form-row"><Field label="Hora de inicio"><input name="startTime" type="time" required /></Field><Field label="Hora de fin"><input name="endTime" type="time" required /></Field></div><Field label="Descanso"><div className="input-suffix"><input name="breakMinutes" type="number" min="0" max="240" defaultValue="60" required /><span>min</span></div></Field></>}

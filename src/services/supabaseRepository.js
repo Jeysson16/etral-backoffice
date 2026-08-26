@@ -68,8 +68,15 @@ export const supabaseRepository = {
   async updateOrder(ceco, patch) {
     const customer = patch.customerId ? await supabase.from("customers").select("name").eq("id", patch.customerId).single() : null;
     if (customer?.error) throw customer.error;
-    const { error } = await supabase.from("ceco_orders").update({ customer_id: patch.customerId || null, customer: customer?.data?.name || patch.customer, line: patch.line, due_date: patch.dueDate }).eq("ceco", ceco);
+    const { error } = await supabase.from("ceco_orders").update({ customer_id: patch.customerId || null, customer: customer?.data?.name || patch.customer, line: patch.line, planned_start_date: patch.plannedStartDate || null, due_date: patch.dueDate }).eq("ceco", ceco);
     if (error) throw error;
+    return this.getDataset();
+  },
+  async updateOrderPriorities(entries) {
+    const updates = entries.map((entry) => supabase.from("ceco_orders").update({ priority: Number(entry.priority) }).eq("ceco", entry.ceco));
+    const results = await Promise.all(updates);
+    const failed = results.find((result) => result.error);
+    if (failed) throw failed.error;
     return this.getDataset();
   },
   async updateActivityProgress(ceco, activityId, patch) {
@@ -80,7 +87,7 @@ export const supabaseRepository = {
   async createOrder(payload) {
     const { error } = await supabase.rpc("create_order_with_reservations", {
       p_customer_id: payload.customerId || "", p_customer_name: payload.customer || "",
-      p_body_type_id: payload.bodyTypeId, p_line: payload.line, p_due_date: payload.dueDate
+      p_body_type_id: payload.bodyTypeId, p_line: payload.line, p_planned_start_date: payload.plannedStartDate, p_due_date: payload.dueDate
     });
     if (error) throw error;
     return this.getDataset();
@@ -357,7 +364,7 @@ function mapActivityProgress(row) {
 }
 
 function mapOrder(row) {
-  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, dueDate: row.due_date };
+  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date };
 }
 
 function mapCustomer(row) { return { id: row.id, documentNumber: row.document_number, name: row.name, contactName: row.contact_name, phone: row.phone, email: row.email, active: row.active }; }

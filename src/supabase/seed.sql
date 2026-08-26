@@ -261,6 +261,12 @@ insert into ceco_orders (id,ceco,customer,customer_id,body_type_id,progress,line
 ('order-260060','260060','IVAN CRUZADO','customer-ivan-cruzado','body-mixed-rail',100,'Línea 2','green','stage-delivery','Completado antes de fecha',25,'2026-01-28')
 on conflict (id) do update set customer=excluded.customer,customer_id=excluded.customer_id,body_type_id=excluded.body_type_id,progress=excluded.progress,line=excluded.line,status=excluded.status,stage_id=excluded.stage_id,plant_state=excluded.plant_state,priority=excluded.priority,due_date=excluded.due_date;
 
+update ceco_orders o
+set planned_start_date = o.due_date - greatest(0, p.target_days::int - 1)
+from body_types p
+where p.id = o.body_type_id
+  and o.ceco in ('260240','260250','260260','260270','260210','260230','260220','260200','260100','260070','260060');
+
 insert into order_material_reservations (id,ceco,bom_item_id,stage_id,material_code,required_quantity,reserved_quantity,issued_quantity,consumed_quantity,status) values
 ('reservation-260240-bom-1','260240','bom-1','stage-cut','MAT-0043',8,8,8,8,'consumed'),('reservation-260240-bom-2','260240','bom-2','stage-assembly','MAT-0044',16,16,16,14,'issued'),('reservation-260240-bom-3','260240','bom-3','stage-paint','MAT-0042',12,12,6,4,'partial'),('reservation-260240-bom-4','260240','bom-4','stage-prepaint','MAT-0047',3,3,3,3,'consumed'),('reservation-260240-bom-13','260240','bom-13','stage-doors','MAT-0122',6,6,0,0,'reserved'),('reservation-260240-bom-14','260240','bom-14','stage-doors','MAT-0123',9,9,0,0,'reserved'),('reservation-260240-bom-15','260240','bom-15','stage-systems','MAT-0125',13,13,0,0,'reserved'),('reservation-260240-bom-16','260240','bom-16','stage-systems','MAT-0126',240,240,0,0,'reserved'),
 ('reservation-260250-bom-21','260250','bom-21','stage-cut','MAT-0044',14,14,14,14,'consumed'),('reservation-260250-bom-22','260250','bom-22','stage-assembly','MAT-0121',1,1,1,1,'consumed'),('reservation-260250-bom-23','260250','bom-23','stage-paint','MAT-0102',2,2,0,0,'reserved'),

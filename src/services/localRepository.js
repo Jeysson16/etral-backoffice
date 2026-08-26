@@ -102,6 +102,16 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async updateOrderPriorities(entries) {
+    const dataset = load();
+    entries.forEach((entry) => {
+      const order = dataset.orders.find((item) => item.ceco === entry.ceco);
+      if (!order) throw new Error(`CECO ${entry.ceco} no encontrado`);
+      order.priority = Number(entry.priority);
+    });
+    save(dataset);
+    return dataset;
+  },
   async updateActivityProgress(ceco, activityId, patch) {
     const dataset = load();
     dataset.activityProgress = dataset.activityProgress || [];

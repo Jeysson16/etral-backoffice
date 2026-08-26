@@ -37,7 +37,11 @@ def evaluate_mrp(snapshot: FactorySnapshot, priority_overrides: dict[str, int] |
 
     ordered = sorted(
         (order for order in snapshot.orders if order.progress < 100),
-        key=lambda order: (priority_overrides.get(order.ceco, order.priority), order.ceco),
+        key=lambda order: (
+            0 if order.ceco in priority_overrides else 1,
+            priority_overrides.get(order.ceco, order.priority),
+            order.ceco,
+        ),
     )
     allocations, blocked = [], []
     for order in ordered:
@@ -115,7 +119,11 @@ def simulate(input_data: SimulationInput) -> dict:
 
     # Ordenar por prioridades especificas
     if input_data.priority_overrides:
-        active.sort(key=lambda order: (input_data.priority_overrides.get(order.ceco, order.priority), order.ceco))
+        active.sort(key=lambda order: (
+            0 if order.ceco in input_data.priority_overrides else 1,
+            input_data.priority_overrides.get(order.ceco, order.priority),
+            order.ceco,
+        ))
 
     active_personnel = [person for person in snapshot.personnel if person.status not in ("inactive",)]
     available_personnel = [person for person in active_personnel if person.status not in ("absent", "leave")]
