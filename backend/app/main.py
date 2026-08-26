@@ -13,7 +13,15 @@ from .services import evaluate_mrp, generate_ceco, simulate_comparison
 
 app = FastAPI(title="ETRAL Digital Twin API", version="0.1.0")
 allowed_origins = os.getenv("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(",")
-app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "Authorization"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    # Vite puede elegir otro puerto si el 5173 ya está ocupado. Este patrón
+    # solo habilita orígenes locales; la publicación usa el mismo dominio.
+    allow_origin_regex=r"^http://(127\.0\.0\.1|localhost):\d+$",
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 
 @lru_cache

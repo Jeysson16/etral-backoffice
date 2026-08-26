@@ -10,8 +10,14 @@ export const supabaseRepository = {
       throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
     }
     const requiredTables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands", "product_families", "production_lines"];
-    const optionalTables = ["customers", "order_material_reservations", "work_shifts", "personnel", "equipment", "work_calendar", "resource_assignments", "operational_incidents"];
-    const tables = [...requiredTables, ...optionalTables];
+    // La base actual puede no tener el módulo de recursos avanzados. No se
+    // consulta ni se reemplaza con datos ficticios salvo que el proyecto lo
+    // habilite explícitamente después de crear esas tablas.
+    const optionalTables = ["customers", "order_material_reservations", "work_shifts"];
+    const advancedResourceTables = import.meta.env.VITE_ENABLE_ADVANCED_RESOURCES === "true"
+      ? ["personnel", "equipment", "work_calendar", "resource_assignments", "operational_incidents"]
+      : [];
+    const tables = [...requiredTables, ...optionalTables, ...advancedResourceTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
     const failed = results.slice(0, requiredTables.length).find((result) => result.error);
     if (failed) throw failed.error;
@@ -38,11 +44,11 @@ export const supabaseRepository = {
       productFamilies: rows.product_families,
       productionLines: rows.production_lines,
       shifts: rows.work_shifts.map(mapShift),
-      personnel: rows.personnel.map(mapPerson),
-      equipment: rows.equipment.map(mapEquipment),
-      workCalendar: rows.work_calendar.map(mapCalendarDay),
-      assignments: rows.resource_assignments.map(mapAssignment),
-      incidents: rows.operational_incidents.map(mapIncident)
+      personnel: (rows.personnel ?? []).map(mapPerson),
+      equipment: (rows.equipment ?? []).map(mapEquipment),
+      workCalendar: (rows.work_calendar ?? []).map(mapCalendarDay),
+      assignments: (rows.resource_assignments ?? []).map(mapAssignment),
+      incidents: (rows.operational_incidents ?? []).map(mapIncident)
     };
   },
   async saveFlowStages(flowStages) {
