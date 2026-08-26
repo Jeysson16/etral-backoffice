@@ -13,7 +13,7 @@ npm install
 npm run dev:simple
 ```
 
-`dev:mocks` utiliza el repositorio local. `dev:simple` utiliza Supabase y ejecuta la simulación en el frontend con el motor JS. `dev:python` utiliza Supabase y delega el gemelo digital al backend Python mediante `VITE_TWIN_API_URL`.
+`dev:mocks` utiliza el repositorio local. `dev:simple` usa Supabase y el motor JS para pruebas rápidas. La publicación usa el motor Python: la interfaz recibe el snapshot autorizado desde Supabase y el API Python ejecuta la proyección sin credenciales administrativas.
 
 ## Modelo funcional
 
@@ -54,7 +54,7 @@ Para instalar solo el esquema:
 powershell -ExecutionPolicy Bypass -File scripts/setup-supabase.ps1 -SkipSeed
 ```
 
-También puedes ejecutar manualmente esos SQL desde Supabase SQL Editor respetando el mismo orden. Las políticas incluidas permiten acceso `anon` para la demostración; deben restringirse por usuario/rol antes de producción.
+También puedes ejecutar manualmente esos SQL desde Supabase SQL Editor respetando el mismo orden. La aplicación publicada exige una sesión de Supabase Auth: la clave pública puede estar en el navegador, pero `anon` no tiene permisos sobre los datos operativos. Crea previamente las cuentas de los usuarios autorizados en **Authentication → Users**.
 
 3. Para la versión simple, inicia solo el frontend. Esta versión sirve para validar flujos, data, selectores y toma de decisiones operativa sin depender de Python:
 
@@ -73,7 +73,28 @@ python -m uvicorn app.main:app --reload --port 8000
 npm run dev:python
 ```
 
-No incluyas `SUPABASE_DB_URL`, la clave `service_role` ni la contraseña de base de datos en variables `VITE_*`: esas se exponen en el navegador. La publishable key es la única clave de Supabase que debe estar en el frontend. Las políticas actuales son deliberadamente abiertas para la demostración; antes de producción hay que incorporar autenticación y políticas por rol.
+No incluyas `SUPABASE_DB_URL`, la clave `service_role` ni la contraseña de base de datos en variables `VITE_*`: esas se exponen en el navegador. La publishable key es la única clave de Supabase que debe estar en el frontend. La migración `20260826024014_secure_authenticated_access.sql` elimina el acceso anónimo a los datos operativos y exige Supabase Auth.
+
+## Publicar el gemelo Python en Azure App Service (F1)
+
+El gemelo no se publica como sitio estático: un único **Azure App Service Linux** ejecuta FastAPI y también entrega la interfaz React ya compilada. Así el navegador usa el API Python en el mismo dominio y no hay un proceso Python en Static Web Apps.
+
+1. Aplica en Supabase la migración de seguridad indicada arriba y verifica que una cuenta autorizada pueda iniciar sesión.
+2. En Azure crea una **Web App** con runtime **Python 3.11**, sistema Linux y plan **Free F1**. En *Configuration → General settings*, define el comando de inicio:
+
+   ```text
+   gunicorn --bind=0.0.0.0 --timeout 120 -k uvicorn.workers.UvicornWorker app.main:app
+   ```
+
+3. En *Configuration → Application settings*, agrega `SUPABASE_URL` con la URL pública del proyecto. No se agrega `service_role`, contraseña ni URL directa de PostgreSQL.
+4. En GitHub → **Settings → Secrets and variables → Actions**, agrega:
+
+   - `AZURE_WEBAPP_PUBLISH_PROFILE`: perfil de publicación descargado desde Azure.
+   - `VITE_SUPABASE_URL`: URL pública del proyecto Supabase.
+   - `VITE_SUPABASE_PUBLISHABLE_KEY`: clave pública/publishable de Supabase.
+   - Variable de repositorio `AZURE_WEBAPP_NAME`: nombre de la Web App creada.
+
+Nunca agregues `SUPABASE_DB_URL`, `service_role`, claves secretas ni contraseñas. El flujo [azure-app-service.yml](.github/workflows/azure-app-service.yml) compila React, la copia dentro de `app/static` y despliega el paquete FastAPI. En producción exige un JWT de Supabase en cada endpoint operativo; el API valida su firma contra las claves públicas de Supabase.
 
 ## Verificación
 

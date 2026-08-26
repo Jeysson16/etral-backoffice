@@ -5,6 +5,7 @@ import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { availableDateRange, buildExcelReport, calculateProductivityReport } from "./lib/productivity.js";
 import { getRepository } from "./services/repository.js";
 import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
+import { supabase } from "./supabase/client.js";
 import ResourcesView from "./components/ResourcesView.jsx";
 import etralLogo from "../assets/etral-logo.png";
 
@@ -118,9 +119,29 @@ export default function App() {
   const [twin, setTwin] = useState(null);
   const [simulationTime, setSimulationTime] = useState("Escenario inicial");
   const [dataReady, setDataReady] = useState(false);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const repo = useMemo(() => getRepository(), []);
 
   useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return undefined;
+    }
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (sessionError) setError(sessionError.message);
+      setSession(data.session ?? null);
+      setAuthLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (supabase && !session) return undefined;
     repo.getDataset()
       .then((loaded) => {
         const normalized = normalizeDataset(loaded);
@@ -140,7 +161,7 @@ export default function App() {
         setDataReady(true);
       }
     });
-  }, [repo]);
+  }, [repo, session]);
 
   const heatmap = useMemo(() => inventoryHeatmap(dataset.inventory, dataset.orders, dataset.bom), [dataset]);
   const mrp = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory), [dataset]);
@@ -324,6 +345,9 @@ export default function App() {
     }
   }
 
+  if (authLoading) return <AccessScreen loading />;
+  if (supabase && !session) return <AccessScreen />;
+
   const page = views[view];
   return (
     <div className="app-shell">
@@ -352,7 +376,7 @@ export default function App() {
         <header className="topbar">
           <button className="menu-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Abrir menú">☰</button>
           <div><p className="breadcrumb">Operaciones / {page.label}</p><h1>{page.label}</h1><p>{page.subtitle}</p></div>
-          <div className="topbar-context"><span>Actualizado ahora</span><strong>Planta ETRAL</strong></div>
+          <div className="topbar-context"><span>Actualizado ahora</span><strong>Planta ETRAL</strong>{supabase && <button className="text-button" onClick={() => supabase.auth.signOut()}>Cerrar sesión</button>}</div>
         </header>
         {error && <div className="message error"><strong>No se pudo sincronizar.</strong> {error}</div>}
         {notice && <div className="toast">✓ {notice}</div>}
@@ -363,13 +387,30 @@ export default function App() {
           {view === "orders" && <OrdersView dataset={dataset} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), "Datos de la orden actualizados.")} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
           {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
-          {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Opción actualizada.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada.")} />}
           {view === "resources" && <ResourcesView dataset={dataset} openDrawer={setDrawer} setView={setView} />}
         </div>
       </main>
       <RecordDrawer drawer={drawer} dataset={dataset} onClose={() => setDrawer(null)} onSubmit={submitDrawer} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Opción actualizada.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada.")} />
     </div>
   );
+}
+
+function AccessScreen({ loading = false }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) setError("No fue posible iniciar sesión. Verifica tus credenciales.");
+    setSubmitting(false);
+  }
+
+  return <main className="access-screen"><section className="access-card"><div className="brand-mark"><span>ET</span></div><p className="eyebrow">Acceso protegido</p><h1>Gemelo digital ETRAL</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración de ETRAL el alta de tu cuenta.</small></>}</section></main>;
 }
 
 function PageActions({ children }) {
@@ -671,29 +712,6 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
     <aside className="scenario-panel panel">
       <SectionHeader eyebrow="Escenario" title="Configurar simulación" detail="Los cambios no modifican inventario ni órdenes reales." />
       
-      <div className={`twin-feed ${dataReady ? "ready" : "loading"}`}>
-        <span>{dataReady ? "✓" : "…"}</span>
-        <div>
-          <strong>{dataReady ? "Gemelo Alimentado y Calibrado" : "Cargando alimentación del gemelo"}</strong>
-          <small>{dataset.flowStages.length} fases · {dataset.orders.length} CECO · {dataset.inventory.length} materiales · {dataset.personnel.length} personas</small>
-        </div>
-      </div>
-
-      {calibInfo && (
-        <div className="calibration-card">
-          <div className="calib-header">
-            <strong>Calibración del Gemelo Digital</strong>
-            <span className="calib-score" title="Confiabilidad operativa entrenada con datos de Supabase">{calibInfo.reliabilityScore}% Confiable</span>
-          </div>
-          <p>Entrenado con {calibInfo.sampleSizeOperations} partes diarios y {calibInfo.sampleSizeProgress} avances registrados.</p>
-          <div className="calib-metrics">
-            <div><small>Bias Tiempos Estándar</small><strong>{calibInfo.standardTimeBias}x</strong></div>
-            <div><small>Variabilidad σ</small><strong>±{calibInfo.workerInconsistencyStdDev}%</strong></div>
-          </div>
-          <Button variant="secondary" onClick={handleCalibrate}>⚡ Recalibrar con Supabase</Button>
-        </div>
-      )}
-
       <div className="form-stack">
         <Field label="Horizonte de planificación" hint="Período sobre el que se distribuye la capacidad.">
           <select value={draft.horizonDays} onChange={(e) => update("horizonDays", Number(e.target.value))}>
@@ -884,6 +902,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
             </div>
           )}
 
+          {tab === "calibration" && !result.calibration && <EmptyState text="No hay suficientes registros históricos comparables para recalibrar el modelo sin suposiciones." />}
           {tab === "calibration" && result.calibration && (
             <div className="calibration-details">
               <SectionHeader eyebrow="Modelo entrenado" title="Parámetros de calibración desde Supabase" detail="Resultados del entrenamiento con la historia operativa registrada en la base de datos." />
@@ -929,11 +948,11 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
 
 
 function CapacityChart({ rows, bottleneck }) {
-  return <div className="chart-block"><div className="chart-summary"><div><span>Mayor carga proyectada</span><strong>{bottleneck}</strong></div><p>La carga se calcula con los CECO que aún recorren cada fase y la capacidad disponible del período.</p></div><div className="capacity-list">{rows.map((row) => <article key={row.stageId}><div className="capacity-label"><strong>{row.name}</strong><span>{row.demandHours} h requeridas / {row.availableHours} h disponibles · {row.period}</span></div><div className="bar-track"><span style={{ width: `${Math.min(100, row.utilization)}%`, background: row.utilization > 100 ? "#dc2626" : row.color }} /></div><b className={row.utilization > 100 ? "over" : ""}>{row.utilization}%</b>{row.orders.length > 0 && <small>CECO: {row.orders.map((item) => `${item.ceco} (${item.hours} h)`).join(" · ")}</small>}</article>)}</div></div>;
+  return <div className="chart-block"><div className="chart-summary"><div><span>Mayor carga proyectada</span><strong>{bottleneck}</strong></div><p>La carga se calcula con los CECO que aún recorren cada fase y la capacidad disponible del período.</p></div><div className="capacity-list">{rows.map((row) => <article key={row.stageId}><div className="capacity-label"><strong>{row.name}</strong><span>{row.demandHours} h requeridas / {row.availableHours} h disponibles · {row.period}</span></div><div className="bar-track"><span style={{ width: `${Math.min(100, row.utilization)}%`, background: row.utilization > 100 ? "#dc2626" : row.color }} /></div><b className={row.utilization > 100 ? "over" : ""}>{row.utilization}%</b>{(row.orders ?? []).length > 0 && <small>CECO: {(row.orders ?? []).map((item) => `${item.ceco} (${item.hours} h)`).join(" · ")}</small>}</article>)}</div></div>;
 }
 
 function MaterialSimulation({ rows }) {
-  return <div className="table-scroll"><table><thead><tr><th>Material</th><th>Demanda real</th><th>Físico / mínimo</th><th>Consumo proyectado</th><th>Riesgo y reposición</th><th>Origen</th></tr></thead><tbody>{rows.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.demand?.records ? <><strong>{item.demand.day} / {item.demand.week} / {item.demand.month}</strong><small>día / 7 días / 30 días · salidas y consumos registrados</small></> : <small>Sin movimientos de salida o consumo fechados.</small>}</td><td><strong>{item.physical} {item.unit}</strong><small>Disponible {item.available} · mínimo {item.safety}</small></td><td><strong>{item.required} {item.unit}</strong><small>Saldo al cierre: {item.projected} {item.unit}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span>{item.firstRisk && <small>{item.firstRisk.date} · {item.suggestedReplenishment == null ? "Falta plazo de abastecimiento" : `reponer ${item.suggestedReplenishment} ${item.unit}`}</small>}</td><td>{item.requirements.length ? <small>{item.requirements.map((need) => `CECO ${need.ceco}: ${need.quantity} en ${need.stage}`).join(" · ")}</small> : <small>Sin consumo pendiente identificado en BOM/ruta.</small>}</td></tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr><th>Material</th><th>Demanda real</th><th>Físico / mínimo</th><th>Consumo proyectado</th><th>Riesgo y reposición</th><th>Origen</th></tr></thead><tbody>{rows.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.demand?.records ? <><strong>{item.demand.day} / {item.demand.week} / {item.demand.month}</strong><small>día / 7 días / 30 días · salidas y consumos registrados</small></> : <small>Sin movimientos de salida o consumo fechados.</small>}</td><td><strong>{item.physical} {item.unit}</strong><small>Disponible {item.available} · mínimo {item.safety}</small></td><td><strong>{item.required} {item.unit}</strong><small>Saldo al cierre: {item.projected} {item.unit}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span>{item.firstRisk && <small>{item.firstRisk.date} · {item.suggestedReplenishment == null ? "Falta plazo de abastecimiento" : `reponer ${item.suggestedReplenishment} ${item.unit}`}</small>}</td><td>{(item.requirements ?? []).length ? <small>{(item.requirements ?? []).map((need) => `CECO ${need.ceco}: ${need.quantity} en ${need.stage}`).join(" · ")}</small> : <small>Sin consumo pendiente identificado en BOM/ruta.</small>}</td></tr>)}</tbody></table></div>;
 }
 
 function DemandSimulation({ insights }) {

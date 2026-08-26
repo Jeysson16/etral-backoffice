@@ -35,6 +35,28 @@ class ProductionOrder(BaseModel):
     due_date: date | None = None
 
 
+class BodyType(BaseModel):
+    id: str
+    name: str | None = None
+    route: list[str] = Field(default_factory=list)
+    target_days: Decimal | None = Field(default=None, gt=0)
+
+
+class MaterialReservation(BaseModel):
+    ceco: str
+    material_code: str
+    stage_id: str
+    required_quantity: Decimal = Field(ge=0)
+    consumed_quantity: Decimal = Field(default=0, ge=0)
+
+
+class InventoryMovement(BaseModel):
+    code: str
+    type: str
+    quantity: Decimal = Field(ge=0)
+    timestamp: str | None = None
+
+
 class Stage(BaseModel):
     id: str
     name: str
@@ -96,6 +118,9 @@ class FactorySnapshot(BaseModel):
     orders: list[ProductionOrder]
     stages: list[Stage]
     routes: dict[str, list[str]]
+    body_types: list[BodyType] = Field(default_factory=list)
+    order_material_reservations: list[MaterialReservation] = Field(default_factory=list)
+    inventory_movements: list[InventoryMovement] = Field(default_factory=list)
     personnel: list[PersonnelResource] = Field(default_factory=list)
     shifts: list[ShiftResource] = Field(default_factory=list)
     equipment: list[EquipmentResource] = Field(default_factory=list)
@@ -137,4 +162,3 @@ class SimulationRun(BaseModel):
 
 
 OrderState = Literal["ready", "blocked"]
-

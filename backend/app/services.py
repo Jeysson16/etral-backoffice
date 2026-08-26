@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_CEILING
 from math import sqrt
 
@@ -139,6 +140,8 @@ def simulate(input_data: SimulationInput) -> dict:
     )
 
     hours_per_stage: dict[str, Decimal] = defaultdict(lambda: Decimal(0))
+    order_loads: dict[str, list[dict]] = defaultdict(list)
+    today = date.today()
     for order in active:
         route = snapshot.routes.get(order.body_type_id, [])
         current_index = route.index(order.stage_id) if order.stage_id in route else 0
@@ -158,8 +161,18 @@ def simulate(input_data: SimulationInput) -> dict:
         for stage_id in route[current_index:]:
             stage = next((item for item in snapshot.stages if item.id == stage_id), None)
             if stage:
-                std_hours = stage.standard_hours * Decimal("1.05") # bias factor
-                hours_per_stage[stage_id] += std_hours * (input_data.demand_percent / Decimal(100)) * order_complexity * order_worker_factor
+                # Sin tiempos ejecutados comparables en el snapshot, se respeta el estándar
+                # registrado y no se aplica un sesgo inventado.
+                std_hours = stage.standard_hours
+                hours = std_hours * (input_data.demand_percent / Decimal(100)) * order_complexity * order_worker_factor
+                hours_per_stage[stage_id] += hours
+                product = next((item for item in snapshot.body_types if item.id == order.body_type_id), None)
+                order_loads[stage_id].append({
+                    "ceco": order.ceco,
+                    "product": product.name if product and product.name else order.body_type_id,
+                    "hours": round(float(hours), 2),
+                    "planned_date": (today + timedelta(days=int((route.index(stage_id) / max(1, len(route))) * input_data.horizon_days))).isoformat(),
+                })
 
     capacity = []
     for stage in sorted(snapshot.stages, key=lambda item: item.sequence):
@@ -181,6 +194,7 @@ def simulate(input_data: SimulationInput) -> dict:
             "available_hours": round(float(available), 2), "utilization": round(float(utilization), 2),
             "bottleneck": utilization > 100, "personnel_factor": round(personnel_factor, 3),
             "equipment_factor": round(equipment_factor, 3), "incident_hours": round(incident_hours, 2),
+            "orders": order_loads[stage.id],
         })
 
     bottleneck = max(capacity, key=lambda item: item["utilization"], default=None)
@@ -198,27 +212,111 @@ def simulate(input_data: SimulationInput) -> dict:
 
 
 
-def _material_projection(snapshot: FactorySnapshot) -> list[dict]:
-    requirements: dict[str, Decimal] = defaultdict(lambda: Decimal(0))
-    active_product_ids = [order.body_type_id for order in snapshot.orders if order.progress < 100]
-    for item in snapshot.bom:
-        requirements[item.material_code] += item.quantity * active_product_ids.count(item.body_type_id)
+def _parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00").replace(" ", "T"))
+    except ValueError:
+        return None
+
+
+def _material_projection(snapshot: FactorySnapshot, horizon_days: int) -> list[dict]:
+    start = date.today()
+    requirements: dict[str, list[dict]] = defaultdict(list)
+    active_orders = [order for order in snapshot.orders if order.progress < 100]
+    stage_names = {stage.id: stage.name for stage in snapshot.stages}
+    product_names = {item.id: item.name or item.id for item in snapshot.body_types}
+    for order in active_orders:
+        route = snapshot.routes.get(order.body_type_id, [])
+        current_index = route.index(order.stage_id) if order.stage_id in route else 0
+        pending = route[current_index:]
+        reservations = [item for item in snapshot.order_material_reservations if item.ceco == order.ceco]
+        for item in snapshot.bom:
+            if item.body_type_id != order.body_type_id or item.stage_id not in pending:
+                continue
+            reservation = next((row for row in reservations if row.material_code == item.material_code and row.stage_id == item.stage_id), None)
+            required = max(Decimal(0), reservation.required_quantity - reservation.consumed_quantity) if reservation else item.quantity
+            if not required:
+                continue
+            position = pending.index(item.stage_id)
+            requirements[item.material_code].append({
+                "material_code": item.material_code, "quantity": float(required), "ceco": order.ceco,
+                "product": product_names.get(order.body_type_id, order.body_type_id),
+                "stage": stage_names.get(item.stage_id, item.stage_id),
+                "date": (start + timedelta(days=int((position / max(1, len(pending))) * horizon_days))).isoformat(),
+                "source": "reserva pendiente" if reservation else "BOM pendiente sin reserva",
+            })
+
+    demand = {material.code: {"day": 0.0, "week": 0.0, "month": 0.0, "records": 0} for material in snapshot.materials}
+    start_time = datetime.combine(start, datetime.min.time())
+    for movement in snapshot.inventory_movements:
+        occurred = _parse_timestamp(movement.timestamp)
+        if movement.type not in ("salida", "consumo") or occurred is None or movement.code not in demand:
+            continue
+        age = (start_time - occurred.replace(tzinfo=None)).days
+        if age < 0:
+            continue
+        if age < 1:
+            demand[movement.code]["day"] += float(movement.quantity)
+        if age < 7:
+            demand[movement.code]["week"] += float(movement.quantity)
+        if age < 30:
+            demand[movement.code]["month"] += float(movement.quantity)
+        demand[movement.code]["records"] += 1
     rows = []
     for material in snapshot.materials:
-        required = requirements[material.code]
-        projected = material.physical - required
+        needs = sorted(requirements[material.code], key=lambda item: item["date"])
+        balance = material.physical
+        minimum = safety_stock(material)
+        first_risk = None
+        for need in needs:
+            balance -= Decimal(str(need["quantity"]))
+            if first_risk is None and balance < minimum:
+                first_risk = {"date": need["date"], "balance": float(balance), "type": "stockout" if balance < 0 else "below_safety"}
+        required = sum((Decimal(str(item["quantity"])) for item in needs), Decimal(0))
+        projected = balance
         minimum = safety_stock(material)
         tone = "danger" if projected < 0 else "warning" if projected < minimum else "ok"
+        lead_time = material.lead_time_days
+        demand_during_lead = sum((Decimal(str(item["quantity"])) for item in needs if lead_time is not None and date.fromisoformat(item["date"]) <= start + timedelta(days=int(lead_time))), Decimal(0))
+        replenishment = max(Decimal(0), minimum + demand_during_lead - material.physical) if first_risk and lead_time is not None else None
         rows.append({
             "code": material.code, "description": material.description, "unit": material.unit,
             "physical": float(material.physical), "required": float(required),
-            "projected": float(projected), "safety": float(minimum), "tone": tone,
+            "available": float(material.physical - material.committed), "projected": float(projected), "safety": float(minimum), "tone": tone,
+            "requirements": needs, "firstRisk": first_risk, "demand": demand[material.code],
+            "leadTimeDays": float(lead_time) if lead_time is not None else None,
+            "demandDuringLeadTime": float(demand_during_lead),
+            "suggestedReplenishment": float(replenishment) if replenishment is not None else None,
         })
     return rows
 
 
+def _demand_insights(snapshot: FactorySnapshot) -> dict:
+    completed = [order for order in snapshot.orders if order.progress >= 100 and order.due_date]
+    if not completed:
+        return {"historical": {}, "products": {"available": False, "rows": []}}
+    cutoff = max(order.due_date for order in completed)
+    names = {item.id: item.name or item.id for item in snapshot.body_types}
+    grouped: dict[str, dict] = {}
+    for order in completed:
+        row = grouped.setdefault(order.body_type_id, {"productId": order.body_type_id, "product": names.get(order.body_type_id, order.body_type_id), "completed": 0, "recent": 0, "previous": 0})
+        row["completed"] += 1
+        age = (cutoff - order.due_date).days
+        if age <= 30:
+            row["recent"] += 1
+        elif age <= 60:
+            row["previous"] += 1
+    rows = []
+    for row in grouped.values():
+        row["trend"] = "estable" if row["recent"] == row["previous"] else "alza" if row["recent"] > row["previous"] else "baja"
+        rows.append(row)
+    return {"historical": {}, "products": {"available": True, "reference": f"Pedidos cerrados con fecha pactada hasta {cutoff.isoformat()}. No se infiere una venta si falta fecha real de entrega.", "rows": sorted(rows, key=lambda item: item["completed"], reverse=True)}}
+
+
 def _present_scenario(raw: dict, snapshot: FactorySnapshot, horizon_days: int) -> dict:
-    materials = _material_projection(snapshot)
+    materials = _material_projection(snapshot, horizon_days)
     active = raw["orders"]["active"]
     throughput = raw["orders"]["estimated_throughput"]
     completion_ratio = throughput / active if active else 1
@@ -234,8 +332,12 @@ def _present_scenario(raw: dict, snapshot: FactorySnapshot, horizon_days: int) -
             "stageId": item["stage_id"], "name": item["name"], "color": next(stage.color for stage in snapshot.stages if stage.id == item["stage_id"]),
             "demandHours": item["required_hours"], "availableHours": item["available_hours"],
             "utilization": item["utilization"], "overloadHours": round(max(0, item["required_hours"] - item["available_hours"]), 2),
+            "orders": item["orders"], "incidentHours": item["incident_hours"], "equipmentFactor": item["equipment_factor"],
+            "period": f"{date.today().isoformat()} al {(date.today() + timedelta(days=horizon_days - 1)).isoformat()}",
         } for item in raw["stage_capacity"]],
         "materials": materials,
+        "period": f"{date.today().isoformat()} al {(date.today() + timedelta(days=horizon_days - 1)).isoformat()}",
+        "demandInsights": _demand_insights(snapshot),
     }
 
 
@@ -259,15 +361,36 @@ def simulate_comparison(input_data: SimulationInput) -> dict:
         materials = ", ".join(item["material_code"] for item in entry["missing_materials"])
         notifications.append({"id": f"stock-{entry['ceco']}", "category": "Inventario", "severity": "critical",
                               "title": f"CECO {entry['ceco']} detenido por falta de material", "value": "Bloqueado",
-                              "equation": "Reserva MRP por prioridad respetando stock de seguridad.",
-                              "detail": f"Materiales que impiden liberar la orden: {materials}.", "affected": [entry["ceco"]]})
+                              "situation": f"La orden no puede reservar todos los materiales necesarios para continuar.",
+                              "period": f"Dentro del horizonte de {input_data.horizon_days} días.",
+                              "reason": f"La reserva MRP por prioridad no alcanza el stock de seguridad para: {materials}.",
+                              "recommendedAction": "Reponer los materiales identificados o reprogramar el CECO hasta que la reserva sea viable.",
+                              "calculation": "Reserva MRP por prioridad respetando stock de seguridad.", "affected": [f"CECO {entry['ceco']}"]})
     for capacity in scenario["stageCapacity"]:
         if capacity["utilization"] >= 85:
+            affected = [f"CECO {order['ceco']} · {order['product']} ({order['hours']} h)" for order in capacity["orders"]]
             notifications.append({"id": f"capacity-{capacity['stageId']}", "category": "Capacidad",
                                   "severity": "critical" if capacity["utilization"] > 100 else "warning",
                                   "title": f"Cuello de botella en {capacity['name']}" if capacity["utilization"] > 100 else f"{capacity['name']} cerca de su capacidad",
-                                  "value": f"{capacity['utilization']}%", "equation": "Utilización = horas requeridas / horas disponibles × 100.",
-                                  "detail": f"Sobrecarga de {capacity['overloadHours']} h dentro del horizonte.", "affected": []})
+                                  "value": f"{capacity['utilization']}%", "situation": f"{capacity['overloadHours']} h de sobrecarga." if capacity["overloadHours"] else "La fase conserva menos de 15% de holgura.",
+                                  "period": capacity["period"],
+                                  "reason": f"{capacity['demandHours']} h requeridas frente a {capacity['availableHours']} h disponibles" + (f"; {capacity['incidentHours']} h de incidencias abiertas reducen la capacidad" if capacity["incidentHours"] else "") + ("; el estado del equipo reduce la disponibilidad" if capacity.get("equipmentFactor", 1) < 1 else "") + ".",
+                                  "recommendedAction": f"Reasignar o ampliar al menos {capacity['overloadHours']} h en {capacity['name']}, o desplazar los CECO de menor prioridad fuera del período." if capacity["overloadHours"] else f"Confirmar disponibilidad antes de liberar más trabajo a {capacity['name']}.",
+                                  "calculation": f"{capacity['demandHours']} h / {capacity['availableHours']} h = {capacity['utilization']}%", "affected": affected})
+    for material in scenario["materials"]:
+        risk = material.get("firstRisk")
+        if not risk:
+            continue
+        affected = [f"CECO {need['ceco']} · {need['product']} · {need['stage']}: {need['quantity']} {material['unit']} ({need['source']})" for need in material["requirements"]]
+        stockout = risk["type"] == "stockout"
+        notifications.append({"id": f"projection-{material['code']}", "category": "Inventario", "severity": "critical" if stockout else "warning",
+                              "title": f"Quiebre proyectado de {material['code']}" if stockout else f"{material['code']} bajo stock de seguridad",
+                              "value": "Quiebre" if stockout else "Bajo mínimo",
+                              "situation": f"El saldo proyectado llega a {risk['balance']} {material['unit']}" + (f", por debajo del mínimo de {material['safety']} {material['unit']}." if not stockout else "."),
+                              "period": f"Riesgo estimado: {risk['date']}",
+                              "reason": f"{material['required']} {material['unit']} pendientes de consumir en CECO abiertos; el físico actual es {material['physical']} {material['unit']}.",
+                              "recommendedAction": f"Solicitar {material['suggestedReplenishment']} {material['unit']} como mínimo; cubre la demanda durante {material['leadTimeDays']} días de abastecimiento y recupera el stock de seguridad." if material["suggestedReplenishment"] is not None else "Registrar el plazo de abastecimiento para calcular una reposición sugerida.",
+                              "calculation": f"{material['physical']} físico − {material['required']} programado = {material['projected']} {material['unit']}; mínimo = {material['safety']}", "affected": affected})
     changes = [
         f"Horizonte: {input_data.horizon_days} días.",
         f"Personal disponible: {input_data.labor_availability}%; {input_data.shifts_per_day} turno(s).",

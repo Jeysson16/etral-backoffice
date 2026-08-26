@@ -1,0 +1,41 @@
+name: Deploy ETRAL Digital Twin (Python) to Azure App Service
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      VITE_DATA_MODE: supabase
+      VITE_TWIN_ENGINE: python
+      VITE_TWIN_API_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Build the React interface for the Python app
+        run: |
+          npm ci
+          npm run build
+      - name: Assemble a single Python deployment package
+        run: |
+          mkdir -p release/app/static
+          cp -R backend/app/. release/app/
+          cp backend/requirements.txt release/requirements.txt
+          cp -R dist/. release/app/static/
+      - name: Deploy FastAPI and its interface
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: release

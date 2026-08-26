@@ -1,6 +1,8 @@
 import { runDigitalTwin } from "../lib/simulator.js";
+import { supabase } from "../supabase/client.js";
 
-const baseUrl = (import.meta.env.VITE_TWIN_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const configuredApiUrl = import.meta.env.VITE_TWIN_API_URL;
+const baseUrl = (configuredApiUrl || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "")).replace(/\/$/, "");
 const twinEngine = import.meta.env.VITE_TWIN_ENGINE || "browser";
 
 export function getTwinEngine() {
@@ -18,6 +20,9 @@ function snapshotFromDataset(dataset) {
     orders: dataset.orders.map((item) => ({ ceco: item.ceco, body_type_id: item.bodyTypeId, stage_id: item.stageId, priority: Number(item.priority), progress: Number(item.progress), due_date: item.dueDate || null })),
     stages: dataset.flowStages.map((item, index) => ({ id: item.id, name: item.name, capacity_hours: Number(item.capacityHours), standard_hours: Number(item.standardHours), sequence: index + 1, color: item.color })),
     routes: Object.fromEntries(dataset.bodyTypes.map((item) => [item.id, item.route])),
+    body_types: dataset.bodyTypes.map((item) => ({ id: item.id, name: item.name, route: item.route, target_days: Number(item.targetDays) || null })),
+    order_material_reservations: (dataset.orderMaterialReservations ?? []).map((item) => ({ ceco: item.ceco, material_code: item.materialCode, stage_id: item.stageId, required_quantity: Number(item.requiredQuantity), consumed_quantity: Number(item.consumedQuantity || 0) })),
+    inventory_movements: (dataset.inventoryMovements ?? []).map((item) => ({ code: item.code, type: item.type, quantity: Number(item.quantity), timestamp: item.timestamp || null })),
     personnel: (dataset.personnel ?? []).map((item) => ({ id: item.id, status: item.status, efficiency: Number(item.efficiency), weekly_hours: Number(item.weeklyHours), shift_id: item.shiftId })),
     shifts: (dataset.shifts ?? []).map((item) => ({ id: item.id, start_time: item.startTime, end_time: item.endTime, break_minutes: Number(item.breakMinutes), active: item.active })),
     equipment: (dataset.equipment ?? []).map((item) => ({ id: item.id, stage_id: item.stageId, status: item.status, capacity_hours: Number(item.capacityHours) })),
@@ -28,17 +33,18 @@ function snapshotFromDataset(dataset) {
 }
 
 export async function runTwinSimulation(dataset, draft) {
-  // El navegador conserva la traza completa que llega de Supabase (reservas y
-  // movimientos incluidos). El contrato Python actual no recibe esos campos,
-  // por lo que no puede producir alertas explicables sin inventar información.
   if (twinEngine !== "python") return runDigitalTwin(dataset, draft);
 
   const material_adjustments = Object.fromEntries(
     (draft.materialAdjustments ?? []).map((item) => [item.materialCode, Number(item.stockAdjustment ?? 0)])
   );
-  const priority_overrides = Object.fromEntries((draft.priorityCecos ?? []).map((ceco, index) => [ceco, index + 1]));
+  const priority_overrides = Object.fromEntries((draft.priorityCecos ?? []).map((ceco, index) => [ceco, Number(draft.orderPriorityOverrides?.[ceco] ?? index + 1)]));
+  const { data: { session } = {} } = supabase ? await supabase.auth.getSession() : {};
   const response = await fetch(`${baseUrl}/api/v1/simulations`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST", headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+    },
     body: JSON.stringify({ name: "Simulación desde interfaz", input: {
       snapshot: snapshotFromDataset(dataset), horizon_days: Number(draft.horizonDays),
       labor_availability: Number(draft.laborAvailability), shifts_per_day: Number(draft.shiftsPerDay),
@@ -54,6 +60,6 @@ export async function runTwinSimulation(dataset, draft) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || "No fue posible ejecutar el gemelo digital.");
   }
-  await response.json();
-  return runDigitalTwin(dataset, draft);
+  const payload = await response.json();
+  return payload.result;
 }
