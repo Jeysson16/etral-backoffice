@@ -465,8 +465,10 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .work-card-footer span { color: #8a94a3; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
 .work-card-footer b { overflow: hidden; color: #3c4656; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
-.product-detail-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: flex-end; background: rgba(15,23,42,.52); }
-.product-detail-drawer { width: min(760px, 100%); height: 100%; overflow-y: auto; background: #f4f6f8; box-shadow: -24px 0 60px rgba(15,23,42,.22); }
+.product-detail-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; background: rgba(15,23,42,.52); }
+.product-detail-drawer { width: min(760px, 100%); height: 100dvh; max-height: 100dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: #f4f6f8; box-shadow: -24px 0 60px rgba(15,23,42,.22); }
+.product-detail-backdrop.with-secondary { justify-content: flex-start; }
+.product-detail-backdrop.with-secondary .product-detail-drawer { width: min(760px, calc(100vw - 520px)); }
 .product-detail-drawer > header { position: sticky; top: 0; z-index: 4; min-height: 96px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 19px 24px; background: #111827; color: white; }
 .product-detail-drawer > header h2 { font-size: 22px; }
 .product-detail-drawer > header h2 + span { display: block; margin-top: 4px; color: #b7c1cf; font-size: 10px; }
@@ -624,8 +626,10 @@ pre { margin: 7px 0 0; background: #182233; color: #dbe4f0; padding: 11px; borde
 .integration-note strong { font-size: 10px; color: #155f3a; }
 .integration-note p { color: #527060; font-size: 9px; line-height: 1.5; margin-top: 4px; }
 
-.drawer-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.48); z-index: 80; display: flex; justify-content: flex-end; }
-.drawer { width: min(520px, 100%); height: 100%; background: white; box-shadow: -20px 0 50px rgba(15,23,42,.18); overflow-y: auto; }
+.drawer-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; background: rgba(15,23,42,.48); }
+.drawer { width: min(520px, 100%); height: 100dvh; max-height: 100dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: white; box-shadow: -20px 0 50px rgba(15,23,42,.18); }
+.drawer-backdrop-secondary { z-index: 100; background: transparent; }
+.drawer-secondary { width: min(520px, 100%); }
 .drawer > header { position: sticky; top: 0; z-index: 2; background: white; border-bottom: 1px solid var(--line); padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
 .drawer h2 { font-size: 20px; }
 .drawer header button { border: 0; background: #f1f3f5; width: 32px; height: 32px; border-radius: 8px; color: #596476; font-size: 20px; }
@@ -785,6 +789,11 @@ pre,
   .scenario-panel { position: static; }
 }
 
+@media (max-width: 1100px) {
+  .product-detail-backdrop.with-secondary .product-detail-drawer { width: 100%; }
+  .drawer-backdrop-secondary { background: rgba(15,23,42,.24); }
+}
+
 @media (max-width: 600px) {
   .topbar { min-height: 90px; padding: 15px; }
   .page-content { padding: 18px 14px 36px; }
@@ -803,6 +812,7 @@ pre,
   .form-row { grid-template-columns: 1fr; }
   .template-grid { grid-template-columns: 1fr; }
   .drawer { width: 100%; }
+  .product-detail-backdrop.with-secondary .product-detail-drawer { width: 100%; }
   .product-kanban { grid-auto-columns: 86vw; }
   .detail-summary { grid-template-columns: 1fr 1fr; }
   .gantt-summary { grid-template-columns: 1fr 1fr; }

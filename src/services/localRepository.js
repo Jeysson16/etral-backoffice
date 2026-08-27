@@ -5,14 +5,20 @@ const STORAGE_KEY = "etral.production.dataset.v5";
 
 function load() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return structuredClone(initialDataset);
+  if (!raw) {
+    const dataset = structuredClone(initialDataset);
+    recalculateAllOrders(dataset);
+    return dataset;
+  }
   const stored = JSON.parse(raw);
-  return {
+  const dataset = {
     ...structuredClone(initialDataset),
     ...stored,
     stageActivities: stored.stageActivities || structuredClone(initialDataset.stageActivities),
     stageInventory: stored.stageInventory || structuredClone(initialDataset.stageInventory)
   };
+  recalculateAllOrders(dataset);
+  return dataset;
 }
 
 function save(dataset) {
@@ -49,14 +55,27 @@ function recalculateOrder(dataset, ceco) {
   const order = dataset.orders.find((item) => item.ceco === ceco);
   if (!order) return;
   const product = dataset.bodyTypes.find((item) => item.id === order.bodyTypeId);
-  const activities = dataset.stageActivities.filter((item) => product?.route.includes(item.stageId) && item.active !== false);
+  const route = product?.route ?? [];
+  const activities = dataset.stageActivities.filter((item) => route.includes(item.stageId) && item.active !== false);
   const progresses = activities.map((activity) => dataset.activityProgress?.find((item) => item.ceco === ceco && item.activityId === activity.id) || { progress: 0, status: "pending" });
-  order.progress = activities.length ? Math.round((progresses.reduce((sum, item) => sum + Number(item.progress), 0) / activities.length) * 100) / 100 : 0;
+  const stageProgresses = route.map((stageId) => {
+    const stageActivities = activities.filter((activity) => activity.stageId === stageId);
+    if (!stageActivities.length) return 0;
+    return stageActivities.reduce((sum, activity) => {
+      const activityProgress = dataset.activityProgress?.find((item) => item.ceco === ceco && item.activityId === activity.id);
+      return sum + Number(activityProgress?.progress ?? 0);
+    }, 0) / stageActivities.length;
+  });
+  order.progress = stageProgresses.length ? Math.round((stageProgresses.reduce((sum, progress) => sum + progress, 0) / stageProgresses.length) * 100) / 100 : 0;
   const shortage = dataset.orderMaterialReservations?.some((item) => item.ceco === ceco && item.reservedQuantity < item.requiredQuantity);
   const blocked = progresses.some((item) => item.status === "blocked");
   const completed = activities.length > 0 && progresses.every((item) => item.status === "completed");
   order.status = shortage || blocked ? "red" : completed ? "green" : "orange";
   order.plantState = shortage ? "Bloqueado por material" : blocked ? "Actividad bloqueada" : completed ? "Completado" : "En proceso";
+}
+
+function recalculateAllOrders(dataset) {
+  (dataset.orders ?? []).forEach((order) => recalculateOrder(dataset, order.ceco));
 }
 
 export const localRepository = {
