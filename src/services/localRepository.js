@@ -279,6 +279,24 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async refreshOrderReservations(ceco) {
+    const dataset = load();
+    const reservations = (dataset.orderMaterialReservations ?? []).filter((item) => item.ceco === ceco && Number(item.reservedQuantity) < Number(item.requiredQuantity));
+    reservations.forEach((reservation) => {
+      const material = dataset.inventory.find((item) => item.code === reservation.materialCode);
+      const missing = Number(reservation.requiredQuantity) - Number(reservation.reservedQuantity);
+      const available = Math.max(0, Number(material?.physical || 0) - Number(material?.committed || 0));
+      const added = Math.min(missing, available);
+      if (added <= 0 || !material) return;
+      reservation.reservedQuantity = Number(reservation.reservedQuantity) + added;
+      reservation.status = reservation.reservedQuantity >= reservation.requiredQuantity ? "reserved" : "partial";
+      material.committed = Number(material.committed || 0) + added;
+      addMovement(dataset, { type: "reserva", code: reservation.materialCode, ceco, quantity: added, note: "Reserva complementaria tras reposición rápida" });
+    });
+    recalculateOrder(dataset, ceco);
+    save(dataset);
+    return dataset;
+  },
   async createBodyType(payload) {
     const dataset = load();
     const id = `body-${String(payload.code).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;

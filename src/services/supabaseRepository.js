@@ -248,6 +248,11 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async refreshOrderReservations(ceco) {
+    const { error } = await supabase.rpc("refresh_order_material_reservations", { p_ceco: ceco });
+    if (error) throw error;
+    return this.getDataset();
+  },
   async createBodyType(payload) {
     const { error } = await supabase.rpc("save_product_template", { p_id: "", p_code: payload.code, p_family_id: payload.familyId, p_brand_id: payload.brandId, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit_id: payload.outputUnitId, p_route: payload.route });
     if (error) throw error;
