@@ -134,6 +134,9 @@ create table if not exists ceco_activity_progress (
   progress numeric not null default 0 check (progress between 0 and 100),
   started_at timestamptz,
   finished_at timestamptz,
+  planned_start_date date,
+  planned_end_date date,
+  check (planned_start_date is null or planned_end_date is null or planned_start_date <= planned_end_date),
   updated_at timestamptz not null default now(),
   unique (ceco, activity_id)
 );

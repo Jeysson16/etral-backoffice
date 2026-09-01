@@ -71,6 +71,12 @@ function previousRange(start, end) {
   return { start: previousStart, end: previousEnd };
 }
 
+function addUtcDays(value, days) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function calculatePeriod(dataset, start, end) {
   const orders = dataset.orders ?? [];
   const completions = orders.map((order) => ({ order, ...orderCompletion(dataset, order) }));
@@ -169,6 +175,33 @@ export function calculateProductivityReport(dataset, start, end) {
     current: calculatePeriod(dataset, validStart, validEnd),
     previous: calculatePeriod(dataset, previous.start, previous.end)
   };
+}
+
+export function buildIndicatorSeries(dataset, start, end, grouping = "month") {
+  const validStart = dateOnly(start);
+  const validEnd = dateOnly(end);
+  if (!validStart || !validEnd || validStart > validEnd) return [];
+  const buckets = [];
+  let cursor = validStart;
+  while (cursor <= validEnd) {
+    let bucketEnd;
+    if (grouping === "week") {
+      bucketEnd = addUtcDays(cursor, 6);
+    } else {
+      const date = new Date(`${cursor}T12:00:00Z`);
+      bucketEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+    }
+    if (bucketEnd > validEnd) bucketEnd = validEnd;
+    const report = calculateProductivityReport(dataset, cursor, bucketEnd).current;
+    buckets.push({
+      label: grouping === "month"
+        ? new Intl.DateTimeFormat("es-PE", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${cursor}T12:00:00Z`))
+        : `${cursor.slice(5)}–${bucketEnd.slice(5)}`,
+      ...report
+    });
+    cursor = addUtcDays(bucketEnd, 1);
+  }
+  return buckets;
 }
 
 function xmlEscape(value) {

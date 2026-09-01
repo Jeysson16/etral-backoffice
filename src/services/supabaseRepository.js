@@ -90,10 +90,22 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async updateActivitySchedules(ceco, entries) {
+    const updates = entries.map((entry) => supabase.rpc("set_order_activity_schedule", {
+      p_ceco: ceco,
+      p_activity_id: entry.activityId,
+      p_planned_start_date: entry.plannedStartDate,
+      p_planned_end_date: entry.plannedEndDate
+    }));
+    const results = await Promise.all(updates);
+    const failed = results.find((result) => result.error);
+    if (failed) throw failed.error;
+    return this.getDataset();
+  },
   async createOrder(payload) {
     const { error } = await supabase.rpc("create_order_with_reservations", {
       p_customer_id: payload.customerId || "", p_customer_name: payload.customer || "",
-      p_body_type_id: payload.bodyTypeId, p_line: payload.line, p_planned_start_date: payload.plannedStartDate, p_due_date: payload.dueDate
+      p_body_type_id: payload.bodyTypeId, p_line: payload.line, p_planned_start_date: payload.plannedStartDate, p_due_date: payload.dueDate, p_ceco: payload.ceco || null
     });
     if (error) throw error;
     return this.getDataset();
@@ -428,7 +440,7 @@ function mapStageInventory(row) {
 }
 
 function mapActivityProgress(row) {
-  return { id: row.id, ceco: row.ceco, activityId: row.activity_id, status: row.status, progress: Number(row.progress), startedAt: row.started_at ? String(row.started_at).replace("T", " ").slice(0, 16) : null, finishedAt: row.finished_at ? String(row.finished_at).replace("T", " ").slice(0, 16) : null };
+  return { id: row.id, ceco: row.ceco, activityId: row.activity_id, status: row.status, progress: Number(row.progress), startedAt: row.started_at ? String(row.started_at).replace("T", " ").slice(0, 16) : null, finishedAt: row.finished_at ? String(row.finished_at).replace("T", " ").slice(0, 16) : null, plannedStartDate: row.planned_start_date || null, plannedEndDate: row.planned_end_date || null };
 }
 
 function mapOrder(row) {

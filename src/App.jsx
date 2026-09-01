@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { initialDataset } from "./data/seed.js";
-import { evaluateMrp, inventoryHeatmap } from "./lib/mrp.js";
+import { calculateCecoProgress, evaluateMrp, inventoryHeatmap, materialRequirementsByStage } from "./lib/mrp.js";
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { availableDateRange, buildExcelReport, calculateProductivityReport } from "./lib/productivity.js";
+import { exportIndicatorsWorkbook, exportPeriodRecords } from "./lib/indicatorExports.js";
 import { getRepository } from "./services/repository.js";
 import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
 import { downloadCatalogWorkbook, parseCatalogWorkbook } from "./lib/excelCatalogs.js";
+import { nextCecoCode } from "./lib/correlatives.js";
 import { supabase } from "./supabase/client.js";
 import ResourcesView from "./components/ResourcesView.jsx";
 import etralLogo from "../assets/etral-logo.png";
@@ -18,6 +20,7 @@ const views = {
   stages: { label: "Fases y actividades", icon: "⇥", subtitle: "Procesos, actividades e inventario en proceso" },
   inventory: { label: "Inventario", icon: "▦", subtitle: "Materiales, existencias y movimientos de almacén" },
   resources: { label: "Recursos", icon: "◉", subtitle: "Personal, turnos, equipos y restricciones operativas" },
+  indicators: { label: "Indicadores", icon: "↗", subtitle: "Resultados, ecuaciones y registros para análisis de tesis" },
   twin: { label: "Simulación", icon: "◎", subtitle: "Escenarios comparables sin alterar los datos reales" }
 };
 
@@ -96,7 +99,7 @@ function pmpStartOf(order, product) {
 
 export default function App() {
   const [dataset, setDataset] = useState(initialDataset);
-  const [view, setView] = useState("overview");
+  const [view, setView] = useState(() => window.location.hash === "#/indicadores" ? "indicators" : "overview");
   const [drawer, setDrawer] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -123,6 +126,17 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const repo = useMemo(() => getRepository(), []);
+
+  useEffect(() => {
+    const syncViewWithHash = () => setView(window.location.hash === "#/indicadores" ? "indicators" : "overview");
+    window.addEventListener("hashchange", syncViewWithHash);
+    return () => window.removeEventListener("hashchange", syncViewWithHash);
+  }, []);
+
+  useEffect(() => {
+    const targetHash = view === "indicators" ? "#/indicadores" : "#/";
+    if (window.location.hash !== targetHash) window.history.replaceState(null, "", targetHash);
+  }, [view]);
 
   useEffect(() => {
     if (!supabase) {
@@ -266,7 +280,11 @@ export default function App() {
     }
     if (drawer.type === "order") {
       const selectedProduct = productOf(dataset, values.bodyTypeId);
+      const ceco = String(values.ceco ?? "").trim();
+      if (!/^\d{6}$/.test(ceco)) return setError("El correlativo CECO debe tener 6 dígitos numéricos (por ejemplo, 260281).");
+      if (dataset.orders.some((order) => order.ceco === ceco)) return setError(`El CECO ${ceco} ya existe. Elige otro correlativo.`);
       return persist(() => repo.createOrder({
+        ceco,
         customerId: values.customerId,
         customer: values.customer,
         bodyTypeId: values.bodyTypeId,
@@ -397,8 +415,9 @@ export default function App() {
 
         <div className="page-content">
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} />}
+          {view === "indicators" && <IndicatorsView dataset={dataset} />}
           {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} />}
-          {view === "orders" && <OrdersView dataset={dataset} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), "Datos de la orden actualizados.")} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
+          {view === "orders" && <OrdersView dataset={dataset} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), "Datos de la orden actualizados.")} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
           {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "products")} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
           {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "materials")} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Catálogo actualizado.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada del catálogo.")} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
@@ -480,7 +499,8 @@ function Overview({ dataset, kpis, heatmap, mrp, setView }) {
         <label>Desde<input type="date" value={dateRange.start} max={dateRange.end} onChange={(event) => event.target.value && setDateRange((current) => ({ ...current, start: event.target.value }))} /></label>
         <label>Hasta<input type="date" value={dateRange.end} min={dateRange.start} onChange={(event) => event.target.value && setDateRange((current) => ({ ...current, end: event.target.value }))} /></label>
         <Button variant="secondary" onClick={() => setDateRange(availableRange)}>Todo el histórico</Button>
-        <Button onClick={exportReport}>↓ Exportar Excel</Button>
+        <Button variant="secondary" onClick={exportReport}>↓ Resumen Excel</Button>
+        <Button onClick={() => setView("indicators")}>Ver indicadores →</Button>
       </div>
     </section>
 
@@ -493,7 +513,7 @@ function Overview({ dataset, kpis, heatmap, mrp, setView }) {
 
     <CurrentMaterialAlerts dataset={dataset} heatmap={heatmap} mrp={mrp} setView={setView} />
 
-    <ProductivityDashboard report={report} />
+    <ProductivityDashboard report={report} onOpen={() => setView("indicators")} />
 
     <section className="split-grid overview-grid">
       <div className="panel">
@@ -585,7 +605,7 @@ function ProductivityCard({ label, value, previous, suffix, detail, formula, ton
   </article>;
 }
 
-function ProductivityDashboard({ report }) {
+function ProductivityDashboard({ report, onOpen }) {
   const { current, previous } = report;
   const rows = [
     { label: "Cumplimiento PMP", value: current.pmpCompliance, previous: previous.pmpCompliance, suffix: "%", detail: `${current.producedUnits} producidas / ${current.plannedUnits} planificadas`, formula: "Unidades producidas ÷ unidades planificadas × 100", tone: "orange" },
@@ -598,10 +618,110 @@ function ProductivityDashboard({ report }) {
   ];
   const available = rows.filter((item) => item.value != null).length;
   return <section className="panel productivity-panel">
-    <SectionHeader eyebrow="Indicadores de la investigación" title="MRP y productividad contrastados" detail="Cálculos basados en el Anexo 1 de la tesis. Cada tarjeta compara el periodo elegido con el periodo inmediatamente anterior." action={<span className="coverage-chip">{available}/7 calculables</span>} />
+    <SectionHeader eyebrow="Indicadores de la investigación" title="MRP y productividad contrastados" detail="Cálculos basados en el Anexo 1 de la tesis. Cada tarjeta compara el periodo elegido con el periodo inmediatamente anterior." action={<div className="indicator-header-actions"><span className="coverage-chip">{available}/7 calculables</span>{onOpen && <button className="text-button" onClick={onOpen}>Abrir tablero →</button>}</div>} />
     <div className="productivity-grid">{rows.map((item) => <ProductivityCard key={item.label} {...item} />)}</div>
     <div className="data-quality-note"><span>i</span><p><strong>Calidad del dato:</strong> {current.estimatedProducedUnits} unidades terminadas se infieren por estado y fecha pactada. Los indicadores sin cifra se habilitarán al registrar costos, valor de salida y fecha real de pedido/entrega.</p></div>
   </section>;
+}
+
+function isWithinRange(value, range) {
+  const date = String(value ?? "").slice(0, 10);
+  return Boolean(date && date >= range.start && date <= range.end);
+}
+
+function IndicatorsView({ dataset }) {
+  const availableRange = useMemo(() => availableDateRange(dataset), [dataset]);
+  const [dateRange, setDateRange] = useState(availableRange);
+  const [grouping, setGrouping] = useState("month");
+  const [recordType, setRecordType] = useState("operations");
+  useEffect(() => setDateRange(availableRange), [availableRange.start, availableRange.end]);
+
+  const report = useMemo(() => calculateProductivityReport(dataset, dateRange.start, dateRange.end), [dataset, dateRange]);
+  const { current, previous } = report;
+  const series = useMemo(() => {
+    const rows = [];
+    let cursor = dateRange.start;
+    const addDaysUtc = (value, days) => {
+      const date = new Date(`${value}T12:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + days);
+      return date.toISOString().slice(0, 10);
+    };
+    while (cursor <= dateRange.end) {
+      let end;
+      if (grouping === "week") end = addDaysUtc(cursor, 6);
+      else {
+        const date = new Date(`${cursor}T12:00:00Z`);
+        end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+      }
+      if (end > dateRange.end) end = dateRange.end;
+      const period = calculateProductivityReport(dataset, cursor, end).current;
+      rows.push({ label: grouping === "week" ? `${cursor.slice(5)}–${end.slice(5)}` : new Intl.DateTimeFormat("es-PE", { month: "short", year: "2-digit", timeZone: "UTC" }).format(new Date(`${cursor}T12:00:00Z`)), ...period });
+      cursor = addDaysUtc(end, 1);
+    }
+    return rows;
+  }, [dataset, dateRange, grouping]);
+  const maxProduced = Math.max(...series.map((item) => item.producedUnits), 1);
+  const operations = (dataset.operations ?? []).filter((item) => isWithinRange(item.date, dateRange));
+  const progress = (dataset.activityProgress ?? []).filter((item) => isWithinRange(item.startedAt ?? item.finishedAt, dateRange));
+  const movements = (dataset.inventoryMovements ?? []).filter((item) => isWithinRange(item.timestamp, dateRange));
+  const records = { operations, progress, movements };
+  const recordLabels = { operations: "Partes de operación", progress: "Avance de actividades", movements: "Movimientos de materiales" };
+
+  return <div className="stack-xl indicators-view">
+    <section className="report-toolbar panel indicators-toolbar">
+      <div>
+        <p className="eyebrow">Repositorio de resultados</p>
+        <strong>Indicadores, ecuaciones y microdatos de investigación</strong>
+        <span>La ruta <code>/#/indicadores</code> concentra los resultados del periodo y su evidencia exportable.</span>
+      </div>
+      <div className="date-range">
+        <label>Desde<input type="date" value={dateRange.start} max={dateRange.end} onChange={(event) => event.target.value && setDateRange((currentRange) => ({ ...currentRange, start: event.target.value }))} /></label>
+        <label>Hasta<input type="date" value={dateRange.end} min={dateRange.start} onChange={(event) => event.target.value && setDateRange((currentRange) => ({ ...currentRange, end: event.target.value }))} /></label>
+        <label>Serie<select value={grouping} onChange={(event) => setGrouping(event.target.value)}><option value="month">Mensual</option><option value="week">Semanal</option></select></label>
+        <Button variant="secondary" onClick={() => setDateRange(availableRange)}>Todo el histórico</Button>
+        <Button variant="secondary" onClick={() => exportPeriodRecords(dataset, dateRange)}>↓ Registros Excel</Button>
+        <Button onClick={() => exportIndicatorsWorkbook(dataset, report, dateRange, grouping)}>↓ Libro de tesis</Button>
+      </div>
+    </section>
+
+    <section className="metric-grid four">
+      <Metric label="Unidades producidas" value={current.producedUnits} detail={`${current.plannedUnits} planificadas en el periodo`} tone="success" />
+      <Metric label="Horas-hombre" value={`${formatIndicator(current.reportedHours)} h`} detail={`${operations.length} partes registrados`} />
+      <Metric label="Actividades completadas" value={current.executedActivities} detail={`${current.programmedActivities} con avance en el periodo`} />
+      <Metric label="Registros exportables" value={operations.length + progress.length + movements.length} detail="Partes, avances y movimientos" tone="success" />
+    </section>
+
+    <ProductivityDashboard report={report} />
+
+    <section className="indicator-dashboard-grid">
+      <article className="panel period-chart">
+        <SectionHeader eyebrow="Evolución" title={`Unidades producidas por ${grouping === "month" ? "mes" : "semana"}`} detail="Cada barra usa los registros contenidos en el rango seleccionado." />
+        <div className="series-bars">
+          {series.map((item) => <div key={`${item.start}-${item.end}`} title={`${item.label}: ${item.producedUnits} unidades`}><span style={{ height: `${Math.max(5, (item.producedUnits / maxProduced) * 100)}%` }} /><b>{item.producedUnits}</b><small>{item.label}</small></div>)}
+        </div>
+      </article>
+      <article className="panel equations-panel">
+        <SectionHeader eyebrow="Trazabilidad metodológica" title="Ecuaciones aplicadas" detail="Las mismas definiciones se incorporan al libro Excel y al diccionario SPSS." />
+        <div className="equation-list">
+          <p><b>Cumplimiento PMP</b><span>Producidas ÷ planificadas × 100</span><strong>{formatIndicator(current.pmpCompliance, "%")}</strong></p>
+          <p><b>Avance</b><span>Actividades ejecutadas ÷ programadas × 100</span><strong>{formatIndicator(current.progressRate, "%")}</strong></p>
+          <p><b>Productividad laboral</b><span>Unidades producidas ÷ horas-hombre</span><strong>{formatIndicator(current.laborProductivity, " und/HH")}</strong></p>
+          <p><b>Productividad multifactorial</b><span>Valor producido ÷ factores utilizados</span><strong>{formatIndicator(current.multifactorProductivity)}</strong></p>
+        </div>
+      </article>
+    </section>
+
+    <section className="panel records-panel">
+      <SectionHeader eyebrow="Microdatos del periodo" title="Registros que sustentan los indicadores" detail="Selecciona una fuente para revisar los datos tal como se exportarán. El libro de tesis agrega también CECO, serie temporal y diccionario de variables." action={<span className="coverage-chip">Anterior: {formatIndicator(previous.pmpCompliance, "%")}</span>} />
+      <div className="record-tabs">{Object.entries(recordLabels).map(([key, label]) => <button key={key} className={recordType === key ? "active" : ""} onClick={() => setRecordType(key)}>{label}<b>{records[key].length}</b></button>)}</div>
+      <div className="table-scroll indicator-records-table">
+        {recordType === "operations" && <table><thead><tr><th>Fecha</th><th>CECO</th><th>Trabajador</th><th>Actividad</th><th>Horas-hombre</th></tr></thead><tbody>{operations.map((item) => <tr key={item.id}><td>{item.date}</td><td><strong>{item.ceco}</strong></td><td>{item.worker}</td><td>{item.activity}</td><td>{item.totalHours}</td></tr>)}</tbody></table>}
+        {recordType === "progress" && <table><thead><tr><th>CECO</th><th>Actividad</th><th>Estado</th><th>Avance</th><th>Inicio</th><th>Fin</th></tr></thead><tbody>{progress.map((item) => <tr key={item.id}><td><strong>{item.ceco}</strong></td><td>{dataset.stageActivities.find((activity) => activity.id === item.activityId)?.name ?? item.activityId}</td><td>{item.status}</td><td>{item.progress}%</td><td>{item.startedAt}</td><td>{item.finishedAt ?? "—"}</td></tr>)}</tbody></table>}
+        {recordType === "movements" && <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Material</th><th>CECO</th><th>Cantidad</th><th>Nota</th></tr></thead><tbody>{movements.map((item) => <tr key={item.id}><td>{item.timestamp}</td><td><span className={`movement-type ${item.type}`}>{item.type}</span></td><td><strong>{item.code}</strong></td><td>{item.ceco || "—"}</td><td>{item.quantity}</td><td><small>{item.note}</small></td></tr>)}</tbody></table>}
+        {records[recordType].length === 0 && <EmptyState text={`No hay ${recordLabels[recordType].toLowerCase()} en este rango.`} />}
+      </div>
+    </section>
+  </div>;
 }
 
 function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities, simulationTime, dataReady }) {
@@ -990,13 +1110,13 @@ function SimulationAlerts({ notifications }) {
   </section>;
 }
 
-function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrder, onProgress, onUpdateOrder, onCreateQuality }) {
+function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrder, onProgress, onSchedule, onUpdateOrder, onCreateQuality }) {
   const [mode, setMode] = useState("kanban");
   const [selectedOrder, setSelectedOrder] = useState(null);
   return <div className="stack-lg">
     <PageActions><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></PageActions>
     {mode === "kanban" && <ProductKanban dataset={dataset} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
-    {mode === "gantt" && <ProductionGantt dataset={dataset} onSelect={setSelectedOrder} />}
+    {mode === "gantt" && <ProductionGantt dataset={dataset} onSelect={setSelectedOrder} onSchedule={onSchedule} />}
     {mode === "list" && <><ProductList dataset={dataset} onSelect={setSelectedOrder} /><ExecutionPanel dataset={dataset} openDrawer={openDrawer} /></>}
     {mode === "customers" && <CustomerCatalog dataset={dataset} openDrawer={openDrawer} />}
     <ProductFlowDrawer dataset={dataset} order={selectedOrder} activeDrawer={activeDrawer} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={onUpdateOrder} onCreateQuality={onCreateQuality} />
@@ -1012,10 +1132,11 @@ function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onUpd
   const [productId, setProductId] = useState(dataset.bodyTypes[0]?.id ?? "");
   const product = productOf(dataset, productId);
   const materials = dataset.bom.filter((item) => item.bodyTypeId === productId);
+  const requirementsByStage = materialRequirementsByStage(productId, dataset.bom);
   return <div className="stack-lg">
     <PageActions><div><strong>{dataset.bodyTypes.length} plantillas de producto</strong><span>Una plantilla define la ruta y BOM; las órdenes son quienes recorren el flujo.</span></div><div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} label="productos" /><Button onClick={() => openDrawer({ type: "product" })}>+ Producto maestro</Button></div></PageActions>
     <section className="template-grid">{dataset.bodyTypes.map((item) => <button key={item.id} className={`panel template-card ${item.id === productId ? "selected" : ""}`} onClick={() => setProductId(item.id)}><span>{item.code}</span><strong>{item.name}</strong><small>{item.family} · {item.targetDays} días</small><div>{item.route.map((stageId) => <i key={stageId} title={stageOf(dataset, stageId)?.name} style={{ background: stageOf(dataset, stageId)?.color }} />)}</div><b>{dataset.bom.filter((piece) => piece.bodyTypeId === item.id).length} materiales</b></button>)}</section>
-    {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
+    {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div><MaterialRequirementsByStage product={product} dataset={dataset} requirements={requirementsByStage} /><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
   </div>;
 }
 
@@ -1032,9 +1153,10 @@ function currentActivity(dataset, order) {
   return activities.find((activity) => ["in_progress", "blocked"].includes(activityProgressOf(dataset, order.ceco, activity.id).status)) ?? activities.find((activity) => activityProgressOf(dataset, order.ceco, activity.id).status === "pending") ?? activities.at(-1);
 }
 
-function ProductionGantt({ dataset, onSelect }) {
+function ProductionGantt({ dataset, onSelect, onSchedule }) {
   const activeOrders = dataset.orders.filter((order) => Number(order.progress) < 100).sort((a, b) => a.priority - b.priority);
   const [ceco, setCeco] = useState(activeOrders[0]?.ceco ?? dataset.orders[0]?.ceco ?? "");
+  const [editingRow, setEditingRow] = useState(null);
   const order = dataset.orders.find((item) => item.ceco === ceco) ?? activeOrders[0] ?? dataset.orders[0];
   const product = productOf(dataset, order?.bodyTypeId);
 
@@ -1062,15 +1184,46 @@ function ProductionGantt({ dataset, onSelect }) {
       const baseStart = addDays(plannedStart, Math.floor((activityMinutes / totalMinutes) * plannedDays));
       activityMinutes += Number(activity.standardMinutes || 0);
       const baseEnd = addDays(plannedStart, Math.max(0, Math.ceil((activityMinutes / totalMinutes) * plannedDays) - 1));
-      const scheduleStart = assignmentDates[0] || baseStart;
-      const scheduleEnd = assignmentDates.length ? assignmentDates.at(-1) : baseEnd;
+      const scheduleStart = progress.plannedStartDate || assignmentDates[0] || baseStart;
+      const scheduleEnd = progress.plannedEndDate || (assignmentDates.length ? assignmentDates.at(-1) : baseEnd);
       return { type: "activity", id: activity.id, label: activity.name, stage, progress, plannedStart: scheduleStart, plannedEnd: scheduleEnd, actualStart: progress.startedAt?.slice(0, 10), actualEnd: progress.finishedAt?.slice(0, 10) || (progress.status === "in_progress" || progress.status === "blocked" ? dateKey(new Date()) : null) };
     });
     const completed = activityRows.filter((item) => item.progress.status === "completed").length;
     const actualStarts = activityRows.map((item) => item.actualStart).filter(Boolean).sort();
     const actualEnds = activityRows.map((item) => item.actualEnd).filter(Boolean).sort();
-    return [{ type: "stage", id: stage.id, label: `${stage.shortName} · ${stage.name}`, stage, progress: { progress: activities.length ? Math.round(activityRows.reduce((sum, item) => sum + Number(item.progress.progress), 0) / activities.length) : 0, status: completed === activities.length && activities.length ? "completed" : stage.id === order.stageId ? "in_progress" : "pending" }, plannedStart: stageStart, plannedEnd: stageEnd, actualStart: actualStarts[0], actualEnd: actualEnds.at(-1) }, ...activityRows];
+    const plannedStarts = activityRows.map((item) => item.plannedStart).filter(Boolean).sort();
+    const plannedEnds = activityRows.map((item) => item.plannedEnd).filter(Boolean).sort();
+    return [{ type: "stage", id: stage.id, label: `${stage.shortName} · ${stage.name}`, stage, progress: { progress: activities.length ? Math.round(activityRows.reduce((sum, item) => sum + Number(item.progress.progress), 0) / activities.length) : 0, status: completed === activities.length && activities.length ? "completed" : stage.id === order.stageId ? "in_progress" : "pending" }, plannedStart: plannedStarts[0] || stageStart, plannedEnd: plannedEnds.at(-1) || stageEnd, actualStart: actualStarts[0], actualEnd: actualEnds.at(-1) }, ...activityRows];
   });
+
+  async function saveSchedule(row, nextStart, nextEnd) {
+    if (!nextStart || !nextEnd || nextStart > nextEnd) return;
+    const rowIndex = rows.findIndex((item) => item.type === row.type && item.id === row.id);
+    const extensionDays = daysBetween(row.plannedEnd, nextEnd);
+    let entries = [];
+    if (row.type === "stage") {
+      const stageActivities = rows.filter((item) => item.type === "activity" && item.stage.id === row.stage.id);
+      const totalMinutes = Math.max(1, stageActivities.reduce((sum, item) => sum + Number(dataset.stageActivities.find((activity) => activity.id === item.id)?.standardMinutes || 0), 0));
+      const stageDays = Math.max(1, daysBetween(nextStart, nextEnd) + 1);
+      let elapsed = 0;
+      entries = stageActivities.map((item) => {
+        const minutes = Number(dataset.stageActivities.find((activity) => activity.id === item.id)?.standardMinutes || 0);
+        const start = addDays(nextStart, Math.floor((elapsed / totalMinutes) * stageDays));
+        elapsed += minutes;
+        const end = addDays(nextStart, Math.max(0, Math.ceil((elapsed / totalMinutes) * stageDays) - 1));
+        return { activityId: item.id, plannedStartDate: start, plannedEndDate: end, id: item.progress.id };
+      });
+    } else {
+      entries = [{ activityId: row.id, plannedStartDate: nextStart, plannedEndDate: nextEnd, id: row.progress.id }];
+    }
+    const followingActivities = rows.slice(rowIndex + 1).filter((item) => item.type === "activity" && (row.type !== "stage" || item.stage.id !== row.stage.id));
+    if (extensionDays > 0 && followingActivities.length > 0) {
+      const moveFollowing = window.confirm(`Esta edición alarga ${row.type === "stage" ? "la fase" : "la actividad"} ${extensionDays} día(s). ¿Deseas desplazar las ${followingActivities.length} actividades posteriores para conservar el flujo?`);
+      if (moveFollowing) entries.push(...followingActivities.map((item) => ({ activityId: item.id, plannedStartDate: addDays(item.plannedStart, extensionDays), plannedEndDate: addDays(item.plannedEnd, extensionDays), id: item.progress.id })));
+    }
+    await onSchedule(order.ceco, entries);
+    setEditingRow(null);
+  }
   const today = dateKey(new Date());
   const timelineStart = [plannedStart, ...rows.map((row) => row.actualStart).filter(Boolean)].sort()[0];
   const timelineEnd = [plannedEnd, today, ...rows.map((row) => row.actualEnd).filter(Boolean)].sort().at(-1);
@@ -1085,9 +1238,19 @@ function ProductionGantt({ dataset, onSelect }) {
   return <section className="panel gantt-panel">
     <SectionHeader eyebrow="Plan maestro de producción" title="Cronograma Gantt por fase y actividad" detail="La programación nace en el inicio PMP; los partes y avances registrados muestran la ejecución real." action={<div className="gantt-actions"><select value={order.ceco} onChange={(event) => setCeco(event.target.value)} aria-label="Orden CECO para el cronograma">{(activeOrders.length ? activeOrders : dataset.orders).map((item) => <option key={item.ceco} value={item.ceco}>CECO {item.ceco} · {productOf(dataset, item.bodyTypeId)?.name}</option>)}</select><Button variant="secondary" onClick={() => onSelect(order)}>Abrir CECO</Button></div>} />
     <div className="gantt-summary"><div><span>Inicio PMP</span><strong>{formatDate(plannedStart)}</strong><small>Base del plan de esta orden</small></div><div><span>Entrega comprometida</span><strong>{formatDate(plannedEnd)}</strong><small>{plannedDays} días programados</small></div><div><span>Avance real</span><strong>{order.progress}%</strong><small>{currentActivity(dataset, order)?.name ?? "Sin actividad en curso"}</small></div><div className={variance < 0 ? "at-risk" : "on-track"}><span>Desviación PMP</span><strong>{variance > 0 ? "+" : ""}{variance} pp</strong><small>Plan al día: {Math.round(plannedProgress)}%</small></div></div>
-    <div className="gantt-legend"><span><i className="planned" /> Plan PMP</span><span><i className="actual" /> Ejecución real / avance</span><span><i className="today" /> Hoy</span><span>Las fechas de asignación afinan el plan de cada actividad.</span></div>
-    <div className="gantt-scroll"><div className="gantt-grid" style={{ "--gantt-days": rangeDays }}><div className="gantt-label gantt-head-label">Fase / actividad</div><div className="gantt-days">{days.map((day, index) => <div className={dateFrom(day).getDay() === 0 || dateFrom(day).getDay() === 6 ? "weekend" : ""} key={day}><b>{dateFrom(day).getDate()}</b>{index === 0 || dateFrom(days[index - 1]).getMonth() !== dateFrom(day).getMonth() ? <small>{new Intl.DateTimeFormat("es-PE", { month: "short" }).format(dateFrom(day))}</small> : null}</div>)}</div>{rows.map((row) => <React.Fragment key={row.id}><div className={`gantt-label ${row.type}`}><i style={{ background: row.stage.color }} /> <span>{row.label}</span>{row.type === "activity" && <small>{row.progress.progress}%</small>}</div><div className={`gantt-track ${row.type}`}><span className="gantt-plan" style={{ left: `${left(row.plannedStart)}%`, width: `${width(row.plannedStart, row.plannedEnd)}%`, "--stage-color": row.stage.color }} />{row.actualStart && <span className={`gantt-actual ${row.progress.status}`} style={{ left: `${left(row.actualStart)}%`, width: `${width(row.actualStart, row.actualEnd || row.actualStart)}%`, "--stage-color": row.stage.color }}><i style={{ width: `${row.progress.progress}%` }} /></span>}<b className="gantt-today" style={{ left: `${todayLeft}%` }} aria-label="Hoy" /></div></React.Fragment>)}</div></div>
+    <div className="gantt-legend"><span><i className="planned" /> Plan PMP</span><span><i className="actual" /> Ejecución real / avance</span><span><i className="today" /> Hoy</span><span>Usa ✎ para asignar fechas a cada fase o actividad.</span></div>
+    {editingRow && <GanttScheduleEditor row={rows.find((item) => item.type === editingRow.type && item.id === editingRow.id)} onCancel={() => setEditingRow(null)} onSave={saveSchedule} />}
+    <div className="gantt-scroll"><div className="gantt-grid" style={{ "--gantt-days": rangeDays }}><div className="gantt-label gantt-head-label">Fase / actividad</div><div className="gantt-days">{days.map((day, index) => <div className={dateFrom(day).getDay() === 0 || dateFrom(day).getDay() === 6 ? "weekend" : ""} key={day}><b>{dateFrom(day).getDate()}</b>{index === 0 || dateFrom(days[index - 1]).getMonth() !== dateFrom(day).getMonth() ? <small>{new Intl.DateTimeFormat("es-PE", { month: "short" }).format(dateFrom(day))}</small> : null}</div>)}</div>{rows.map((row) => <React.Fragment key={`${row.type}-${row.id}`}><div className={`gantt-label ${row.type}`}><i style={{ background: row.stage.color }} /> <span>{row.label}</span>{row.type === "activity" && <small>{row.progress.progress}%</small>}<button className="gantt-edit" onClick={() => setEditingRow({ type: row.type, id: row.id })} aria-label={`Editar fechas de ${row.label}`}>✎</button></div><div className={`gantt-track ${row.type}`}><span className="gantt-plan" style={{ left: `${left(row.plannedStart)}%`, width: `${width(row.plannedStart, row.plannedEnd)}%`, "--stage-color": row.stage.color }} />{row.actualStart && <span className={`gantt-actual ${row.progress.status}`} style={{ left: `${left(row.actualStart)}%`, width: `${width(row.actualStart, row.actualEnd || row.actualStart)}%`, "--stage-color": row.stage.color }}><i style={{ width: `${row.progress.progress}%` }} /></span>}<b className="gantt-today" style={{ left: `${todayLeft}%` }} aria-label="Hoy" /></div></React.Fragment>)}</div></div>
   </section>;
+}
+
+function GanttScheduleEditor({ row, onCancel, onSave }) {
+  const [start, setStart] = useState(row?.plannedStart ?? "");
+  const [end, setEnd] = useState(row?.plannedEnd ?? "");
+  useEffect(() => { setStart(row?.plannedStart ?? ""); setEnd(row?.plannedEnd ?? ""); }, [row?.id, row?.type, row?.plannedStart, row?.plannedEnd]);
+  if (!row) return null;
+  const invalid = !start || !end || start > end;
+  return <form className="gantt-schedule-editor" onSubmit={(event) => { event.preventDefault(); if (!invalid) onSave(row, start, end); }}><div><p className="eyebrow">Editar programación</p><strong>{row.type === "stage" ? "Fase" : "Actividad"}: {row.label}</strong><small>Si la fecha final se extiende, podrás elegir si se desplazan las actividades posteriores.</small></div><label>Inicio<input type="date" value={start} max={end || undefined} onChange={(event) => setStart(event.target.value)} required /></label><label>Fin<input type="date" value={end} min={start || undefined} onChange={(event) => setEnd(event.target.value)} required /></label><Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button><Button type="submit" disabled={invalid}>Guardar fechas</Button></form>;
 }
 
 function ProductKanban({ dataset, onSelect, onMoveOrder }) {
@@ -1132,7 +1295,7 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
 }
 
 function ProductList({ dataset, onSelect }) {
-  return <section className="panel"><SectionHeader eyebrow="Productos en planta" title="Lista de CECO activos" detail="La tabla y el Kanban representan las mismas órdenes de producción." /><div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{[...dataset.orders].filter((order) => Number(order.progress) < 100).sort((a, b) => a.priority - b.priority).map((order) => { const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId); const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length; return <tr key={order.ceco}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>{order.progress}% global</small></td><td>{formatDate(order.dueDate)}</td><td><StatusPill status={order.status} /></td><td><button className="row-action" onClick={() => onSelect(order)}>Ver detalle →</button></td></tr>; })}</tbody></table></div></section>;
+  return <section className="panel"><SectionHeader eyebrow="Productos en planta" title="Lista de CECO activos" detail="El avance se calcula como el promedio de sus fases; cada fase promedia sus actividades activas." /><div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Avance CECO</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{[...dataset.orders].filter((order) => Number(order.progress) < 100).sort((a, b) => a.priority - b.priority).map((order) => { const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId); const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length; const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress); return <tr key={order.ceco}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>Fase actual</small></td><td><strong>{execution.progress}%</strong><small>{execution.stages.filter((item) => item.progress === 100).length}/{execution.stages.length} fases completas</small></td><td>{formatDate(order.dueDate)}</td><td><StatusPill status={order.status} /></td><td><button className="row-action" onClick={() => onSelect(order)}>Ver detalle →</button></td></tr>; })}</tbody></table></div></section>;
 }
 
 function ProductFlowDrawer({ dataset, order, activeDrawer, onClose, openDrawer, onProgress, onUpdateOrder, onCreateQuality }) {
@@ -1143,15 +1306,16 @@ function ProductFlowDrawer({ dataset, order, activeDrawer, onClose, openDrawer, 
   const currentIndex = route.indexOf(order.stageId);
   const reservations = dataset.orderMaterialReservations.filter((item) => item.ceco === order.ceco).sort((a, b) => Number(b.stageId === order.stageId) - Number(a.stageId === order.stageId));
   const quality = dataset.quality.filter((item) => item.ceco === order.ceco);
+  const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress);
   const secondaryDrawerOpen = activeDrawer?.secondary && activeDrawer.ceco === order.ceco;
   const openSecondaryDrawer = (type) => openDrawer({ type, ceco: order.ceco, stageId: order.stageId, secondary: true });
   return <div className={`product-detail-backdrop ${secondaryDrawerOpen ? "with-secondary" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && onClose()}><aside className="product-detail-drawer" role="dialog" aria-modal="true" aria-label={`Detalle del CECO ${order.ceco}`}>
     <header><div><p className="eyebrow">Pasaporte productivo</p><h2>{product?.name}</h2><span>CECO {order.ceco}</span></div><button onClick={onClose} aria-label="Cerrar detalle">×</button></header>
     <div className="product-detail-body">
-      <section className="detail-summary"><div><span>Cliente</span><strong>{order.customer}</strong></div><div><span>Fase actual</span><strong>{stage?.name}</strong></div><div><span>Avance CECO</span><strong>{order.progress}%</strong></div><div><span>Inicio PMP</span><strong>{formatDate(pmpStartOf(order, product))}</strong></div><div><span>Entrega pactada</span><strong>{formatDate(order.dueDate)}</strong></div><div><span>Línea / prioridad</span><strong>{order.line} · P{order.priority}</strong></div></section>
+      <section className="detail-summary"><div><span>Cliente</span><strong>{order.customer}</strong></div><div><span>Fase actual</span><strong>{stage?.name}</strong></div><div><span>Avance CECO</span><strong>{execution.progress}%</strong></div><div><span>Inicio PMP</span><strong>{formatDate(pmpStartOf(order, product))}</strong></div><div><span>Entrega pactada</span><strong>{formatDate(order.dueDate)}</strong></div><div><span>Línea / prioridad</span><strong>{order.line} · P{order.priority}</strong></div></section>
       <section className="order-command-bar"><div><span>Operación de la orden</span><strong>Registra con el CECO y su ruta ya seleccionados</strong></div><div><Button variant="secondary" onClick={() => openSecondaryDrawer("assignment")}>Asignar trabajador</Button><Button variant="secondary" onClick={() => openSecondaryDrawer("operation")}>Registrar horas</Button><Button onClick={() => openSecondaryDrawer("incident")}>Reportar incidencia</Button></div></section>
       <section className="detail-section"><SectionHeader eyebrow="Flujo completo" title="Ruta del producto" detail={`${route.length} fases configuradas para ${product?.name}.`} /><div className="drawer-route">{route.map((stageId, index) => { const routeStage = stageOf(dataset, stageId); const state = index < currentIndex ? "completed" : index === currentIndex ? "current" : "pending"; return <div className={state} key={stageId}><span>{state === "completed" ? "✓" : routeStage?.shortName}</span><p><strong>{routeStage?.name}</strong><small>{state === "completed" ? "Completada" : state === "current" ? "En proceso" : "Pendiente"}</small></p></div>; })}</div></section>
-      <section className="detail-section"><SectionHeader eyebrow="Avance por etapa" title="Actividades de la orden" detail="La fase actual queda abierta; despliega las demás para revisar su historial." />{route.map((stageId) => <StageProgressEditor key={stageId} stage={stageOf(dataset, stageId)} activities={dataset.stageActivities.filter((item) => item.stageId === stageId && item.active !== false).sort((a, b) => a.sequence - b.sequence)} ceco={order.ceco} dataset={dataset} onProgress={onProgress} current={stageId === order.stageId} />)}</section>
+      <section className="detail-section"><SectionHeader eyebrow="Avance por etapa" title={`Actividades de la orden · ${execution.progress}% global`} detail="Cada fase tiene el mismo peso; dentro de ella se promedian las actividades activas." />{route.map((stageId) => <StageProgressEditor key={stageId} stage={stageOf(dataset, stageId)} activities={dataset.stageActivities.filter((item) => item.stageId === stageId && item.active !== false).sort((a, b) => a.sequence - b.sequence)} ceco={order.ceco} dataset={dataset} onProgress={onProgress} current={stageId === order.stageId} />)}</section>
       <section className="detail-section"><SectionHeader eyebrow="MRP por CECO" title="Materiales reservados para la orden" detail="La BOM se copia como requerimiento al crear la orden; aquí se muestra reserva, entrega y consumo por fase." /><OrderReservationList reservations={reservations} dataset={dataset} openDrawer={openDrawer} /></section>
       <section className="detail-section detail-last"><SectionHeader eyebrow="Cliente y control" title="Datos complementarios" /><CustomerManager dataset={dataset} order={order} product={product} quality={quality.at(-1)} onSave={onUpdateOrder} onQuality={onCreateQuality} /></section>
     </div>
@@ -1168,6 +1332,18 @@ function StageProgressEditor({ stage, activities, ceco, dataset, onProgress, cur
   const completed = activities.filter((activity) => activityProgressOf(dataset, ceco, activity.id).status === "completed").length;
   const stageProgress = activities.length ? Math.round((activities.reduce((sum, activity) => sum + Number(activityProgressOf(dataset, ceco, activity.id).progress), 0) / activities.length) * 100) / 100 : 0;
   return <details className="stage-progress-editor" open={current ? true : undefined}><summary><span style={{ background: stage?.color }}>{stage?.shortName}</span><strong>{stage?.name}</strong><small>{completed}/{activities.length} realizadas · {stageProgress}% etapa</small></summary>{activities.map((activity) => { const value = activityProgressOf(dataset, ceco, activity.id); const progress = progressDrafts[activity.id] ?? value.progress; return <div className="activity-control" key={activity.id}><label><input type="checkbox" checked={value.status === "completed"} onChange={(event) => { setProgressDrafts((current) => ({ ...current, [activity.id]: event.target.checked ? 100 : 0 })); onProgress(ceco, activity.id, { status: event.target.checked ? "completed" : "pending", progress: event.target.checked ? 100 : 0 }); }} /><span>{activity.name}</span></label><select aria-label={`Estado de ${activity.name}`} value={value.status} onChange={(event) => { const status = event.target.value; const nextProgress = status === "completed" ? 100 : status === "pending" ? 0 : progress; setProgressDrafts((current) => ({ ...current, [activity.id]: nextProgress })); onProgress(ceco, activity.id, { status, progress: nextProgress }); }}><option value="pending">Pendiente</option><option value="in_progress">En proceso</option><option value="blocked">Bloqueada</option><option value="completed">Completada</option></select><input aria-label={`Avance de ${activity.name}`} type="range" min="0" max="100" value={progress} onChange={(event) => setProgressDrafts((current) => ({ ...current, [activity.id]: Number(event.target.value) }))} onBlur={() => { if (progress !== value.progress) onProgress(ceco, activity.id, { progress, status: progress === 100 ? "completed" : progress > 0 ? "in_progress" : "pending" }); }} /><b>{progress}%</b></div>; })}</details>;
+}
+
+function MaterialRequirementsByStage({ product, dataset, requirements }) {
+  if (!requirements.length) return <EmptyState text="Aún no hay materiales asignados a las fases de esta plantilla." />;
+  return <section className="material-plan">
+    <div className="material-plan-header"><div><p className="eyebrow">Abastecimiento por fase</p><h3>Material necesario para fabricar una unidad</h3><p>Las cantidades consolidan las piezas del BOM que se consumen en cada fase.</p></div><span>{requirements.length} materiales consolidados</span></div>
+    <div className="material-plan-grid">{product.route.map((stageId, index) => {
+      const stage = stageOf(dataset, stageId);
+      const rows = requirements.filter((item) => item.stageId === stageId);
+      return <article key={stageId} style={{ "--stage-color": stage?.color ?? "#64748b" }}><header><span>{index + 1}</span><div><strong>{stage?.name ?? "Fase sin nombre"}</strong><small>{rows.length ? `${rows.length} material${rows.length === 1 ? "" : "es"} requerido${rows.length === 1 ? "" : "s"}` : "Sin material asignado"}</small></div></header>{rows.length ? <ul>{rows.map((item) => { const material = dataset.inventory.find((entry) => entry.code === item.materialCode); return <li key={item.materialCode}><div><strong>{item.materialCode}</strong><small>{material?.description ?? item.pieces.map((piece) => piece.description).filter(Boolean).join(" · ")}</small></div><b>{item.quantity} {material?.unit ?? "und"}</b></li>; })}</ul> : <p className="material-plan-empty">No se requiere material directo en esta fase.</p>}</article>;
+    })}</div>
+  </section>;
 }
 
 function MaterialRequirementManager({ materials, dataset, onUpdate, onDelete }) {
@@ -1343,7 +1519,7 @@ function RecordDrawer({ drawer, dataset, onClose, onSubmit, onCreateCatalog, onU
     {drawer.type === "material" && <><Field label="Descripción"><input name="description" defaultValue={drawer.item?.description} required placeholder="Ej. Plancha galvanizada 1.5 mm" /></Field><div className="form-row"><Field label="Categoría"><select name="categoryId" defaultValue={drawer.item?.categoryId || dataset.catalogs.categories.find((item) => item.name === drawer.item?.category || drawer.item?.category?.startsWith(item.name.split(" ")[0]))?.id} required>{dataset.catalogs.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Unidad de medida"><select name="unitId" defaultValue={drawer.item?.unitId || dataset.catalogs.units.find((item) => item.symbol === drawer.item?.unit)?.id} required>{dataset.catalogs.units.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.symbol}</option>)}</select></Field></div><Field label="Marca"><select name="brandId" defaultValue={drawer.item?.brandId || ""}><option value="">Sin marca / genérico</option>{dataset.catalogs.brands.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><div className="form-row"><Field label={drawer.item ? "Stock físico (solo lectura)" : "Stock inicial"}><input name="physical" type="number" min="0" step="0.01" defaultValue={drawer.item?.physical ?? 0} disabled={Boolean(drawer.item)} required={!drawer.item} /></Field><Field label="Stock de seguridad calculado"><input name="safety" type="number" min="0" step="0.01" defaultValue={drawer.item?.safety ?? 0} readOnly={Boolean(drawer.item?.serviceFactor && drawer.item?.demandStdDev && drawer.item?.leadTimeDays)} /></Field></div><div className="form-row"><Field label="Factor de servicio"><input name="serviceFactor" type="number" min="0" step="0.01" defaultValue={drawer.item?.serviceFactor ?? "1.65"} /></Field><Field label="Variabilidad de demanda"><input name="demandStdDev" type="number" min="0" step="0.01" defaultValue={drawer.item?.demandStdDev ?? ""} /></Field><Field label="Plazo de reposición (días)"><input name="leadTimeDays" type="number" min="0" step="0.01" defaultValue={drawer.item?.leadTimeDays ?? ""} /></Field></div><Field label="Ubicación"><input name="location" defaultValue={drawer.item?.location} placeholder="Ej. ALM-PLA" /></Field><p className="form-info">El físico cambia mediante movimientos. Las categorías, unidades y marcas se administran desde Inventario → Catálogos.</p></>}
     {drawer.type === "movement" && <><Field label="Tipo de movimiento"><select name="movementType"><option value="ingreso">Ingreso</option><option value="ajuste">Ajuste de inventario</option></select></Field><Field label="Material"><SearchSelect name="code" options={dataset.inventory.map((item) => ({ value: item.code, label: item.description, meta: item.code }))} searchPlaceholder="Buscar material o código" /></Field><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field><Field label="Detalle"><textarea name="note" required placeholder="Motivo o documento de referencia" /></Field><p className="form-info">Las reservas se generan al crear la orden y las salidas se registran desde el detalle CECO para conservar su trazabilidad.</p></>}
     {drawer.type === "warehouse" && <><Field label="Orden CECO"><input name="ceco" value={drawer.reservation.ceco} readOnly /></Field><Field label="Material"><input name="materialCode" value={drawer.reservation.materialCode} readOnly /></Field><Field label="Cantidad a entregar"><input name="quantity" type="number" min="0.01" max={drawer.reservation.reservedQuantity - drawer.reservation.issuedQuantity} step="0.01" defaultValue={drawer.reservation.reservedQuantity - drawer.reservation.issuedQuantity} required /></Field><p className="form-info">La entrega descuenta físico y comprometido, actualiza la reserva y genera ticket y movimiento en una sola transacción.</p></>}
-    {drawer.type === "order" && <><Field label="Cliente"><SearchSelect name="customerId" required options={dataset.customers.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, meta: item.documentNumber || "Sin documento" }))} searchPlaceholder="Buscar cliente o RUC" /><input type="hidden" name="customer" value="" /></Field><Field label="Producto"><SearchSelect name="bodyTypeId" required options={dataset.bodyTypes.map((item) => ({ value: item.id, label: item.name, meta: item.code }))} searchPlaceholder="Buscar producto" /></Field><div className="form-row"><Field label="Línea"><SearchSelect name="line" required options={dataset.productionLines.filter((item) => item.active !== false).map((item) => ({ value: item.name, label: item.name }))} searchPlaceholder="Buscar línea" /></Field><Field label="Inicio PMP" hint="Inicio programado del plan maestro"><input name="plannedStartDate" type="date" required /></Field><Field label="Fecha pactada"><input name="dueDate" type="date" required /></Field></div><p className="form-info">El inicio PMP establece la línea base del Gantt. Las asignaciones y avances de actividades mostrarán la ejecución real frente al plan.</p></>}
+    {drawer.type === "order" && <><div className="form-row"><Field label="Correlativo CECO" hint="Editable antes de registrar; debe ser único"><input name="ceco" inputMode="numeric" pattern="[0-9]{6}" minLength="6" maxLength="6" defaultValue={nextCecoCode(dataset.orders)} required /></Field><Field label="Línea"><SearchSelect name="line" required options={dataset.productionLines.filter((item) => item.active !== false).map((item) => ({ value: item.name, label: item.name }))} searchPlaceholder="Buscar línea" /></Field></div><Field label="Cliente"><SearchSelect name="customerId" required options={dataset.customers.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, meta: item.documentNumber || "Sin documento" }))} searchPlaceholder="Buscar cliente o RUC" /><input type="hidden" name="customer" value="" /></Field><Field label="Producto"><SearchSelect name="bodyTypeId" required options={dataset.bodyTypes.map((item) => ({ value: item.id, label: item.name, meta: item.code }))} searchPlaceholder="Buscar producto" /></Field><div className="form-row"><Field label="Inicio PMP" hint="Inicio programado del plan maestro"><input name="plannedStartDate" type="date" required /></Field><Field label="Fecha pactada"><input name="dueDate" type="date" required /></Field></div><p className="form-info">El inicio PMP establece la línea base del Gantt. El correlativo puede ajustarse antes de registrar; las fechas de cada fase y actividad se podrán editar desde Cronograma PMP.</p></>}
     {drawer.type === "product" && <><div className="form-row"><Field label="Código"><input name="code" defaultValue={drawer.product?.code} required placeholder="PROD-XXX" /></Field><Field label="Familia"><select name="familyId" defaultValue={drawer.product?.familyId || dataset.productFamilies.find((item) => item.name === drawer.product?.family)?.id} required>{dataset.productFamilies.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div><Field label="Nombre del producto"><input name="name" defaultValue={drawer.product?.name} required /></Field><div className="form-row"><Field label="Marca"><select name="brandId" defaultValue={drawer.product?.brandId || dataset.catalogs.brands.find((item) => item.name === "ETRAL")?.id} required>{dataset.catalogs.brands.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field><Field label="Unidad de salida"><select name="outputUnitId" defaultValue={drawer.product?.outputUnitId || dataset.catalogs.units.find((item) => item.symbol === drawer.product?.outputUnit)?.id || "unit-und"} required>{dataset.catalogs.units.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.symbol}</option>)}</select></Field></div><Field label="Días objetivo"><input name="targetDays" type="number" min="1" defaultValue={drawer.product?.targetDays} required /></Field><fieldset className="route-picker"><legend>Ruta de fabricación</legend><p>Marca solo las fases que aplican; se conservará el orden productivo.</p>{byOrder(dataset).map((stage) => <label key={stage.id}><input type="checkbox" name="route" value={stage.id} defaultChecked={drawer.product ? drawer.product.route.includes(stage.id) : true} /><span style={{ "--check-color": stage.color }}>{stage.shortName}</span><b>{stage.name}</b></label>)}</fieldset><p className="form-info">Familias, marcas y unidades se cargan desde sus catálogos maestros.</p></>}
     {drawer.type === "customer" && <><div className="form-row"><Field label="Razón social / nombre"><input name="name" defaultValue={drawer.customer?.name} required /></Field><Field label="RUC / documento"><input name="documentNumber" defaultValue={drawer.customer?.documentNumber} /></Field></div><Field label="Persona de contacto"><input name="contactName" defaultValue={drawer.customer?.contactName} /></Field><div className="form-row"><Field label="Teléfono"><input name="phone" defaultValue={drawer.customer?.phone} /></Field><Field label="Correo"><input name="email" type="email" defaultValue={drawer.customer?.email} /></Field></div>{drawer.customer && <Field label="Estado"><select name="active" defaultValue={String(drawer.customer.active)}><option value="true">Activo</option><option value="false">Inactivo</option></select></Field>}</>}
     {drawer.type === "activity" && <><Field label="Fase"><SearchSelect name="stageId" defaultValue={drawer.activity?.stageId} options={byOrder(dataset).map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><Field label="Nombre de la actividad"><input name="name" defaultValue={drawer.activity?.name} required /></Field><Field label="Tiempo estándar"><div className="input-suffix"><input name="standardMinutes" type="number" min="1" defaultValue={drawer.activity?.standardMinutes} required /><span>min</span></div></Field>{drawer.activity && <Field label="Estado"><select name="active" defaultValue={String(drawer.activity.active)}><option value="true">Activa</option><option value="false">Inactiva</option></select></Field>}</>}

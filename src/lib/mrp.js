@@ -70,6 +70,40 @@ export function materialRequirementSummary(orders, bom) {
   }, {});
 }
 
+// El avance de una orden se reparte equitativamente entre las fases de la
+// ruta; dentro de cada fase se promedian sus actividades activas. Esta misma
+// regla se aplica en Supabase al persistir el avance del CECO.
+export function calculateCecoProgress(order, bodyTypes, stageActivities, activityProgress = []) {
+  const product = bodyTypes.find((item) => item.id === order?.bodyTypeId);
+  const route = product?.route ?? [];
+  const stages = route.map((stageId) => {
+    const activities = stageActivities.filter((item) => item.stageId === stageId && item.active !== false);
+    const completed = activities.filter((activity) => activityProgress.find((item) => item.ceco === order.ceco && item.activityId === activity.id)?.status === "completed").length;
+    const progress = activities.length
+      ? activities.reduce((sum, activity) => sum + Number(activityProgress.find((item) => item.ceco === order.ceco && item.activityId === activity.id)?.progress ?? 0), 0) / activities.length
+      : 0;
+    return { stageId, activities: activities.length, completed, progress: Math.round(progress * 100) / 100 };
+  });
+  const progress = stages.length
+    ? Math.round((stages.reduce((sum, stage) => sum + stage.progress, 0) / stages.length) * 100) / 100
+    : 0;
+  return { ceco: order?.ceco, progress, stages };
+}
+
+// Consolida las piezas del BOM por material y fase, para mostrar cuánto debe
+// estar disponible antes de iniciar cada etapa del producto.
+export function materialRequirementsByStage(productId, bom) {
+  const grouped = new Map();
+  bom.filter((item) => item.bodyTypeId === productId).forEach((piece) => {
+    const key = `${piece.stageId}::${piece.materialCode}`;
+    const current = grouped.get(key) ?? { stageId: piece.stageId, materialCode: piece.materialCode, quantity: 0, pieces: [] };
+    current.quantity += Number(piece.quantity ?? 0);
+    current.pieces.push(piece);
+    grouped.set(key, current);
+  });
+  return [...grouped.values()].map((item) => ({ ...item, quantity: Math.round(item.quantity * 1000) / 1000 }));
+}
+
 export function inventoryHeatmap(inventory, orders = [], bom = []) {
   const requirements = materialRequirementSummary(orders, bom);
   return inventory.map((item) => {

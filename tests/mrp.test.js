@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { initialDataset } from "../src/data/seed.js";
-import { buildMaterialExplosion, calculateSafetyStock, evaluateMrp, inventoryHeatmap, materialRequirementSummary } from "../src/lib/mrp.js";
+import { buildMaterialExplosion, calculateCecoProgress, calculateSafetyStock, evaluateMrp, inventoryHeatmap, materialRequirementSummary, materialRequirementsByStage } from "../src/lib/mrp.js";
 import { calibrateDigitalTwin, runDigitalTwin } from "../src/lib/simulator.js";
 
 test("explota BOM por carrocería y calcula faltantes", () => {
@@ -37,6 +37,25 @@ test("requerimiento abierto se calcula desde órdenes activas y BOM", () => {
   assert.equal(requirements["MAT-0042"], 24);
   assert.equal(requirements["MAT-0044"], 60);
   assert.equal(requirements["MAT-0126"], 480);
+});
+
+test("avance del CECO promedia primero sus actividades y luego sus fases", () => {
+  const order = { ceco: "CECO-1", bodyTypeId: "product-1" };
+  const bodyTypes = [{ id: "product-1", route: ["cut", "assembly"] }];
+  const activities = [{ id: "a1", stageId: "cut" }, { id: "a2", stageId: "cut" }, { id: "a3", stageId: "assembly" }];
+  const progress = [{ ceco: "CECO-1", activityId: "a1", progress: 100 }, { ceco: "CECO-1", activityId: "a2", progress: 0 }, { ceco: "CECO-1", activityId: "a3", progress: 100 }];
+  const result = calculateCecoProgress(order, bodyTypes, activities, progress);
+  assert.deepEqual(result.stages.map((stage) => stage.progress), [50, 100]);
+  assert.equal(result.progress, 75);
+});
+
+test("consolida el material requerido por fase de cada producto", () => {
+  const product = initialDataset.bodyTypes.find((item) => item.id === "body-van-flat");
+  const rows = materialRequirementsByStage(product.id, initialDataset.bom);
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((item) => product.route.includes(item.stageId) && item.quantity > 0));
+  const expected = initialDataset.bom.filter((item) => item.bodyTypeId === product.id).reduce((sum, item) => sum + Number(item.quantity), 0);
+  assert.equal(rows.reduce((sum, item) => sum + item.quantity, 0), expected);
 });
 
 test("gemelo digital muestra el efecto de menor disponibilidad de personal", () => {

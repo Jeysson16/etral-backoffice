@@ -1,4 +1,5 @@
 import { initialDataset } from "../data/seed.js";
+import { calculateCecoProgress } from "../lib/mrp.js";
 import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/correlatives.js";
 
 const STORAGE_KEY = "etral.production.dataset.v5";
@@ -58,15 +59,7 @@ function recalculateOrder(dataset, ceco) {
   const route = product?.route ?? [];
   const activities = dataset.stageActivities.filter((item) => route.includes(item.stageId) && item.active !== false);
   const progresses = activities.map((activity) => dataset.activityProgress?.find((item) => item.ceco === ceco && item.activityId === activity.id) || { progress: 0, status: "pending" });
-  const stageProgresses = route.map((stageId) => {
-    const stageActivities = activities.filter((activity) => activity.stageId === stageId);
-    if (!stageActivities.length) return 0;
-    return stageActivities.reduce((sum, activity) => {
-      const activityProgress = dataset.activityProgress?.find((item) => item.ceco === ceco && item.activityId === activity.id);
-      return sum + Number(activityProgress?.progress ?? 0);
-    }, 0) / stageActivities.length;
-  });
-  order.progress = stageProgresses.length ? Math.round((stageProgresses.reduce((sum, progress) => sum + progress, 0) / stageProgresses.length) * 100) / 100 : 0;
+  order.progress = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress).progress;
   const shortage = dataset.orderMaterialReservations?.some((item) => item.ceco === ceco && item.reservedQuantity < item.requiredQuantity);
   const blocked = progresses.some((item) => item.status === "blocked");
   const completed = activities.length > 0 && progresses.every((item) => item.status === "completed");
@@ -144,9 +137,25 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async updateActivitySchedules(ceco, entries) {
+    const dataset = load();
+    if (!dataset.orders.some((order) => order.ceco === ceco)) throw new Error("CECO no encontrado");
+    dataset.activityProgress = dataset.activityProgress || [];
+    entries.forEach((entry) => {
+      if (!entry.plannedStartDate || !entry.plannedEndDate || entry.plannedStartDate > entry.plannedEndDate) throw new Error("El rango programado no es válido");
+      const index = dataset.activityProgress.findIndex((item) => item.ceco === ceco && item.activityId === entry.activityId);
+      const current = index >= 0 ? dataset.activityProgress[index] : { id: entry.id || `progress-${ceco}-${entry.activityId}`, ceco, activityId: entry.activityId, status: "pending", progress: 0, startedAt: null, finishedAt: null };
+      const next = { ...current, plannedStartDate: entry.plannedStartDate, plannedEndDate: entry.plannedEndDate };
+      if (index >= 0) dataset.activityProgress[index] = next; else dataset.activityProgress.push(next);
+    });
+    save(dataset);
+    return dataset;
+  },
   async createOrder(payload) {
     const dataset = load();
-    const ceco = nextCecoCode(dataset.orders, new Date("2026-07-26T12:00:00"));
+    const ceco = String(payload.ceco || nextCecoCode(dataset.orders, new Date("2026-07-26T12:00:00"))).trim();
+    if (!/^\d{6}$/.test(ceco)) throw new Error("El correlativo CECO debe tener 6 dígitos numéricos");
+    if (dataset.orders.some((item) => item.ceco === ceco)) throw new Error(`El CECO ${ceco} ya existe`);
     const order = {
       id: `order-${ceco}`,
       ceco,
