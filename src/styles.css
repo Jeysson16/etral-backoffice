@@ -672,6 +672,9 @@ pre { margin: 7px 0 0; background: #182233; color: #dbe4f0; padding: 11px; borde
 .drawer h2 { font-size: 20px; }
 .drawer header button { border: 0; background: #f1f3f5; width: 32px; height: 32px; border-radius: 8px; color: #596476; font-size: 20px; }
 .drawer form { padding: 23px 24px 30px; display: grid; gap: 18px; }
+.drawer-related-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: -10px; }
+.drawer-related-actions > span { color: #687587; font-size: 11px; font-weight: 850; }
+.drawer-related-actions .row-action { padding: 6px 8px; font-size: 10px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-info { background: #f2f6fa; color: #5d7185; border: 1px solid #d7e2ec; border-radius: 8px; padding: 11px; font-size: 9px; line-height: 1.5; }
 .catalog-manager { border-top: 1px solid #dfe4e9; padding-top: 14px; }
