@@ -34,17 +34,40 @@ function usePageScrollLock(active) {
   useEffect(() => {
     if (!active) return undefined;
     if (pageScrollLocks === 0) {
-      pageScrollState = { overflow: document.body.style.overflow, paddingRight: document.body.style.paddingRight };
+      pageScrollState = {
+        htmlOverflow: document.documentElement.style.overflow,
+        overflow: document.body.style.overflow,
+        paddingRight: document.body.style.paddingRight,
+        position: document.body.style.position,
+        top: document.body.style.top,
+        left: document.body.style.left,
+        right: document.body.style.right,
+        width: document.body.style.width,
+        scrollY: window.scrollY
+      };
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      document.documentElement.style.overflow = "hidden";
       document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.top = `-${pageScrollState.scrollY}px`;
+      document.body.style.left = "0";
+      document.body.style.right = "0";
+      document.body.style.width = "100%";
       if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
     }
     pageScrollLocks += 1;
     return () => {
       pageScrollLocks = Math.max(0, pageScrollLocks - 1);
       if (pageScrollLocks === 0 && pageScrollState) {
+        document.documentElement.style.overflow = pageScrollState.htmlOverflow;
         document.body.style.overflow = pageScrollState.overflow;
         document.body.style.paddingRight = pageScrollState.paddingRight;
+        document.body.style.position = pageScrollState.position;
+        document.body.style.top = pageScrollState.top;
+        document.body.style.left = pageScrollState.left;
+        document.body.style.right = pageScrollState.right;
+        document.body.style.width = pageScrollState.width;
+        window.scrollTo(0, pageScrollState.scrollY);
         pageScrollState = null;
       }
     };

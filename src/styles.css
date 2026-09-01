@@ -496,7 +496,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .work-card-footer span { color: #8a94a3; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
 .work-card-footer b { overflow: hidden; color: #3c4656; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
-.product-detail-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; background: rgba(15,23,42,.52); }
+.product-detail-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; overscroll-behavior: none; touch-action: none; background: rgba(15,23,42,.52); }
 .product-detail-drawer { width: min(760px, 100%); height: 100dvh; max-height: 100dvh; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; background: #f4f6f8; box-shadow: -24px 0 60px rgba(15,23,42,.22); }
 .product-detail-backdrop.with-secondary { justify-content: flex-start; }
 .product-detail-backdrop.with-secondary .product-detail-drawer { width: min(760px, calc(100vw - 520px)); }
@@ -664,7 +664,7 @@ pre { margin: 7px 0 0; background: #182233; color: #dbe4f0; padding: 11px; borde
 .integration-note strong { font-size: 10px; color: #155f3a; }
 .integration-note p { color: #527060; font-size: 9px; line-height: 1.5; margin-top: 4px; }
 
-.drawer-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; background: rgba(15,23,42,.48); }
+.drawer-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; overscroll-behavior: none; touch-action: none; background: rgba(15,23,42,.48); }
 .drawer { width: min(520px, 100%); height: 100dvh; max-height: 100dvh; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; background: white; box-shadow: -20px 0 50px rgba(15,23,42,.18); }
 .drawer-backdrop-secondary { z-index: 100; background: transparent; }
 .drawer-secondary { width: min(520px, 100%); }
