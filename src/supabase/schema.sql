@@ -112,13 +112,14 @@ create table if not exists ceco_orders (
   priority int not null default 999,
   planned_start_date date,
   due_date date,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  active boolean not null default true
 );
 
 create table if not exists stage_inventory (
   id text primary key,
   stage_id text not null references flow_stages(id),
-  ceco text not null references ceco_orders(ceco) on delete cascade,
+  ceco text not null references ceco_orders(ceco) on update cascade on delete cascade,
   item text not null,
   quantity numeric not null default 0 check (quantity >= 0),
   unit text not null default 'und',
@@ -128,7 +129,7 @@ create table if not exists stage_inventory (
 
 create table if not exists ceco_activity_progress (
   id text primary key,
-  ceco text not null references ceco_orders(ceco) on delete cascade,
+  ceco text not null references ceco_orders(ceco) on update cascade on delete cascade,
   activity_id text not null references stage_activities(id) on delete cascade,
   status text not null check (status in ('pending', 'in_progress', 'completed', 'blocked')),
   progress numeric not null default 0 check (progress between 0 and 100),
@@ -187,7 +188,7 @@ create table if not exists work_calendar (
 create table if not exists resource_assignments (
   id text primary key,
   personnel_id text not null references personnel(id),
-  ceco text not null references ceco_orders(ceco),
+  ceco text not null references ceco_orders(ceco) on update cascade on delete cascade,
   activity_id text not null references stage_activities(id),
   assigned_date date not null,
   planned_hours numeric not null check (planned_hours > 0 and planned_hours <= 24),
@@ -201,7 +202,7 @@ create table if not exists operational_incidents (
   type text not null check (type in ('equipment', 'material', 'quality', 'personnel', 'safety', 'other')),
   severity text not null check (severity in ('low', 'medium', 'high', 'critical')),
   stage_id text not null references flow_stages(id),
-  ceco text references ceco_orders(ceco),
+  ceco text references ceco_orders(ceco) on update cascade on delete cascade,
   equipment_id text references equipment(id),
   downtime_hours numeric not null default 0 check (downtime_hours >= 0),
   description text not null,
@@ -212,7 +213,7 @@ create table if not exists operational_incidents (
 create table if not exists operation_logs (
   id text primary key,
   date date not null,
-  ceco text not null references ceco_orders(ceco),
+  ceco text not null references ceco_orders(ceco) on update cascade on delete cascade,
   worker text not null,
   activity text not null,
   total_hours numeric not null default 0 check (total_hours > 0),
@@ -222,7 +223,7 @@ create table if not exists operation_logs (
 create table if not exists warehouse_exits (
   id text primary key,
   ticket text unique not null,
-  ceco text references ceco_orders(ceco),
+  ceco text references ceco_orders(ceco) on update cascade on delete cascade,
   material_code text not null references inventory_items(code),
   quantity numeric not null default 0 check (quantity > 0),
   timestamp timestamptz not null default now()
@@ -230,7 +231,7 @@ create table if not exists warehouse_exits (
 
 create table if not exists quality_checks (
   id text primary key,
-  ceco text not null references ceco_orders(ceco),
+  ceco text not null references ceco_orders(ceco) on update cascade on delete cascade,
   stage_id text not null references flow_stages(id),
   inspector text not null,
   approval text not null check (approval in ('approved', 'observed', 'pending')),

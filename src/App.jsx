@@ -267,12 +267,14 @@ export default function App() {
   async function mutate(action, message) {
     try {
       const updated = await action();
-      setDataset(normalizeDataset(updated));
+      const normalized = normalizeDataset(updated);
+      setDataset(normalized);
       setError("");
       if (message) {
         setNotice(message);
         window.setTimeout(() => setNotice(""), 2800);
       }
+      return normalized;
     } catch (err) {
       setError(err.message);
       throw err;
@@ -468,7 +470,7 @@ export default function App() {
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} />}
           {view === "indicators" && <IndicatorsView dataset={dataset} />}
           {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} />}
-          {view === "orders" && <OrdersView dataset={dataset} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), "Datos de la orden actualizados.")} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
+          {view === "orders" && <OrdersView dataset={dataset} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), patch.ceco && patch.ceco !== ceco ? `CECO renombrado a ${patch.ceco}.` : "Datos de la orden actualizados.")} onDeleteOrder={(ceco) => mutate(() => repo.deleteOrder(ceco), `CECO ${ceco} eliminado y reservas pendientes liberadas.`)} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
           {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "products")} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
           {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "materials")} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Catálogo actualizado.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada del catálogo.")} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
@@ -1161,16 +1163,25 @@ function SimulationAlerts({ notifications }) {
   </section>;
 }
 
-function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrder, onProgress, onSchedule, onUpdateOrder, onCreateQuality }) {
+function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrder, onProgress, onSchedule, onUpdateOrder, onDeleteOrder, onCreateQuality }) {
   const [mode, setMode] = useState("kanban");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  async function updateOrder(ceco, patch) {
+    const updated = await onUpdateOrder(ceco, patch);
+    if (patch.ceco && patch.ceco !== ceco) setSelectedOrder(updated?.orders.find((item) => item.ceco === patch.ceco) ?? null);
+    return updated;
+  }
+  async function deleteOrder(ceco) {
+    await onDeleteOrder(ceco);
+    setSelectedOrder(null);
+  }
   return <div className="stack-lg">
     <PageActions><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></PageActions>
     {mode === "kanban" && <ProductKanban dataset={dataset} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
     {mode === "gantt" && <ProductionGantt dataset={dataset} onSelect={setSelectedOrder} onSchedule={onSchedule} />}
-    {mode === "list" && <><ProductList dataset={dataset} onSelect={setSelectedOrder} /><ExecutionPanel dataset={dataset} openDrawer={openDrawer} /></>}
+    {mode === "list" && <><ProductList dataset={dataset} onSelect={setSelectedOrder} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} /><ExecutionPanel dataset={dataset} openDrawer={openDrawer} /></>}
     {mode === "customers" && <CustomerCatalog dataset={dataset} openDrawer={openDrawer} />}
-    <ProductFlowDrawer dataset={dataset} order={selectedOrder} activeDrawer={activeDrawer} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={onUpdateOrder} onCreateQuality={onCreateQuality} />
+    <ProductFlowDrawer dataset={dataset} order={selectedOrder} activeDrawer={activeDrawer} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={updateOrder} onCreateQuality={onCreateQuality} />
   </div>;
 }
 
@@ -1181,18 +1192,23 @@ function ExcelActions({ onImport, onExport, label }) {
 
 function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onUpdateBom, onDeleteBom }) {
   const [productId, setProductId] = useState(dataset.bodyTypes[0]?.id ?? "");
+  const [search, setSearch] = useState("");
   const product = productOf(dataset, productId);
   const materials = dataset.bom.filter((item) => item.bodyTypeId === productId);
   const requirementsByStage = materialRequirementsByStage(productId, dataset.bom);
+  const filteredProducts = dataset.bodyTypes.filter((item) => `${item.code} ${item.name} ${item.family}`.toLowerCase().includes(search.trim().toLowerCase()));
   return <div className="stack-lg">
     <PageActions><div><strong>{dataset.bodyTypes.length} plantillas de producto</strong><span>Una plantilla define la ruta y BOM; las órdenes son quienes recorren el flujo.</span></div><div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} label="productos" /><Button onClick={() => openDrawer({ type: "product" })}>+ Producto maestro</Button></div></PageActions>
-    <section className="template-grid">{dataset.bodyTypes.map((item) => <button key={item.id} className={`panel template-card ${item.id === productId ? "selected" : ""}`} onClick={() => setProductId(item.id)}><span>{item.code}</span><strong>{item.name}</strong><small>{item.family} · {item.targetDays} días</small><div>{item.route.map((stageId) => <i key={stageId} title={stageOf(dataset, stageId)?.name} style={{ background: stageOf(dataset, stageId)?.color }} />)}</div><b>{dataset.bom.filter((piece) => piece.bodyTypeId === item.id).length} materiales</b></button>)}</section>
+    <div className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar producto, código o familia" /></div>
+    <section className="template-grid">{filteredProducts.map((item) => <button key={item.id} className={`panel template-card ${item.id === productId ? "selected" : ""}`} onClick={() => setProductId(item.id)}><span>{item.code}</span><strong>{item.name}</strong><small>{item.family} · {item.targetDays} días</small><div>{item.route.map((stageId) => <i key={stageId} title={stageOf(dataset, stageId)?.name} style={{ background: stageOf(dataset, stageId)?.color }} />)}</div><b>{dataset.bom.filter((piece) => piece.bodyTypeId === item.id).length} materiales</b></button>)}</section>
     {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div><MaterialRequirementsByStage product={product} dataset={dataset} requirements={requirementsByStage} /><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
   </div>;
 }
 
 function CustomerCatalog({ dataset, openDrawer }) {
-  return <section className="panel"><SectionHeader eyebrow="Maestro comercial" title="Clientes" detail="El cliente se mantiene una vez y luego se selecciona en cada orden." action={<Button onClick={() => openDrawer({ type: "customer" })}>+ Nuevo cliente</Button>} /><div className="table-scroll"><table><thead><tr><th>Cliente</th><th>Documento</th><th>Contacto</th><th>Teléfono / correo</th><th>Órdenes</th><th></th></tr></thead><tbody>{dataset.customers.map((customer) => <tr key={customer.id}><td><strong>{customer.name}</strong></td><td>{customer.documentNumber || "—"}</td><td>{customer.contactName || "—"}</td><td>{customer.phone || "—"}<small>{customer.email}</small></td><td>{dataset.orders.filter((order) => order.customerId === customer.id).length}</td><td><button className="row-action" onClick={() => openDrawer({ type: "customer", customer })}>Editar</button></td></tr>)}</tbody></table></div></section>;
+  const [search, setSearch] = useState("");
+  const filteredCustomers = dataset.customers.filter((customer) => `${customer.name} ${customer.documentNumber ?? ""} ${customer.contactName ?? ""} ${customer.phone ?? ""} ${customer.email ?? ""}`.toLowerCase().includes(search.trim().toLowerCase()));
+  return <section className="panel"><SectionHeader eyebrow="Maestro comercial" title="Clientes" detail="El cliente se mantiene una vez y luego se selecciona en cada orden." action={<Button onClick={() => openDrawer({ type: "customer" })}>+ Nuevo cliente</Button>} /><div className="search-box catalog-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente, RUC, contacto, teléfono o correo" /></div><div className="table-scroll"><table><thead><tr><th>Cliente</th><th>Documento</th><th>Contacto</th><th>Teléfono / correo</th><th>Órdenes</th><th></th></tr></thead><tbody>{filteredCustomers.map((customer) => <tr key={customer.id}><td><strong>{customer.name}</strong></td><td>{customer.documentNumber || "—"}</td><td>{customer.contactName || "—"}</td><td>{customer.phone || "—"}<small>{customer.email}</small></td><td>{dataset.orders.filter((order) => order.customerId === customer.id).length}</td><td><button className="row-action" onClick={() => openDrawer({ type: "customer", customer })}>Editar</button></td></tr>)}</tbody></table></div></section>;
 }
 
 function activityProgressOf(dataset, ceco, activityId) {
@@ -1205,7 +1221,7 @@ function currentActivity(dataset, order) {
 }
 
 function ProductionGantt({ dataset, onSelect, onSchedule }) {
-  const activeOrders = newestOrders(dataset.orders.filter((order) => Number(order.progress) < 100));
+  const activeOrders = newestOrders(dataset.orders.filter((order) => order.active !== false && Number(order.progress) < 100));
   const [ceco, setCeco] = useState(activeOrders[0]?.ceco ?? dataset.orders[0]?.ceco ?? "");
   const [editingRow, setEditingRow] = useState(null);
   const order = dataset.orders.find((item) => item.ceco === ceco) ?? activeOrders[0] ?? dataset.orders[0];
@@ -1323,7 +1339,7 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
   }
   return <div ref={boardRef} className="product-kanban" aria-label="Órdenes por fase" onPointerDown={startScroll} onPointerMove={moveScroll} onPointerUp={stopScroll} onPointerCancel={stopScroll}>
     {byOrder(dataset).map((stage) => {
-      const orders = newestOrders(dataset.orders.filter((order) => order.stageId === stage.id && Number(order.progress) < 100));
+      const orders = newestOrders(dataset.orders.filter((order) => order.active !== false && order.stageId === stage.id && Number(order.progress) < 100));
       const activities = dataset.stageActivities.filter((item) => item.stageId === stage.id).sort((a, b) => a.sequence - b.sequence);
       return <section className="phase-column" style={{ "--phase-color": stage.color }} key={stage.id}>
         <header><div><span>{stage.shortName}</span><strong>{stage.name}</strong></div><b>{orders.length}</b><small>{stage.capacityHours} h/sem.</small></header>
@@ -1345,8 +1361,21 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
   </div>;
 }
 
-function ProductList({ dataset, onSelect }) {
-  return <section className="panel"><SectionHeader eyebrow="Productos en planta" title="Lista de CECO activos" detail="Los CECO recién creados aparecen primero. El avance se calcula como el promedio de sus fases; cada fase promedia sus actividades activas." /><div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Avance CECO</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{newestOrders(dataset.orders.filter((order) => Number(order.progress) < 100)).map((order) => { const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId); const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length; const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress); return <tr key={order.ceco}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>Fase actual</small></td><td><strong>{execution.progress}%</strong><small>{execution.stages.filter((item) => item.progress === 100).length}/{execution.stages.length} fases completas</small></td><td>{formatDate(order.dueDate)}</td><td><StatusPill status={order.status} /></td><td><button className="row-action" onClick={() => onSelect(order)}>Ver detalle →</button></td></tr>; })}</tbody></table></div></section>;
+function ProductList({ dataset, onSelect, onUpdateOrder, onDeleteOrder }) {
+  const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+  const visibleOrders = newestOrders(dataset.orders.filter((order) => {
+    const active = order.active !== false;
+    const matchesSearch = orderLabel(dataset, order).toLowerCase().includes(search.trim().toLowerCase());
+    return matchesSearch && (showInactive ? true : active && Number(order.progress) < 100);
+  }));
+  function deactivate(order) {
+    if (window.confirm(`¿Desactivar el CECO ${order.ceco}? Dejará de mostrarse en Producción hasta que actives el filtro de inactivos.`)) onUpdateOrder(order.ceco, { active: false });
+  }
+  function remove(order) {
+    if (window.confirm(`¿Eliminar definitivamente el CECO ${order.ceco}? Esta acción también eliminará sus registros operativos vinculados y no se puede deshacer.`)) onDeleteOrder(order.ceco);
+  }
+  return <section className="panel"><SectionHeader eyebrow="Productos en planta" title={showInactive ? "Lista de CECO" : "Lista de CECO activos"} detail="Los CECO recién creados aparecen primero. Los inactivos no se muestran hasta activar el filtro." action={<label className="filter-check"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />Ver inactivos</label>} /><div className="search-box catalog-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar CECO, producto o cliente" /></div><div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Avance CECO</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{visibleOrders.map((order) => { const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId); const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length; const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress); return <tr key={order.ceco} className={order.active === false ? "inactive-row" : ""}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>Fase actual</small></td><td><strong>{execution.progress}%</strong><small>{execution.stages.filter((item) => item.progress === 100).length}/{execution.stages.length} fases completas</small></td><td>{formatDate(order.dueDate)}</td><td>{order.active === false ? <span className="inactive-pill">Inactivo</span> : <StatusPill status={order.status} />}</td><td><div className="row-actions"><button className="row-action" onClick={() => onSelect(order)}>Ver detalle</button>{order.active === false ? <button className="row-action" onClick={() => onUpdateOrder(order.ceco, { active: true })}>Activar</button> : <button className="row-action" onClick={() => deactivate(order)}>Desactivar</button>}<button className="row-action danger" onClick={() => remove(order)}>Eliminar</button></div></td></tr>; })}</tbody></table></div></section>;
 }
 
 function ProductFlowDrawer({ dataset, order, activeDrawer, onClose, openDrawer, onProgress, onUpdateOrder, onCreateQuality }) {
@@ -1412,9 +1441,13 @@ function MaterialRequirementManager({ materials, dataset, onUpdate, onDelete }) 
 }
 
 function CustomerManager({ dataset, order, product, quality, onSave, onQuality }) {
-  const [draft, setDraft] = useState({ customerId: order.customerId || "", customer: order.customer, line: order.line, plannedStartDate: pmpStartOf(order, product), dueDate: order.dueDate });
+  const [draft, setDraft] = useState({ ceco: order.ceco, customerId: order.customerId || "", customer: order.customer, line: order.line, plannedStartDate: pmpStartOf(order, product), dueDate: order.dueDate });
   const [control, setControl] = useState({ inspector: "", approval: "approved", observations: "" });
-  return <div className="customer-manager"><div className="customer-detail"><div><span>Cliente</span><strong>{order.customer}</strong><small>Orden {order.ceco} · {product?.family}</small></div><div><span>Estado de planta</span><strong>{order.plantState}</strong><small>Avance global {order.progress}%</small></div><div><span>Calidad</span><strong>{quality?.approval === "approved" ? "Aprobado" : quality?.approval === "observed" ? "Observado" : "Pendiente"}</strong><small>{quality?.observations ?? "Sin inspección registrada"}</small></div></div><div className="customer-fields customer-fields-pmp"><select value={draft.customerId} onChange={(event) => setDraft({ ...draft, customerId: event.target.value })} aria-label="Cliente"><option value="">Cliente original</option>{dataset.customers.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={draft.line} onChange={(event) => setDraft({ ...draft, line: event.target.value })}>{dataset.productionLines.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select><input type="date" value={draft.plannedStartDate} onChange={(event) => setDraft({ ...draft, plannedStartDate: event.target.value })} aria-label="Inicio PMP" title="Inicio PMP" /><input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} aria-label="Fecha pactada" title="Fecha pactada" /><Button type="button" onClick={() => onSave(order.ceco, draft)}>Guardar orden</Button></div><div className="quality-control"><input value={control.inspector} onChange={(event) => setControl({ ...control, inspector: event.target.value })} placeholder="Inspector" /><select value={control.approval} onChange={(event) => setControl({ ...control, approval: event.target.value })}><option value="approved">Aprobado</option><option value="observed">Observado</option><option value="pending">Pendiente</option></select><input value={control.observations} onChange={(event) => setControl({ ...control, observations: event.target.value })} placeholder="Observación de calidad" /><Button type="button" onClick={() => onQuality({ ceco: order.ceco, stageId: order.stageId, ...control })} disabled={!control.inspector.trim()}>Registrar control</Button></div></div>;
+  useEffect(() => setDraft({ ceco: order.ceco, customerId: order.customerId || "", customer: order.customer, line: order.line, plannedStartDate: pmpStartOf(order, product), dueDate: order.dueDate }), [order.ceco, order.customerId, order.customer, order.line, order.plannedStartDate, order.dueDate, product?.id]);
+  const normalizedCeco = String(draft.ceco || "").trim();
+  const duplicateCeco = normalizedCeco !== order.ceco && dataset.orders.some((item) => item.ceco === normalizedCeco);
+  const invalidCeco = !/^\d{6}$/.test(normalizedCeco);
+  return <div className="customer-manager"><div className="customer-detail"><div><span>Cliente</span><strong>{order.customer}</strong><small>Orden {order.ceco} · {product?.family}</small></div><div><span>Estado de planta</span><strong>{order.plantState}</strong><small>Avance global {order.progress}%</small></div><div><span>Calidad</span><strong>{quality?.approval === "approved" ? "Aprobado" : quality?.approval === "observed" ? "Observado" : "Pendiente"}</strong><small>{quality?.observations ?? "Sin inspección registrada"}</small></div></div><div className="customer-fields customer-fields-pmp"><div className="ceco-edit-field"><input value={draft.ceco} inputMode="numeric" maxLength="6" onChange={(event) => setDraft({ ...draft, ceco: event.target.value.replace(/\D/g, "") })} aria-label="Correlativo CECO" title="Correlativo CECO" />{duplicateCeco && <small className="form-error">Ese CECO ya existe.</small>}{!duplicateCeco && invalidCeco && <small className="form-error">Usa 6 dígitos.</small>}</div><select value={draft.customerId} onChange={(event) => setDraft({ ...draft, customerId: event.target.value })} aria-label="Cliente"><option value="">Cliente original</option>{dataset.customers.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={draft.line} onChange={(event) => setDraft({ ...draft, line: event.target.value })}>{dataset.productionLines.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select><input type="date" value={draft.plannedStartDate} onChange={(event) => setDraft({ ...draft, plannedStartDate: event.target.value })} aria-label="Inicio PMP" title="Inicio PMP" /><input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} aria-label="Fecha pactada" title="Fecha pactada" /><Button type="button" onClick={() => onSave(order.ceco, { ...draft, ceco: normalizedCeco })} disabled={duplicateCeco || invalidCeco}>Guardar orden</Button></div><small className="ceco-edit-hint">Puedes editar el correlativo CECO. Si ya existe, se avisa aquí y se protege la unicidad del registro.</small><div className="quality-control"><input value={control.inspector} onChange={(event) => setControl({ ...control, inspector: event.target.value })} placeholder="Inspector" /><select value={control.approval} onChange={(event) => setControl({ ...control, approval: event.target.value })}><option value="approved">Aprobado</option><option value="observed">Observado</option><option value="pending">Pendiente</option></select><input value={control.observations} onChange={(event) => setControl({ ...control, observations: event.target.value })} placeholder="Observación de calidad" /><Button type="button" onClick={() => onQuality({ ceco: order.ceco, stageId: order.stageId, ...control })} disabled={!control.inspector.trim()}>Registrar control</Button></div></div>;
 }
 
 function StagesView({ dataset, openDrawer }) {

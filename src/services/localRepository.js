@@ -110,7 +110,32 @@ export const localRepository = {
     const dataset = load();
     const order = dataset.orders.find((item) => item.ceco === ceco);
     if (!order) throw new Error("CECO no encontrado");
-    Object.assign(order, patch);
+    const nextCeco = patch.ceco ? String(patch.ceco).trim() : ceco;
+    if (!/^\d{6}$/.test(nextCeco)) throw new Error("El correlativo CECO debe tener 6 dígitos numéricos");
+    if (nextCeco !== ceco) {
+      if (dataset.orders.some((item) => item.ceco === nextCeco)) throw new Error(`El CECO ${nextCeco} ya existe`);
+      ["stageInventory", "activityProgress", "orderMaterialReservations", "operations", "warehouse", "quality", "inventoryMovements", "assignments", "incidents"].forEach((collection) => {
+        (dataset[collection] ?? []).forEach((item) => { if (item.ceco === ceco) item.ceco = nextCeco; });
+      });
+      order.ceco = nextCeco;
+    }
+    Object.assign(order, { ...patch, ceco: nextCeco });
+    save(dataset);
+    return dataset;
+  },
+  async deleteOrder(ceco) {
+    const dataset = load();
+    const order = dataset.orders.find((item) => item.ceco === ceco);
+    if (!order) throw new Error("CECO no encontrado");
+    const reservations = (dataset.orderMaterialReservations ?? []).filter((item) => item.ceco === ceco);
+    reservations.forEach((reservation) => {
+      const toRelease = Math.max(0, Number(reservation.reservedQuantity) - Number(reservation.issuedQuantity || 0));
+      if (toRelease > 0) dataset.inventory = dataset.inventory.map((item) => item.code === reservation.materialCode ? { ...item, committed: Math.max(0, Number(item.committed) - toRelease) } : item);
+    });
+    ["stageInventory", "activityProgress", "orderMaterialReservations", "operations", "warehouse", "quality", "inventoryMovements", "assignments", "incidents"].forEach((collection) => {
+      dataset[collection] = (dataset[collection] ?? []).filter((item) => item.ceco !== ceco);
+    });
+    dataset.orders = dataset.orders.filter((item) => item.ceco !== ceco);
     save(dataset);
     return dataset;
   },
@@ -167,6 +192,7 @@ export const localRepository = {
       plantState: "En cola",
       line: null,
       priority: dataset.orders.length + 1,
+      active: true,
       createdAt: new Date().toISOString(),
       ...payload
     };

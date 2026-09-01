@@ -577,9 +577,12 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .material-actions button:last-child, .catalog-list button:last-child { color: #b32929; }
 .customer-manager { display: grid; gap: 12px; padding: 0 22px 20px; }
 .customer-fields { display: grid; grid-template-columns: 1.2fr .8fr 110px auto; gap: 7px; }
-.customer-fields-pmp { grid-template-columns: 1.2fr .75fr 112px 112px auto; }
+.customer-fields-pmp { grid-template-columns: 84px 1.2fr .75fr 112px 112px auto; }
 .customer-fields input, .customer-fields select { min-height: 34px; font-size: 9px; }
 .customer-fields .button { min-height: 34px; padding: 6px 9px; font-size: 9px; }
+.ceco-edit-field { display: grid; gap: 2px; min-width: 0; }
+.ceco-edit-field .form-error { font-size: 8px; white-space: nowrap; }
+.ceco-edit-hint { margin-top: -6px; color: #778496; font-size: 9px; }
 .quality-control { display: grid; grid-template-columns: 105px 95px minmax(0, 1fr) auto; gap: 7px; padding-top: 10px; border-top: 1px solid #edf0f3; }
 .quality-control input, .quality-control select { min-height: 34px; font-size: 9px; }
 .quality-control .button { min-height: 34px; padding: 6px 9px; font-size: 9px; }
@@ -617,6 +620,13 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .search-box { position: relative; width: min(420px, 100%); }
 .search-box span { position: absolute; left: 11px; color: #7c8796; font-size: 15px; }
 .search-box input { padding-left: 34px !important; min-height: 39px !important; }
+.catalog-search { margin: 0 22px 14px; }
+.filter-check { display: inline-flex; align-items: center; gap: 7px; color: #546175; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.filter-check input { accent-color: var(--orange); }
+.inactive-row { background: #f8fafc; opacity: .72; }
+.inactive-pill { display: inline-flex; padding: 4px 7px; border-radius: 6px; color: #64748b; background: #e8edf3; font-size: 10px; font-weight: 900; }
+.row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.row-action.danger { color: #b42318; }
 .inventory-search { margin-top: -4px; }
 .context-select { gap: 8px !important; }
 .context-select label { font-size: 10px; font-weight: 800; }

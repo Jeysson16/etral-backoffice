@@ -74,7 +74,21 @@ export const supabaseRepository = {
   async updateOrder(ceco, patch) {
     const customer = patch.customerId ? await supabase.from("customers").select("name").eq("id", patch.customerId).single() : null;
     if (customer?.error) throw customer.error;
-    const { error } = await supabase.from("ceco_orders").update({ customer_id: patch.customerId || null, customer: customer?.data?.name || patch.customer, line: patch.line, planned_start_date: patch.plannedStartDate || null, due_date: patch.dueDate }).eq("ceco", ceco);
+    const nextCeco = patch.ceco ? String(patch.ceco).trim() : ceco;
+    if (!/^\d{6}$/.test(nextCeco)) throw new Error("El correlativo CECO debe tener 6 dígitos numéricos");
+    const values = {};
+    if (nextCeco !== ceco) values.ceco = nextCeco;
+    if (Object.hasOwn(patch, "customerId")) { values.customer_id = patch.customerId || null; values.customer = customer?.data?.name || patch.customer; }
+    if (Object.hasOwn(patch, "line")) values.line = patch.line;
+    if (Object.hasOwn(patch, "plannedStartDate")) values.planned_start_date = patch.plannedStartDate || null;
+    if (Object.hasOwn(patch, "dueDate")) values.due_date = patch.dueDate || null;
+    if (Object.hasOwn(patch, "active")) values.active = Boolean(patch.active);
+    const { error } = await supabase.from("ceco_orders").update(values).eq("ceco", ceco);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async deleteOrder(ceco) {
+    const { error } = await supabase.rpc("delete_ceco_order", { p_ceco: ceco });
     if (error) throw error;
     return this.getDataset();
   },
@@ -449,7 +463,7 @@ function mapActivityProgress(row) {
 }
 
 function mapOrder(row) {
-  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, createdAt: row.created_at || null };
+  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, createdAt: row.created_at || null, active: row.active !== false };
 }
 
 function mapCustomer(row) { return { id: row.id, documentNumber: row.document_number, name: row.name, contactName: row.contact_name, phone: row.phone, email: row.email, active: row.active }; }
