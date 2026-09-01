@@ -165,6 +165,7 @@ export const localRepository = {
       status: "orange",
       stageId: dataset.flowStages[0]?.id ?? "stage-supply",
       plantState: "En cola",
+      line: null,
       priority: dataset.orders.length + 1,
       ...payload
     };

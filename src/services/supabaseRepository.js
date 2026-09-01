@@ -105,7 +105,7 @@ export const supabaseRepository = {
   async createOrder(payload) {
     const { error } = await supabase.rpc("create_order_with_reservations", {
       p_customer_id: payload.customerId || "", p_customer_name: payload.customer || "",
-      p_body_type_id: payload.bodyTypeId, p_line: payload.line, p_planned_start_date: payload.plannedStartDate, p_due_date: payload.dueDate, p_ceco: payload.ceco || null
+      p_body_type_id: payload.bodyTypeId, p_planned_start_date: payload.plannedStartDate, p_due_date: payload.dueDate, p_ceco: payload.ceco || null
     });
     if (error) throw error;
     return this.getDataset();

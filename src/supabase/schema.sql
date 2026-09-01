@@ -105,7 +105,7 @@ create table if not exists ceco_orders (
   customer text not null,
   body_type_id text not null references body_types(id),
   progress numeric not null default 0 check (progress between 0 and 100),
-  line text not null,
+  line text,
   status text not null check (status in ('green', 'orange', 'red')),
   stage_id text references flow_stages(id),
   plant_state text not null,
