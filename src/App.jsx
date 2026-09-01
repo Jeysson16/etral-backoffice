@@ -104,6 +104,15 @@ function orderLabel(dataset, order) {
   return `${order.ceco} · ${product?.name ?? "Producto sin descripción"} — ${order.customer}`;
 }
 
+function newestOrders(orders) {
+  return [...orders].sort((a, b) => {
+    const aTime = Date.parse(a.createdAt || "");
+    const bTime = Date.parse(b.createdAt || "");
+    if (Number.isFinite(aTime) || Number.isFinite(bTime)) return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+    return Number(b.ceco) - Number(a.ceco);
+  });
+}
+
 function stagesForOrder(dataset, ceco) {
   const order = dataset.orders.find((item) => item.ceco === ceco);
   const route = productOf(dataset, order?.bodyTypeId)?.route ?? [];
@@ -1196,7 +1205,7 @@ function currentActivity(dataset, order) {
 }
 
 function ProductionGantt({ dataset, onSelect, onSchedule }) {
-  const activeOrders = dataset.orders.filter((order) => Number(order.progress) < 100).sort((a, b) => a.priority - b.priority);
+  const activeOrders = newestOrders(dataset.orders.filter((order) => Number(order.progress) < 100));
   const [ceco, setCeco] = useState(activeOrders[0]?.ceco ?? dataset.orders[0]?.ceco ?? "");
   const [editingRow, setEditingRow] = useState(null);
   const order = dataset.orders.find((item) => item.ceco === ceco) ?? activeOrders[0] ?? dataset.orders[0];
@@ -1314,7 +1323,7 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
   }
   return <div ref={boardRef} className="product-kanban" aria-label="Órdenes por fase" onPointerDown={startScroll} onPointerMove={moveScroll} onPointerUp={stopScroll} onPointerCancel={stopScroll}>
     {byOrder(dataset).map((stage) => {
-      const orders = dataset.orders.filter((order) => order.stageId === stage.id && Number(order.progress) < 100).sort((a, b) => a.priority - b.priority);
+      const orders = newestOrders(dataset.orders.filter((order) => order.stageId === stage.id && Number(order.progress) < 100));
       const activities = dataset.stageActivities.filter((item) => item.stageId === stage.id).sort((a, b) => a.sequence - b.sequence);
       return <section className="phase-column" style={{ "--phase-color": stage.color }} key={stage.id}>
         <header><div><span>{stage.shortName}</span><strong>{stage.name}</strong></div><b>{orders.length}</b><small>{stage.capacityHours} h/sem.</small></header>
@@ -1337,7 +1346,7 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
 }
 
 function ProductList({ dataset, onSelect }) {
-  return <section className="panel"><SectionHeader eyebrow="Productos en planta" title="Lista de CECO activos" detail="El avance se calcula como el promedio de sus fases; cada fase promedia sus actividades activas." /><div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Avance CECO</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{[...dataset.orders].filter((order) => Number(order.progress) < 100).sort((a, b) => a.priority - b.priority).map((order) => { const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId); const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length; const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress); return <tr key={order.ceco}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>Fase actual</small></td><td><strong>{execution.progress}%</strong><small>{execution.stages.filter((item) => item.progress === 100).length}/{execution.stages.length} fases completas</small></td><td>{formatDate(order.dueDate)}</td><td><StatusPill status={order.status} /></td><td><button className="row-action" onClick={() => onSelect(order)}>Ver detalle →</button></td></tr>; })}</tbody></table></div></section>;
+  return <section className="panel"><SectionHeader eyebrow="Productos en planta" title="Lista de CECO activos" detail="Los CECO recién creados aparecen primero. El avance se calcula como el promedio de sus fases; cada fase promedia sus actividades activas." /><div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Avance CECO</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{newestOrders(dataset.orders.filter((order) => Number(order.progress) < 100)).map((order) => { const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId); const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length; const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress); return <tr key={order.ceco}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>Fase actual</small></td><td><strong>{execution.progress}%</strong><small>{execution.stages.filter((item) => item.progress === 100).length}/{execution.stages.length} fases completas</small></td><td>{formatDate(order.dueDate)}</td><td><StatusPill status={order.status} /></td><td><button className="row-action" onClick={() => onSelect(order)}>Ver detalle →</button></td></tr>; })}</tbody></table></div></section>;
 }
 
 function ProductFlowDrawer({ dataset, order, activeDrawer, onClose, openDrawer, onProgress, onUpdateOrder, onCreateQuality }) {

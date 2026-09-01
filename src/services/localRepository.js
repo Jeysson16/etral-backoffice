@@ -167,6 +167,7 @@ export const localRepository = {
       plantState: "En cola",
       line: null,
       priority: dataset.orders.length + 1,
+      createdAt: new Date().toISOString(),
       ...payload
     };
     dataset.orders.unshift(order);
