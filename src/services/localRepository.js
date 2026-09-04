@@ -4,6 +4,10 @@ import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/cor
 
 const STORAGE_KEY = "etral.production.dataset.v5";
 
+function newInternalId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function load() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
@@ -30,7 +34,7 @@ function save(dataset) {
 function addMovement(dataset, movement) {
   dataset.inventoryMovements = dataset.inventoryMovements || [];
   dataset.inventoryMovements.unshift({
-    id: `mov-${Date.now()}-${Math.round(Math.random() * 1000)}`,
+    id: newInternalId("mov"),
     timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
     ...movement
   });
@@ -44,7 +48,7 @@ function reserveBom(dataset, order) {
       const item = dataset.inventory.find((entry) => entry.code === piece.materialCode);
       const available = Math.max(0, Number(item?.physical || 0) - Number(item?.committed || 0));
       const reserved = Math.min(Number(piece.quantity), available);
-      dataset.orderMaterialReservations.push({ id: `reservation-${order.ceco}-${piece.id}`, ceco: order.ceco, bomItemId: piece.id, stageId: piece.stageId, materialCode: piece.materialCode, requiredQuantity: Number(piece.quantity), reservedQuantity: reserved, issuedQuantity: 0, consumedQuantity: 0, status: reserved === 0 ? "pending" : reserved < Number(piece.quantity) ? "partial" : "reserved" });
+      dataset.orderMaterialReservations.push({ id: newInternalId("reservation"), ceco: order.ceco, bomItemId: piece.id, stageId: piece.stageId, materialCode: piece.materialCode, requiredQuantity: Number(piece.quantity), reservedQuantity: reserved, issuedQuantity: 0, consumedQuantity: 0, status: reserved === 0 ? "pending" : reserved < Number(piece.quantity) ? "partial" : "reserved" });
       if (reserved > 0) {
         dataset.inventory = dataset.inventory.map((entry) => entry.code === piece.materialCode ? { ...entry, committed: Number(entry.committed) + reserved } : entry);
         addMovement(dataset, { type: "reserva", code: piece.materialCode, ceco: order.ceco, quantity: reserved, note: "Reserva automática por apertura CECO" });
@@ -182,7 +186,7 @@ export const localRepository = {
     if (!/^\d{6}$/.test(ceco)) throw new Error("El correlativo CECO debe tener 6 dígitos numéricos");
     if (dataset.orders.some((item) => item.ceco === ceco)) throw new Error(`El CECO ${ceco} ya existe`);
     const order = {
-      id: `order-${ceco}`,
+      id: newInternalId("order"),
       ceco,
       customerId: payload.customerId || null,
       customer: dataset.customers?.find((item) => item.id === payload.customerId)?.name || payload.customer,
@@ -306,6 +310,36 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async replenishAndReserve(payload) {
+    const dataset = load();
+    const quantity = Number(payload.quantity);
+    const ceco = String(payload.ceco || "").trim();
+    const material = dataset.inventory.find((item) => item.code === payload.code);
+    if (!dataset.orders.some((item) => item.ceco === ceco)) throw new Error("CECO no encontrado");
+    if (!material) throw new Error("Material no encontrado");
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("La cantidad debe ser mayor que cero");
+    if (!['ingreso', 'ajuste'].includes(payload.type)) throw new Error("La reposición debe ser un ingreso o ajuste positivo");
+
+    material.physical = Number(material.physical || 0) + quantity;
+    addMovement(dataset, { ...payload, ceco, quantity });
+
+    (dataset.orderMaterialReservations ?? [])
+      .filter((item) => item.ceco === ceco && item.materialCode === payload.code && Number(item.reservedQuantity) < Number(item.requiredQuantity))
+      .forEach((reservation) => {
+        const missing = Number(reservation.requiredQuantity) - Number(reservation.reservedQuantity);
+        const available = Math.max(0, Number(material.physical || 0) - Number(material.committed || 0));
+        const reserved = Math.min(missing, available);
+        if (reserved <= 0) return;
+        reservation.reservedQuantity = Number(reservation.reservedQuantity) + reserved;
+        reservation.status = reservation.reservedQuantity >= reservation.requiredQuantity ? "reserved" : "partial";
+        material.committed = Number(material.committed || 0) + reserved;
+        addMovement(dataset, { type: "reserva", code: reservation.materialCode, ceco, quantity: reserved, note: "Reserva complementaria tras reposición rápida" });
+      });
+
+    recalculateOrder(dataset, ceco);
+    save(dataset);
+    return dataset;
+  },
   async refreshOrderReservations(ceco) {
     const dataset = load();
     const reservations = (dataset.orderMaterialReservations ?? []).filter((item) => item.ceco === ceco && Number(item.reservedQuantity) < Number(item.requiredQuantity));
@@ -426,6 +460,19 @@ export const localRepository = {
   async createBomItem(payload) {
     const dataset = load();
     dataset.bom.unshift({ id: `bom-${Date.now()}`, ...payload, quantity: Number(payload.quantity), lengthMm: Number(payload.lengthMm) });
+    save(dataset);
+    return dataset;
+  },
+  async saveBomItems(payloads) {
+    const dataset = load();
+    if (!Array.isArray(payloads) || !payloads.length) return dataset;
+    payloads.forEach((payload, index) => {
+      if (!payload.bodyTypeId || !payload.stageId || !payload.materialCode || Number(payload.quantity) <= 0) throw new Error("Cada asignación requiere producto, fase, material y una cantidad válida.");
+      const existing = dataset.bom.find((item) => item.id === payload.id || (item.bodyTypeId === payload.bodyTypeId && item.stageId === payload.stageId && item.materialCode === payload.materialCode));
+      const data = { ...payload, quantity: Number(payload.quantity), lengthMm: Number(payload.lengthMm || 0) };
+      if (existing) Object.assign(existing, data, { pieceCode: existing.pieceCode || data.pieceCode });
+      else dataset.bom.unshift({ id: `bom-quick-${Date.now()}-${index}`, ...data });
+    });
     save(dataset);
     return dataset;
   },

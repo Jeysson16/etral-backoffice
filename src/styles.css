@@ -498,8 +498,8 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 
 .product-detail-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; overscroll-behavior: none; touch-action: none; background: rgba(15,23,42,.52); }
 .product-detail-drawer { width: min(760px, 100%); height: 100dvh; max-height: 100dvh; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; background: #f4f6f8; box-shadow: -24px 0 60px rgba(15,23,42,.22); }
-.product-detail-backdrop.with-secondary { justify-content: flex-start; }
-.product-detail-backdrop.with-secondary .product-detail-drawer { width: min(760px, calc(100vw - 520px)); }
+/* El registro complementario se apila sobre el pasaporte; nunca lo redimensiona. */
+.product-detail-backdrop.with-secondary { justify-content: flex-end; }
 .product-detail-drawer > header { position: sticky; top: 0; z-index: 4; min-height: 96px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 19px 24px; background: #111827; color: white; }
 .product-detail-drawer > header h2 { font-size: 22px; }
 .product-detail-drawer > header h2 + span { display: block; margin-top: 4px; color: #b7c1cf; font-size: 10px; }
@@ -632,8 +632,9 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .context-select label { font-size: 10px; font-weight: 800; }
 .context-select select { width: 340px; }
 .section-actions { display: flex; align-items: center; gap: 8px; }
-.excel-actions { display: flex; align-items: center; gap: 6px; }
+.excel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .excel-actions .button { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+.excel-import-hint { margin: -6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .section-actions select { width: min(300px, 38vw); min-height: 38px; }
 .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
 .template-card { appearance: none; min-height: 150px; display: grid; justify-items: start; gap: 7px; padding: 18px; text-align: left; cursor: pointer; border: 1px solid #dfe5eb; }
@@ -655,6 +656,10 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .material-plan-grid > article { overflow: hidden; border: 1px solid #e0e6eb; border-top: 3px solid var(--stage-color); border-radius: 9px; background: #fbfcfd; }
 .material-plan-grid article > header { display: grid; grid-template-columns: 26px 1fr; align-items: center; gap: 8px; padding: 10px 11px; border-bottom: 1px solid #e6eaee; background: white; }.material-plan-grid article > header > span { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 6px; color: white; background: var(--stage-color); font-size: 9px; font-weight: 900; }.material-plan-grid header strong { display: block; color: #33475c; font-size: 10px; }.material-plan-grid header small { color: #8491a0; font-size: 9px; }
 .material-plan-grid ul { list-style: none; margin: 0; padding: 4px 11px 8px; }.material-plan-grid li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid #edf0f3; }.material-plan-grid li:last-child { border-bottom: 0; }.material-plan-grid li > div { display: grid; gap: 2px; min-width: 0; }.material-plan-grid li strong { color: #4a5d70; font-size: 10px; }.material-plan-grid li small { overflow: hidden; color: #8b96a4; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }.material-plan-grid li > b { color: #17734f; font-size: 10px; white-space: nowrap; }.material-plan-empty { padding: 14px 11px; color: #94a0ac; font-size: 9px; }
+.quick-bom { margin: 0 22px 18px; padding: 15px; border: 1px solid #d9e4ed; border-radius: 10px; background: #f8fbfd; }
+.quick-bom > header, .quick-bom footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }.quick-bom .eyebrow { margin-bottom: 4px; }.quick-bom h3 { color: #263e52; font-size: 13px; }.quick-bom header p:not(.eyebrow), .quick-bom footer small { color: #728193; font-size: 10px; line-height: 1.45; }.quick-bom header > span { padding: 5px 8px; border-radius: 999px; color: #265f47; background: #e4f4eb; font-size: 10px; font-weight: 850; white-space: nowrap; }
+.quick-bom-controls { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(180px, 1.25fr) auto auto; align-items: center; gap: 8px; margin: 14px 0 9px; }.quick-bom-controls .search-box input { min-height: 36px !important; }.quick-bom-controls .text-button { white-space: nowrap; }
+.quick-bom-list { max-height: 268px; overflow: auto; border: 1px solid #e1e7ec; border-radius: 8px; background: white; }.quick-bom-list label { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(100px, 140px); align-items: center; gap: 9px; padding: 9px 10px; border-bottom: 1px solid #eef2f5; cursor: pointer; }.quick-bom-list label:last-child { border-bottom: 0; }.quick-bom-list label.selected { background: #fff8f2; }.quick-bom-list input[type="checkbox"] { accent-color: var(--orange); }.quick-bom-list strong, .quick-bom-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.quick-bom-list strong { color: #3d4d60; font-size: 10px; }.quick-bom-list small { margin-top: 2px; color: #8793a1; font-size: 9px; }.quick-bom-list .input-suffix input { min-width: 0; width: 100%; min-height: 32px; }.quick-bom footer { margin-top: 11px; }.quick-bom footer small { max-width: 70%; }
 .quality-list { padding: 0 20px 18px; }
 .quality-list article { display: flex; gap: 11px; padding: 13px 0; border-top: 1px solid #edf0f3; }
 .quality-icon { flex: 0 0 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 900; background: #eef1f5; color: #667184; }
@@ -682,8 +687,8 @@ pre { margin: 7px 0 0; background: #182233; color: #dbe4f0; padding: 11px; borde
 
 .drawer-backdrop { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: flex-end; height: 100dvh; overflow: hidden; overscroll-behavior: none; touch-action: none; background: rgba(15,23,42,.48); }
 .drawer { width: min(520px, 100%); height: 100dvh; max-height: 100dvh; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; background: white; box-shadow: -20px 0 50px rgba(15,23,42,.18); }
-.drawer-backdrop-secondary { z-index: 100; background: transparent; }
-.drawer-secondary { width: min(520px, 100%); }
+.drawer-backdrop-secondary { z-index: 100; background: rgba(15,23,42,.42); }
+.drawer-secondary { width: min(520px, 100%); box-shadow: -24px 0 60px rgba(15,23,42,.3); }
 .drawer > header { position: sticky; top: 0; z-index: 2; background: white; border-bottom: 1px solid var(--line); padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; }
 .drawer h2 { font-size: 20px; }
 .drawer header button { border: 0; background: #f1f3f5; width: 32px; height: 32px; border-radius: 8px; color: #596476; font-size: 20px; }
@@ -847,8 +852,7 @@ pre,
 }
 
 @media (max-width: 1100px) {
-  .product-detail-backdrop.with-secondary .product-detail-drawer { width: 100%; }
-  .drawer-backdrop-secondary { background: rgba(15,23,42,.24); }
+  .drawer-backdrop-secondary { background: rgba(15,23,42,.42); }
 }
 
 @media (max-width: 600px) {
@@ -868,9 +872,9 @@ pre,
   .product-meta { gap: 14px; }
   .form-row { grid-template-columns: 1fr; }
   .template-grid { grid-template-columns: 1fr; }
+  .quick-bom { margin: 0 14px 16px; }.quick-bom-controls { grid-template-columns: 1fr 1fr; }.quick-bom-list label { grid-template-columns: auto minmax(0, 1fr); }.quick-bom-list .input-suffix { grid-column: 2; }.quick-bom footer { align-items: stretch; flex-direction: column; }.quick-bom footer small { max-width: none; }
   .material-plan-header { align-items: stretch; flex-direction: column; }.material-plan-header > span { width: fit-content; }
   .drawer { width: 100%; }
-  .product-detail-backdrop.with-secondary .product-detail-drawer { width: 100%; }
   .product-kanban { grid-auto-columns: 86vw; }
   .detail-summary { grid-template-columns: 1fr 1fr; }
   .gantt-summary { grid-template-columns: 1fr 1fr; }

@@ -267,6 +267,17 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async replenishAndReserve(payload) {
+    const { error } = await supabase.rpc("replenish_and_reserve_material", {
+      p_ceco: payload.ceco,
+      p_material_code: payload.code,
+      p_quantity: Number(payload.quantity),
+      p_movement_type: payload.type,
+      p_note: payload.note || null
+    });
+    if (error) throw error;
+    return this.getDataset();
+  },
   async createBodyType(payload) {
     const { error } = await supabase.rpc("save_product_template", { p_id: "", p_code: payload.code, p_family_id: payload.familyId, p_brand_id: payload.brandId, p_name: payload.name, p_target_days: Number(payload.targetDays), p_output_unit_id: payload.outputUnitId, p_route: payload.route });
     if (error) throw error;
@@ -367,6 +378,24 @@ export const supabaseRepository = {
       length_mm: Number(payload.lengthMm),
       quantity: Number(payload.quantity)
     });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async saveBomItems(payloads) {
+    if (!Array.isArray(payloads) || !payloads.length) return this.getDataset();
+    const dataset = await this.getDataset();
+    const stamp = Date.now();
+    const inserts = [];
+    const updates = [];
+    payloads.forEach((payload, index) => {
+      if (!payload.bodyTypeId || !payload.stageId || !payload.materialCode || Number(payload.quantity) <= 0) throw new Error("Cada asignación requiere producto, fase, material y una cantidad válida.");
+      const existing = dataset.bom.find((item) => item.id === payload.id || (item.bodyTypeId === payload.bodyTypeId && item.stageId === payload.stageId && item.materialCode === payload.materialCode));
+      const data = { body_type_id: payload.bodyTypeId, stage_id: payload.stageId, material_code: payload.materialCode, piece_code: existing?.pieceCode || payload.pieceCode, description: payload.description, length_mm: Number(payload.lengthMm || 0), quantity: Number(payload.quantity) };
+      if (existing) updates.push(supabase.from("bom_items").update(data).eq("id", existing.id));
+      else inserts.push({ id: `bom-quick-${stamp}-${index}`, ...data });
+    });
+    const results = await Promise.all([...updates, ...(inserts.length ? [supabase.from("bom_items").insert(inserts)] : [])]);
+    const error = results.find((result) => result.error)?.error;
     if (error) throw error;
     return this.getDataset();
   },

@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { initialDataset } from "./data/seed.js";
 import { calculateCecoProgress, evaluateMrp, inventoryHeatmap, materialRequirementsByStage } from "./lib/mrp.js";
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
-import { availableDateRange, buildExcelReport, calculateProductivityReport } from "./lib/productivity.js";
+import { availableDateRange, calculateProductivityReport } from "./lib/productivity.js";
 import { exportIndicatorsWorkbook, exportPeriodRecords } from "./lib/indicatorExports.js";
 import { getRepository } from "./services/repository.js";
 import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
-import { downloadCatalogWorkbook, parseCatalogWorkbook } from "./lib/excelCatalogs.js";
+import { downloadBulkImportWorkbook, downloadCatalogWorkbook, parseCatalogWorkbook } from "./lib/excelCatalogs.js";
 import { nextCecoCode } from "./lib/correlatives.js";
 import { supabase } from "./supabase/client.js";
 import ResourcesView from "./components/ResourcesView.jsx";
@@ -181,7 +181,34 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const repo = useMemo(() => getRepository(), []);
+  const sessionRecoveryRef = useRef(null);
   usePageScrollLock(Boolean(drawer));
+
+  function isFutureJwtError(error) {
+    return /jwt.*issued at future|issued at future.*jwt/i.test(String(error?.message ?? error ?? ""));
+  }
+
+  async function runWithSessionRecovery(action) {
+    try {
+      return await action();
+    } catch (initialError) {
+      if (!supabase || !isFutureJwtError(initialError)) throw initialError;
+
+      if (!sessionRecoveryRef.current) {
+        sessionRecoveryRef.current = supabase.auth.refreshSession()
+          .then(({ data, error: refreshError }) => {
+            if (refreshError) throw refreshError;
+            setSession(data.session ?? null);
+            return data.session;
+          })
+          .finally(() => { sessionRecoveryRef.current = null; });
+      }
+
+      const refreshedSession = await sessionRecoveryRef.current;
+      if (!refreshedSession) throw initialError;
+      return action();
+    }
+  }
 
   useEffect(() => {
     const syncViewWithHash = () => setView(window.location.hash === "#/indicadores" ? "indicators" : "overview");
@@ -213,7 +240,7 @@ export default function App() {
 
   useEffect(() => {
     if (supabase && !session) return undefined;
-    repo.getDataset()
+    runWithSessionRecovery(() => repo.getDataset())
       .then((loaded) => {
         const normalized = normalizeDataset(loaded);
         setDataset(normalized);
@@ -240,7 +267,7 @@ export default function App() {
 
   async function persist(action, message) {
     try {
-      const updated = await action();
+      const updated = await runWithSessionRecovery(action);
       setDataset(normalizeDataset(updated));
       setDrawer((current) => current?.parent ?? null);
       setError("");
@@ -253,7 +280,7 @@ export default function App() {
 
   async function createCatalogItem(payload) {
     try {
-      const updated = await repo.createCatalogItem(payload);
+      const updated = await runWithSessionRecovery(() => repo.createCatalogItem(payload));
       setDataset(normalizeDataset(updated));
       setError("");
       setNotice("Opción agregada al catálogo.");
@@ -266,7 +293,7 @@ export default function App() {
 
   async function mutate(action, message) {
     try {
-      const updated = await action();
+      const updated = await runWithSessionRecovery(action);
       const normalized = normalizeDataset(updated);
       setDataset(normalized);
       setError("");
@@ -284,10 +311,10 @@ export default function App() {
   async function importExcelCatalog(file) {
     try {
       const payload = await parseCatalogWorkbook(file);
-      const updated = await repo.importCatalogData(payload);
+      const updated = await runWithSessionRecovery(() => repo.importCatalogData(payload));
       setDataset(normalizeDataset(updated));
       setError("");
-      setNotice(`Excel importado: ${payload.materials.length} materiales, ${payload.products.length} productos y ${payload.bom.length} componentes BOM.`);
+      setNotice(`${payload.mode === "carga masiva" ? "Carga masiva importada" : "Excel importado"}: ${payload.materials.length} materiales, ${payload.products.length} productos y ${payload.bom.length} componentes BOM.`);
       window.setTimeout(() => setNotice(""), 4800);
     } catch (err) {
       setError(`No se pudo importar el Excel: ${err.message}`);
@@ -326,7 +353,7 @@ export default function App() {
     }
     if (drawer.type === "movement") {
       const movement = { type: values.movementType, code: values.code, quantity: Number(values.quantity), ceco: drawer.ceco || values.ceco || "", note: values.note };
-      if (drawer.quickReplenish) return persist(async () => { await repo.createInventoryMovement(movement); return repo.refreshOrderReservations(drawer.ceco); }, "Ingreso registrado y reservas del CECO actualizadas.");
+      if (drawer.quickReplenish) return persist(() => repo.replenishAndReserve(movement), "Ingreso registrado y reservas del CECO actualizadas.");
       return persist(() => repo.createInventoryMovement(movement), "Movimiento aplicado al inventario.");
     }
     if (drawer.type === "warehouse") {
@@ -471,7 +498,7 @@ export default function App() {
           {view === "indicators" && <IndicatorsView dataset={dataset} />}
           {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} />}
           {view === "orders" && <OrdersView dataset={dataset} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), patch.ceco && patch.ceco !== ceco ? `CECO renombrado a ${patch.ceco}.` : "Datos de la orden actualizados.")} onDeleteOrder={(ceco) => mutate(() => repo.deleteOrder(ceco), `CECO ${ceco} eliminado y reservas pendientes liberadas.`)} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
-          {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "products")} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
+          {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "products")} onQuickAssign={(items) => mutate(() => repo.saveBomItems(items), `${items.length} material${items.length === 1 ? "" : "es"} asignado${items.length === 1 ? "" : "s"} a la BOM.`)} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
           {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "materials")} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Catálogo actualizado.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada del catálogo.")} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
           {view === "resources" && <ResourcesView dataset={dataset} openDrawer={setDrawer} setView={setView} />}
@@ -529,16 +556,7 @@ function Overview({ dataset, kpis, heatmap, mrp, setView }) {
   const priorityOrders = [...dataset.orders].sort((a, b) => a.priority - b.priority).slice(0, 4);
 
   function exportReport() {
-    const content = buildExcelReport(report);
-    const blob = new Blob([content], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `ETRAL_indicadores_${dateRange.start}_${dateRange.end}.xls`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    exportIndicatorsWorkbook(dataset, report, dateRange, "month");
   }
 
   return <div className="stack-xl">
@@ -1185,12 +1203,12 @@ function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrd
   </div>;
 }
 
-function ExcelActions({ onImport, onExport, label }) {
+function ExcelActions({ onImport, onExport, onBulkTemplate, label }) {
   const inputRef = useRef(null);
-  return <div className="excel-actions"><input ref={inputRef} type="file" accept=".xlsx,.xls" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = ""; }} /><Button variant="secondary" onClick={() => inputRef.current?.click()}>Importar Excel</Button><Button variant="secondary" onClick={onExport}>Exportar Excel</Button><a className="button secondary" href="/plantillas/plantilla-materiales-productos.xlsx" download>Plantilla {label}</a></div>;
+  return <div className="excel-actions"><input ref={inputRef} type="file" accept=".xlsx,.xls" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = ""; }} /><Button variant="secondary" onClick={() => inputRef.current?.click()}>Importar Excel</Button><Button variant="secondary" onClick={onExport}>Exportar Excel</Button>{onBulkTemplate ? <Button variant="secondary" onClick={onBulkTemplate}>Plantilla carga masiva</Button> : <a className="button secondary" href="/plantillas/plantilla-materiales-productos.xlsx" download>Plantilla {label}</a>}</div>;
 }
 
-function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onUpdateBom, onDeleteBom }) {
+function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onQuickAssign, onUpdateBom, onDeleteBom }) {
   const [productId, setProductId] = useState(dataset.bodyTypes[0]?.id ?? "");
   const [search, setSearch] = useState("");
   const product = productOf(dataset, productId);
@@ -1198,10 +1216,11 @@ function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onUpd
   const requirementsByStage = materialRequirementsByStage(productId, dataset.bom);
   const filteredProducts = dataset.bodyTypes.filter((item) => `${item.code} ${item.name} ${item.family}`.toLowerCase().includes(search.trim().toLowerCase()));
   return <div className="stack-lg">
-    <PageActions><div><strong>{dataset.bodyTypes.length} plantillas de producto</strong><span>Una plantilla define la ruta y BOM; las órdenes son quienes recorren el flujo.</span></div><div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} label="productos" /><Button onClick={() => openDrawer({ type: "product" })}>+ Producto maestro</Button></div></PageActions>
+    <PageActions><div><strong>{dataset.bodyTypes.length} plantillas de producto</strong><span>Una plantilla define la ruta y BOM; las órdenes son quienes recorren el flujo.</span></div><div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} onBulkTemplate={() => downloadBulkImportWorkbook(dataset)} label="productos" /><Button onClick={() => openDrawer({ type: "product" })}>+ Producto maestro</Button></div></PageActions>
+    <p className="excel-import-hint">¿Son varios productos, fases y materiales? Descarga la plantilla de carga masiva, llena una fila por material y fase, y luego impórtala aquí.</p>
     <div className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar producto, código o familia" /></div>
     <section className="template-grid">{filteredProducts.map((item) => <button key={item.id} className={`panel template-card ${item.id === productId ? "selected" : ""}`} onClick={() => setProductId(item.id)}><span>{item.code}</span><strong>{item.name}</strong><small>{item.family} · {item.targetDays} días</small><div>{item.route.map((stageId) => <i key={stageId} title={stageOf(dataset, stageId)?.name} style={{ background: stageOf(dataset, stageId)?.color }} />)}</div><b>{dataset.bom.filter((piece) => piece.bodyTypeId === item.id).length} materiales</b></button>)}</section>
-    {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div><MaterialRequirementsByStage product={product} dataset={dataset} requirements={requirementsByStage} /><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
+    {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div><QuickBomAssignment key={product.id} product={product} dataset={dataset} onSave={onQuickAssign} /><MaterialRequirementsByStage product={product} dataset={dataset} requirements={requirementsByStage} /><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
   </div>;
 }
 
@@ -1429,6 +1448,53 @@ function MaterialRequirementsByStage({ product, dataset, requirements }) {
   </section>;
 }
 
+function QuickBomAssignment({ product, dataset, onSave }) {
+  const [stageId, setStageId] = useState(product.route[0] ?? "");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState({});
+  const stage = stageOf(dataset, stageId);
+  const existing = new Map(dataset.bom.filter((item) => item.bodyTypeId === product.id && item.stageId === stageId).map((item) => [item.materialCode, item]));
+  const materials = dataset.inventory.filter((item) => `${item.code} ${item.description} ${item.category}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const chosen = Object.entries(selected).filter(([, quantity]) => Number(quantity) > 0);
+
+  function toggle(material) {
+    setSelected((current) => {
+      if (Object.prototype.hasOwnProperty.call(current, material.code)) {
+        const { [material.code]: _removed, ...rest } = current;
+        return rest;
+      }
+      return { ...current, [material.code]: existing.get(material.code)?.quantity ?? 1 };
+    });
+  }
+
+  async function assign() {
+    if (!chosen.length || !stage) return;
+    const items = chosen.map(([materialCode, quantity]) => {
+      const material = dataset.inventory.find((item) => item.code === materialCode);
+      const previous = existing.get(materialCode);
+      return {
+        id: previous?.id,
+        bodyTypeId: product.id,
+        stageId,
+        materialCode,
+        pieceCode: previous?.pieceCode || `AUTO-${product.code}-${stage.code}-${materialCode}`,
+        description: previous?.description || material?.description || materialCode,
+        lengthMm: previous?.lengthMm || 0,
+        quantity: Number(quantity)
+      };
+    });
+    await onSave(items);
+    setSelected({});
+  }
+
+  return <section className="quick-bom">
+    <header><div><p className="eyebrow">Asignación rápida</p><h3>Materiales de una fase</h3><p>Marca varios materiales, define sus cantidades y guárdalos juntos.</p></div><span>{chosen.length} seleccionados</span></header>
+    <div className="quick-bom-controls"><select value={stageId} onChange={(event) => { setStageId(event.target.value); setSelected({}); }}>{product.route.map((id) => <option key={id} value={id}>{stageOf(dataset, id)?.shortName} · {stageOf(dataset, id)?.name}</option>)}</select><div className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar material" /></div><button type="button" className="text-button" onClick={() => setSelected(Object.fromEntries(materials.map((item) => [item.code, existing.get(item.code)?.quantity ?? 1])))}>Seleccionar visibles</button><button type="button" className="text-button" onClick={() => setSelected({})}>Limpiar</button></div>
+    <div className="quick-bom-list">{materials.map((material) => { const isSelected = Object.prototype.hasOwnProperty.call(selected, material.code); const previous = existing.get(material.code); return <label key={material.code} className={isSelected ? "selected" : ""}><input type="checkbox" checked={isSelected} onChange={() => toggle(material)} /><div><strong>{material.code} · {material.description}</strong><small>{material.category} · {material.unit}{previous ? " · ya asignado" : ""}</small></div>{isSelected && <div className="input-suffix"><input aria-label={`Cantidad de ${material.description}`} type="number" min="0.01" step="0.01" value={selected[material.code]} onChange={(event) => setSelected((current) => ({ ...current, [material.code]: event.target.value }))} /><span>{material.unit}</span></div>}</label>; })}</div>
+    <footer><small>{stage ? `Se asignarán a ${stage.name}. Si un material ya estaba en esta fase, se actualizará su cantidad.` : "Selecciona una fase."}</small><Button type="button" onClick={assign} disabled={!chosen.length}>Asignar {chosen.length || ""} material{chosen.length === 1 ? "" : "es"}</Button></footer>
+  </section>;
+}
+
 function MaterialRequirementManager({ materials, dataset, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(null);
   return <div className="drawer-materials">{materials.map((piece) => {
@@ -1465,10 +1531,11 @@ function InventoryView({ dataset, heatmap, openDrawer, onImportExcel, onExportEx
         <button className={mode === "movements" ? "active" : ""} onClick={() => setMode("movements")}>Movimientos recientes</button>
         <button className={mode === "catalogs" ? "active" : ""} onClick={() => setMode("catalogs")}>Catálogos</button>
       </div>
-      {mode === "materials" && <div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} label="materiales" /><Button onClick={() => openDrawer({ type: "material" })}>+ Nuevo material</Button></div>}
+      {mode === "materials" && <div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} onBulkTemplate={() => downloadBulkImportWorkbook(dataset)} label="materiales" /><Button onClick={() => openDrawer({ type: "material" })}>+ Nuevo material</Button></div>}
       {mode === "movements" && <Button onClick={() => openDrawer({ type: "movement" })}>Registrar movimiento</Button>}
     </PageActions>
     {mode === "materials" && <>
+      <p className="excel-import-hint">La plantilla de carga masiva también asigna cada material a la fase y al producto que le corresponde.</p>
       <div className="search-box inventory-search"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar código, descripción o categoría" /></div>
       <section className="panel"><SectionHeader eyebrow="Maestro de materiales" title="Existencias y cobertura" detail="Disponible = físico − comprometido. El stock de seguridad se calcula con factor de servicio × variabilidad × √plazo." /><div className="table-scroll"><table><thead><tr><th>Código / material</th><th>Categoría</th><th>Ubicación</th><th>Físico</th><th>Comprometido</th><th>Disponible</th><th>Proyección</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.category}</td><td>{item.location ?? "—"}</td><td>{item.physical} {item.unit}</td><td>{item.committed} {item.unit}</td><td>{item.available} {item.unit}</td><td><strong className={item.projected < 0 ? "negative" : ""}>{item.projected} {item.unit}</strong><small>Mínimo {item.safety}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span></td><td><button className="row-action" onClick={() => openDrawer({ type: "material", item })}>Editar</button></td></tr>)}</tbody></table></div></section>
     </>}
@@ -1612,10 +1679,10 @@ function RecordDrawer({ drawer, dataset, onClose, onOpenRelated, onSubmit, onCre
     {drawer.type === "activity" && <><Field label="Fase"><SearchSelect name="stageId" defaultValue={drawer.activity?.stageId} options={byOrder(dataset).map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><Field label="Nombre de la actividad"><input name="name" defaultValue={drawer.activity?.name} required /></Field><Field label="Tiempo estándar"><div className="input-suffix"><input name="standardMinutes" type="number" min="1" defaultValue={drawer.activity?.standardMinutes} required /><span>min</span></div></Field>{drawer.activity && <Field label="Estado"><select name="active" defaultValue={String(drawer.activity.active)}><option value="true">Activa</option><option value="false">Inactiva</option></select></Field>}</>}
     {drawer.type === "bom" && <><Field label="Producto"><SearchSelect name="bodyTypeId" defaultValue={drawer.productId} options={dataset.bodyTypes.map((item) => ({ value: item.id, label: item.name, meta: item.code }))} searchPlaceholder="Buscar producto" /></Field><Field label="Material"><SearchSelect name="materialCode" options={dataset.inventory.map((item) => ({ value: item.code, label: item.description, meta: item.code }))} searchPlaceholder="Buscar material o código" /></Field><Field label="Fase de consumo"><SearchSelect name="stageId" options={byOrder(dataset).map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><div className="form-row"><Field label="Código de pieza"><input name="pieceCode" required /></Field><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field></div><Field label="Descripción"><input name="description" required /></Field><Field label="Longitud (opcional)"><input name="lengthMm" type="number" min="0" /></Field></>}
     {drawer.type === "operation" && <OperationFields drawer={drawer} dataset={dataset} />}
-    {drawer.type === "personnel" && <><div className="form-row"><Field label="Código"><input name="employeeCode" required placeholder="ETR-007" /></Field><Field label="Estado"><select name="status"><option value="available">Disponible</option><option value="assigned">Asignado</option><option value="absent">Ausente</option><option value="leave">Permiso</option></select></Field></div><Field label="Nombre completo"><input name="name" required /></Field><div className="form-row"><Field label="Cargo"><input name="role" required placeholder="Ej. Soldador" /></Field><Field label="Turno"><select name="shiftId">{dataset.shifts.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></Field></div><Field label="Especialidad"><input name="specialty" placeholder="Competencia principal" /></Field><div className="form-row"><Field label="Eficiencia estimada"><div className="input-suffix"><input name="efficiency" type="number" min="1" max="150" defaultValue="100" required /><span>%</span></div></Field><Field label="Horas semanales"><input name="weeklyHours" type="number" min="0" max="84" defaultValue="48" required /></Field></div></>}
+    {drawer.type === "personnel" && <><div className="form-row"><Field label="Código"><input name="employeeCode" defaultValue={drawer.draft?.employeeCode} required placeholder="ETR-007" /></Field><Field label="Estado"><select name="status" defaultValue={drawer.draft?.status || "available"}><option value="available">Disponible</option><option value="assigned">Asignado</option><option value="absent">Ausente</option><option value="leave">Permiso</option></select></Field></div><Field label="Nombre completo"><input name="name" defaultValue={drawer.draft?.name} required /></Field><div className="form-row"><Field label="Cargo"><input name="role" defaultValue={drawer.draft?.role} required placeholder="Ej. Soldador" /></Field><Field label="Turno"><select name="shiftId" defaultValue={drawer.draft?.shiftId || ""}>{dataset.shifts.length === 0 && <option value="">Sin turnos registrados</option>}{dataset.shifts.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select>{dataset.shifts.length === 0 && <button type="button" className="row-action" onClick={(event) => onOpenRelated?.("shift", Object.fromEntries(new FormData(event.currentTarget.form)))}>+ Registrar turno</button>}</Field></div><Field label="Especialidad"><input name="specialty" defaultValue={drawer.draft?.specialty} placeholder="Competencia principal" /></Field><div className="form-row"><Field label="Eficiencia estimada"><div className="input-suffix"><input name="efficiency" type="number" min="1" max="150" defaultValue={drawer.draft?.efficiency || "100"} required /><span>%</span></div></Field><Field label="Horas semanales"><input name="weeklyHours" type="number" min="0" max="84" defaultValue={drawer.draft?.weeklyHours || "48"} required /></Field></div></>}
     {drawer.type === "shift" && <><div className="form-row"><Field label="Código"><input name="code" required placeholder="T3" /></Field><Field label="Nombre"><input name="name" required placeholder="Turno noche" /></Field></div><div className="form-row"><Field label="Hora de inicio"><input name="startTime" type="time" required /></Field><Field label="Hora de fin"><input name="endTime" type="time" required /></Field></div><Field label="Descanso"><div className="input-suffix"><input name="breakMinutes" type="number" min="0" max="240" defaultValue="60" required /><span>min</span></div></Field></>}
     {drawer.type === "equipment" && <><div className="form-row"><Field label="Código"><input name="code" required placeholder="EQ-XXX-01" /></Field><Field label="Estado"><select name="status"><option value="operational">Operativo</option><option value="restricted">Restringido</option><option value="maintenance">Mantenimiento</option><option value="out_of_service">Fuera de servicio</option></select></Field></div><Field label="Nombre del equipo"><input name="name" required /></Field><Field label="Fase asociada"><select name="stageId">{byOrder(dataset).map((item) => <option key={item.id} value={item.id}>{item.shortName} · {item.name}</option>)}</select></Field><div className="form-row"><Field label="Capacidad semanal"><div className="input-suffix"><input name="capacityHours" type="number" min="0" required /><span>h</span></div></Field><Field label="Próximo mantenimiento"><input name="maintenanceDue" type="date" /></Field></div></>}
-    {drawer.type === "calendar" && <><div className="workweek-picker"><span>Días laborables base</span><label><input type="checkbox" checked readOnly />Lun</label><label><input type="checkbox" checked readOnly />Mar</label><label><input type="checkbox" checked readOnly />Mié</label><label><input type="checkbox" checked readOnly />Jue</label><label><input type="checkbox" checked readOnly />Vie</label><small>Sábado y domingo quedan como no laborables por defecto.</small></div><Field label="Fecha de excepción"><input name="date" type="date" required /></Field><Field label="Tipo"><select name="dayType" defaultValue="holiday"><option value="holiday">Feriado</option><option value="shutdown">No laborable / parada</option><option value="reduced">Jornada especial reducida</option></select></Field><Field label="Horas si es jornada reducida"><div className="input-suffix"><input name="availableHours" type="number" min="0" max="24" step="0.25" defaultValue="4" /><span>h</span></div></Field><Field label="Descripción opcional"><textarea name="note" placeholder="Ej. Feriado nacional, mantenimiento general, inventario" /></Field><p className="form-info">Para feriados y paradas las horas se calculan como 0. Solo completa horas cuando elijas jornada reducida.</p></>}
+    {drawer.type === "calendar" && <><div className="workweek-picker"><span>Días laborables base</span><label><input type="checkbox" checked readOnly />Lun</label><label><input type="checkbox" checked readOnly />Mar</label><label><input type="checkbox" checked readOnly />Mié</label><label><input type="checkbox" checked readOnly />Jue</label><label><input type="checkbox" checked readOnly />Vie</label><label><input type="checkbox" checked readOnly />Sáb</label><small>Domingo queda como no laborable por defecto.</small></div><Field label="Fecha de excepción"><input name="date" type="date" required /></Field><Field label="Tipo"><select name="dayType" defaultValue="holiday"><option value="holiday">Feriado</option><option value="shutdown">No laborable / parada</option><option value="reduced">Jornada especial reducida</option></select></Field><Field label="Horas si es jornada reducida"><div className="input-suffix"><input name="availableHours" type="number" min="0" max="24" step="0.25" defaultValue="4" /><span>h</span></div></Field><Field label="Descripción opcional"><textarea name="note" placeholder="Ej. Feriado nacional, mantenimiento general, inventario" /></Field><p className="form-info">Para feriados y paradas las horas se calculan como 0. Solo completa horas cuando elijas jornada reducida.</p></>}
     {drawer.type === "assignment" && <AssignmentFields drawer={drawer} dataset={dataset} />}
     {drawer.type === "incident" && <IncidentFields drawer={drawer} dataset={dataset} />}
     <footer><Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit">Guardar registro</Button></footer>

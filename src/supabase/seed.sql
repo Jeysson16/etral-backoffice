@@ -94,17 +94,18 @@ insert into ceco_orders (id,ceco,customer,body_type_id,progress,line,status,stag
 on conflict (id) do update set progress=excluded.progress,status=excluded.status,stage_id=excluded.stage_id,plant_state=excluded.plant_state,due_date=excluded.due_date;
 
 insert into work_shifts (id,code,name,start_time,end_time,break_minutes,active) values
-('shift-day','T1','Turno día','07:30','16:30',60,true),
-('shift-evening','T2','Turno tarde','16:30','23:30',45,true)
+('shift-mon-thu','T1','Lunes a jueves','08:00','17:20',60,true),
+('shift-friday','T2','Viernes','08:00','18:00',60,true),
+('shift-saturday','T3','Sábado','08:00','13:00',0,true)
 on conflict (id) do update set code=excluded.code,name=excluded.name,start_time=excluded.start_time,end_time=excluded.end_time,break_minutes=excluded.break_minutes,active=excluded.active;
 
 insert into personnel (id,employee_code,name,role,specialty,shift_id,status,efficiency,weekly_hours,active) values
-('person-001','ETR-001','Luis Medina','Soldador','Soldadura estructural','shift-day','available',96,48,true),
-('person-002','ETR-002','Rosa Paredes','Armadora','Ensamble de carrocería','shift-day','assigned',94,48,true),
-('person-003','ETR-003','Marco Rojas','Operador de corte','Corte y trazado','shift-day','assigned',91,48,true),
-('person-004','ETR-004','Ana Reyes','Pintora','Preparación y acabado','shift-day','available',93,48,true),
-('person-005','ETR-005','Jorge Díaz','Inspector','Control de calidad','shift-evening','available',97,42,true),
-('person-006','ETR-006','Claudia Soto','Inspectora','Liberación de producto','shift-day','absent',95,48,true)
+('person-001','ETR-001','Luis Medina','Soldador','Soldadura estructural','shift-mon-thu','available',96,47.33,true),
+('person-002','ETR-002','Rosa Paredes','Armadora','Ensamble de carrocería','shift-mon-thu','assigned',94,47.33,true),
+('person-003','ETR-003','Marco Rojas','Operador de corte','Corte y trazado','shift-mon-thu','assigned',91,47.33,true),
+('person-004','ETR-004','Ana Reyes','Pintora','Preparación y acabado','shift-mon-thu','available',93,47.33,true),
+('person-005','ETR-005','Jorge Díaz','Inspector','Control de calidad','shift-friday','available',97,47.33,true),
+('person-006','ETR-006','Claudia Soto','Inspectora','Liberación de producto','shift-mon-thu','absent',95,47.33,true)
 on conflict (id) do update set employee_code=excluded.employee_code,name=excluded.name,role=excluded.role,specialty=excluded.specialty,shift_id=excluded.shift_id,status=excluded.status,efficiency=excluded.efficiency,weekly_hours=excluded.weekly_hours,active=excluded.active;
 
 insert into equipment (id,code,name,stage_id,status,capacity_hours,maintenance_due) values

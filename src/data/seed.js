@@ -98,17 +98,18 @@ export const catalogsSeed = {
 };
 
 export const shiftsSeed = [
-  { id: "shift-day", code: "T1", name: "Turno día", startTime: "07:30", endTime: "16:30", breakMinutes: 60, active: true },
-  { id: "shift-evening", code: "T2", name: "Turno tarde", startTime: "16:30", endTime: "23:30", breakMinutes: 45, active: true }
+  { id: "shift-mon-thu", code: "T1", name: "Lunes a jueves", startTime: "08:00", endTime: "17:20", breakMinutes: 60, active: true },
+  { id: "shift-friday", code: "T2", name: "Viernes", startTime: "08:00", endTime: "18:00", breakMinutes: 60, active: true },
+  { id: "shift-saturday", code: "T3", name: "Sábado", startTime: "08:00", endTime: "13:00", breakMinutes: 0, active: true }
 ];
 
 export const personnelSeed = [
-  { id: "person-001", employeeCode: "ETR-001", name: "Luis Medina", role: "Soldador", specialty: "Soldadura estructural", shiftId: "shift-day", status: "available", efficiency: 96, weeklyHours: 48, active: true },
-  { id: "person-002", employeeCode: "ETR-002", name: "Rosa Paredes", role: "Armadora", specialty: "Ensamble de carrocería", shiftId: "shift-day", status: "assigned", efficiency: 94, weeklyHours: 48, active: true },
-  { id: "person-003", employeeCode: "ETR-003", name: "Marco Rojas", role: "Operador de corte", specialty: "Corte y trazado", shiftId: "shift-day", status: "assigned", efficiency: 91, weeklyHours: 48, active: true },
-  { id: "person-004", employeeCode: "ETR-004", name: "Ana Reyes", role: "Pintora", specialty: "Preparación y acabado", shiftId: "shift-day", status: "available", efficiency: 93, weeklyHours: 48, active: true },
-  { id: "person-005", employeeCode: "ETR-005", name: "Jorge Díaz", role: "Inspector", specialty: "Control de calidad", shiftId: "shift-evening", status: "available", efficiency: 97, weeklyHours: 42, active: true },
-  { id: "person-006", employeeCode: "ETR-006", name: "Claudia Soto", role: "Inspectora", specialty: "Liberación de producto", shiftId: "shift-day", status: "absent", efficiency: 95, weeklyHours: 48, active: true }
+  { id: "person-001", employeeCode: "ETR-001", name: "Luis Medina", role: "Soldador", specialty: "Soldadura estructural", shiftId: "shift-mon-thu", status: "available", efficiency: 96, weeklyHours: 47.33, active: true },
+  { id: "person-002", employeeCode: "ETR-002", name: "Rosa Paredes", role: "Armadora", specialty: "Ensamble de carrocería", shiftId: "shift-mon-thu", status: "assigned", efficiency: 94, weeklyHours: 47.33, active: true },
+  { id: "person-003", employeeCode: "ETR-003", name: "Marco Rojas", role: "Operador de corte", specialty: "Corte y trazado", shiftId: "shift-mon-thu", status: "assigned", efficiency: 91, weeklyHours: 47.33, active: true },
+  { id: "person-004", employeeCode: "ETR-004", name: "Ana Reyes", role: "Pintora", specialty: "Preparación y acabado", shiftId: "shift-mon-thu", status: "available", efficiency: 93, weeklyHours: 47.33, active: true },
+  { id: "person-005", employeeCode: "ETR-005", name: "Jorge Díaz", role: "Inspector", specialty: "Control de calidad", shiftId: "shift-friday", status: "available", efficiency: 97, weeklyHours: 47.33, active: true },
+  { id: "person-006", employeeCode: "ETR-006", name: "Claudia Soto", role: "Inspectora", specialty: "Liberación de producto", shiftId: "shift-mon-thu", status: "absent", efficiency: 95, weeklyHours: 47.33, active: true }
 ];
 
 export const equipmentSeed = [
