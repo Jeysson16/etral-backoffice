@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
+import { addExportTitle, styleInstructionSheet, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 
 const normalize = (value) => String(value ?? "")
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -155,10 +155,7 @@ export function downloadBulkImportWorkbook(dataset) {
     ["Para una fase sin material, deja vacías las columnas de material, pieza, longitud y cantidad."],
     ["No cambies los encabezados de la hoja Carga masiva."]
   ]);
-  instructionsSheet["!cols"] = [{ wch: 92 }];
-  instructionsSheet["A1"].s = { font: { bold: true, sz: 15, color: { rgb: "D95D19" } } };
-  instructionsSheet["!rows"] = [{ hpt: 24 }, { hpt: 28 }, { hpt: 28 }, { hpt: 28 }, { hpt: 28 }, { hpt: 28 }];
-  XLSX.utils.book_append_sheet(workbook, instructionsSheet, "Instrucciones");
+  XLSX.utils.book_append_sheet(workbook, styleInstructionSheet(instructionsSheet), "Instrucciones");
   XLSX.writeFile(workbook, "etral-carga-masiva-productos-materiales.xlsx");
 }
 

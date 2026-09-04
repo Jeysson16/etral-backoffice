@@ -297,7 +297,7 @@ export default function App() {
       const updated = await runWithSessionRecovery(() => repo.importCatalogData(payload));
       setDataset(normalizeDataset(updated));
       setError("");
-      setNotice(`${payload.mode === "carga masiva" ? "Carga masiva importada" : "Excel importado"}: ${payload.materials.length} materiales, ${payload.products.length} productos y ${payload.bom.length} componentes BOM.`);
+      setNotice(`${payload.mode === "carga masiva" ? "Carga masiva importada" : "Excel importado"}: ${payload.materials.length} materiales, ${payload.products.length} productos y ${payload.bom.length} componentes BOM. Los materiales coincidentes se sumaron al stock existente.`);
       window.setTimeout(() => setNotice(""), 4800);
     } catch (err) {
       setError(`No se pudo importar el Excel: ${err.message}`);
@@ -1525,7 +1525,7 @@ function InventoryView({ dataset, heatmap, openDrawer, onImportExcel, onExportEx
       {mode === "movements" && <Button onClick={() => openDrawer({ type: "movement" })}>Registrar movimiento</Button>}
     </PageActions>
     {mode === "materials" && <>
-      <p className="excel-import-hint">La plantilla de carga masiva también asigna cada material a la fase y al producto que le corresponde.</p>
+      <p className="excel-import-hint">Al importar, los materiales con el mismo código o una descripción equivalente se consolidan: la cantidad del Excel se suma al stock físico actual. La plantilla de carga masiva también los asigna a su fase y producto.</p>
       <div className="search-box inventory-search"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar código, descripción o categoría" /></div>
       <section className="panel"><SectionHeader eyebrow="Maestro de materiales" title="Existencias y cobertura" detail="Disponible = físico − comprometido. El stock de seguridad se calcula con factor de servicio × variabilidad × √plazo." /><div className="table-scroll"><table><thead><tr><th>Código / material</th><th>Categoría</th><th>Ubicación</th><th>Físico</th><th>Comprometido</th><th>Disponible</th><th>Proyección</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.category}</td><td>{item.location ?? "—"}</td><td>{item.physical} {item.unit}</td><td>{item.committed} {item.unit}</td><td>{item.available} {item.unit}</td><td><strong className={item.projected < 0 ? "negative" : ""}>{item.projected} {item.unit}</strong><small>Mínimo {item.safety}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span></td><td><button className="row-action" onClick={() => openDrawer({ type: "material", item })}>Editar</button></td></tr>)}</tbody></table></div></section>
     </>}

@@ -1,6 +1,7 @@
 import { initialDataset } from "../data/seed.js";
 import { calculateCecoProgress } from "../lib/mrp.js";
 import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/correlatives.js";
+import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 
 const STORAGE_KEY = "etral.production.dataset.v5";
 
@@ -227,13 +228,13 @@ export const localRepository = {
       return item;
     };
     const importedCodes = new Map();
-    for (const row of payload.materials || []) {
+    for (const row of consolidateImportedMaterials(payload.materials)) {
       const category = ensureCatalog("categories", row.category);
       const unit = ensureCatalog("units", row.unit, row.unit);
       const brand = ensureCatalog("brands", row.brand);
-      const existing = dataset.inventory.find((item) => (row.code && item.code === row.code) || item.description.toLowerCase() === row.description.toLowerCase());
+      const existing = findMatchingMaterial(dataset.inventory, row);
       const code = existing?.code || row.code || nextInventoryCode(dataset.inventory, row.category || "MAT");
-      const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety || 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor, demandStdDev: row.demandStdDev, leadTimeDays: row.leadTimeDays, unitCost: row.unitCost, currency: row.currency || "PEN" };
+      const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety || 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor, demandStdDev: row.demandStdDev, leadTimeDays: row.leadTimeDays, unitCost: row.unitCost, currency: row.currency || "PEN" };
       if (existing) Object.assign(existing, material); else dataset.inventory.unshift(material);
       importedCodes.set(row.code, code);
     }

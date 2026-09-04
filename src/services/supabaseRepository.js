@@ -1,4 +1,5 @@
 import { supabase } from "../supabase/client.js";
+import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 
 export function hasSupabaseConfig() {
   return Boolean(import.meta.env.VITE_SUPABASE_URL && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY));
@@ -167,20 +168,20 @@ export const supabaseRepository = {
       return current;
     };
     const importedCodes = new Map();
-    for (const row of payload.materials || []) {
+    for (const row of consolidateImportedMaterials(payload.materials)) {
       const category = await ensureCatalog("categories", row.category);
       const unit = await ensureCatalog("units", row.unit, row.unit);
       const brand = await ensureCatalog("brands", row.brand);
-      const existing = dataset.inventory.find((item) => (row.code && item.code === row.code) || item.description.toLowerCase() === row.description.toLowerCase());
+      const existing = findMatchingMaterial(dataset.inventory, row);
       const generated = !existing && !row.code ? await supabase.rpc("next_inventory_code", { category_prefix: row.category || "MAT" }) : null;
       if (generated?.error) throw generated.error;
       const code = existing?.code || row.code || generated?.data;
       if (!code) throw new Error(`No se pudo generar el código para material fila ${row.row}.`);
-      const data = { category: category.name, category_id: category.id, description: row.description, physical: Number(row.physical || 0), safety: Number(row.safety || 0), unit: unit.symbol, unit_id: unit.id, brand_id: brand?.id || null, location: row.location || null, service_factor: nullableNumber(row.serviceFactor), demand_std_dev: nullableNumber(row.demandStdDev), lead_time_days: nullableNumber(row.leadTimeDays), unit_cost: nullableNumber(row.unitCost), currency: row.currency || "PEN" };
+      const data = { category: category.name, category_id: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), safety: Number(row.safety || 0), unit: unit.symbol, unit_id: unit.id, brand_id: brand?.id || null, location: row.location || null, service_factor: nullableNumber(row.serviceFactor), demand_std_dev: nullableNumber(row.demandStdDev), lead_time_days: nullableNumber(row.leadTimeDays), unit_cost: nullableNumber(row.unitCost), currency: row.currency || "PEN" };
       const result = existing ? await supabase.from("inventory_items").update(data).eq("code", code) : await supabase.from("inventory_items").insert({ id: `inv-${code}`, code, committed: 0, ...data });
       if (result.error) throw result.error;
       importedCodes.set(row.code, code);
-      if (!existing && Number(row.physical) > 0) {
+      if (Number(row.physical) !== 0) {
         const { error } = await supabase.from("inventory_movements").insert({ id: `mov-import-${stamp}-${row.row}`, type: "ingreso", code, ceco: "", quantity: Number(row.physical), note: "Carga inicial mediante Excel" });
         if (error) throw error;
       }
