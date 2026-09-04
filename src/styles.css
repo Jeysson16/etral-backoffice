@@ -31,7 +31,7 @@ select:focus { outline: 0; border-color: var(--orange); box-shadow: 0 0 0 3px rg
 select option { color: #1f2937; background: #fff; font-weight: 500; }
 
 .app-shell { width: 100%; max-width: 100%; min-height: 100vh; min-height: 100dvh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
-.sidebar { position: sticky; top: 0; align-self: start; height: 100vh; height: 100dvh; min-height: 100vh; min-height: 100dvh; background: #111827; color: white; padding: 22px 14px 18px; display: flex; flex-direction: column; z-index: 20; }
+.sidebar { position: fixed; inset: 0 auto 0 0; width: 248px; height: 100vh; height: 100dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: #111827; color: white; padding: 22px 14px 18px; display: flex; flex-direction: column; z-index: 20; }
 .brand { border: 0; background: transparent; color: white; display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; padding: 0 8px 20px; border-bottom: 1px solid #273244; }
 .brand-mark { width: 42px; height: 42px; position: relative; flex: 0 0 42px; display: grid; place-items: center; overflow: hidden; background: #fff; color: #f36b21; border-radius: 10px; font-size: 14px; font-weight: 900; letter-spacing: 0; }
 .brand-mark img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 4px; background: white; }
@@ -51,7 +51,7 @@ select option { color: #1f2937; background: #fff; font-weight: 500; }
 .sidebar-status strong { font-size: 12px; }
 .sidebar-status small { color: #8f9bad; font-size: 11px; }
 
-.main-content { width: 100%; max-width: 100%; min-width: 0; }
+.main-content { grid-column: 2; width: 100%; max-width: 100%; min-width: 0; }
 .topbar { min-height: 108px; background: white; border-bottom: 1px solid var(--line); padding: 19px clamp(22px, 3vw, 42px); display: flex; align-items: center; gap: 18px; }
 .topbar > div:first-of-type { min-width: 0; }
 .topbar h1 { font-size: clamp(24px, 2.2vw, 31px); line-height: 1.15; letter-spacing: -.025em; color: #111827; }
@@ -284,7 +284,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 /* Alimentación operativa del gemelo */
 .resources-page { min-width: 0; }
 .resource-feed-banner { position: relative; overflow: hidden; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 20px; padding: 24px 28px; border-radius: 14px; color: white; background: linear-gradient(125deg, #12263b 0%, #1d4764 58%, #16725f 100%); box-shadow: 0 15px 36px rgba(19, 45, 67, .18); }
-.resource-feed-banner::after { content: ""; position: absolute; width: 210px; height: 210px; right: 14%; top: -130px; border-radius: 50%; border: 34px solid rgba(255,255,255,.055); }
+.resource-feed-banner::after { content: ""; position: absolute; width: min(210px, 32vw); aspect-ratio: 1; height: auto; right: 14%; top: -130px; border-radius: 50%; border: 34px solid rgba(255,255,255,.055); }
 .resource-feed-banner > div:nth-child(2) { position: relative; z-index: 1; }
 .resource-feed-banner > div > span { color: #83e8cc; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
 .resource-feed-banner h2 { margin: 5px 0 6px; font-size: clamp(18px, 2vw, 25px); }
@@ -292,7 +292,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .resource-feed-banner aside { position: relative; z-index: 1; min-width: 155px; padding-left: 20px; border-left: 1px solid rgba(255,255,255,.18); display: grid; gap: 3px; }
 .resource-feed-banner aside strong { font-size: 25px; }
 .resource-feed-banner aside small { color: #c7dae7; font-size: 11px; }
-.feed-orbit { width: 64px; height: 64px; position: relative; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(255,255,255,.08); }
+.feed-orbit { width: 64px; aspect-ratio: 1; height: auto; flex: 0 0 auto; position: relative; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(255,255,255,.08); }
 .feed-orbit span { color: white !important; font-size: 10px !important; letter-spacing: .04em !important; }
 .feed-orbit i { position: absolute; width: 7px; height: 7px; background: #6ee7b7; border-radius: 50%; box-shadow: 0 0 0 4px rgba(110,231,183,.12); }
 .feed-orbit i:nth-child(2) { top: -3px; left: 28px; }.feed-orbit i:nth-child(3) { right: -3px; top: 30px; }.feed-orbit i:nth-child(4) { bottom: 4px; left: 7px; }
@@ -844,7 +844,8 @@ pre,
 
 @media (max-width: 860px) {
   .app-shell { display: block; }
-  .sidebar { position: fixed; left: -260px; width: 248px; transition: left .2s ease; box-shadow: 14px 0 34px rgba(15,23,42,.22); }
+  .main-content { grid-column: auto; }
+  .sidebar { inset: 0 auto 0 -260px; transition: left .2s ease; box-shadow: 14px 0 34px rgba(15,23,42,.22); }
   .sidebar.open { left: 0; }
   .menu-button { display: block; }
   .topbar-context { display: none; }
@@ -893,7 +894,7 @@ pre,
   .customer-detail { grid-template-columns: 1fr; }
   .resource-feed-banner { grid-template-columns: auto 1fr; padding: 20px; }
   .resource-feed-banner aside { grid-column: 1 / -1; padding: 12px 0 0; border-left: 0; border-top: 1px solid rgba(255,255,255,.18); }
-  .feed-orbit { width: 52px; height: 52px; }
+  .feed-orbit { width: 52px; }
   .resource-kpis,.people-grid,.shift-grid,.calendar-grid { grid-template-columns: 1fr; }
   .resource-header { align-items: flex-start; flex-direction: column; }
   .resource-header .button { width: 100%; }
