@@ -646,6 +646,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .template-card > div i { height: 5px; flex: 1; border-radius: 3px; }
 .template-card > b { color: #53687a; font-size: 8px; }
 .template-detail { overflow: hidden; }
+.template-excel-hint { margin: 0 22px 14px; color: #697d91; font-size: 11px; line-height: 1.45; }
 .template-route { display: flex; gap: 6px; overflow-x: auto; padding: 0 22px 18px; }
 .template-route span { min-width: 125px; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid #e1e6eb; border-radius: 8px; color: #526678; font-size: 8px; font-weight: 800; }
 .template-route span b { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; color: white; background: #285b7f; font-size: 8px; }
