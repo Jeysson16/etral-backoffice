@@ -1194,6 +1194,7 @@ function ExcelActions({ onImport, onExport, onBulkTemplate, label }) {
 function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onQuickAssign, onUpdateBom, onDeleteBom }) {
   const [productId, setProductId] = useState(dataset.bodyTypes[0]?.id ?? "");
   const [search, setSearch] = useState("");
+  const [quickAssignOpen, setQuickAssignOpen] = useState(false);
   const product = productOf(dataset, productId);
   const materials = dataset.bom.filter((item) => item.bodyTypeId === productId);
   const requirementsByStage = materialRequirementsByStage(productId, dataset.bom);
@@ -1202,8 +1203,8 @@ function ProductsView({ dataset, openDrawer, onImportExcel, onExportExcel, onQui
     <PageActions><div><strong>{dataset.bodyTypes.length} plantillas de producto</strong><span>Una plantilla define la ruta y BOM; las órdenes son quienes recorren el flujo.</span></div><div className="section-actions"><ExcelActions onImport={onImportExcel} onExport={onExportExcel} onBulkTemplate={() => downloadBulkImportWorkbook(dataset)} label="productos" /><Button onClick={() => openDrawer({ type: "product" })}>+ Producto maestro</Button></div></PageActions>
     <p className="excel-import-hint">¿Son varios productos, fases y materiales? Descarga la plantilla de carga masiva, llena una fila por material y fase, y luego impórtala aquí.</p>
     <div className="search-box"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar producto, código o familia" /></div>
-    <section className="template-grid">{filteredProducts.map((item) => <button key={item.id} className={`panel template-card ${item.id === productId ? "selected" : ""}`} onClick={() => setProductId(item.id)}><span>{item.code}</span><strong>{item.name}</strong><small>{item.family} · {item.targetDays} días</small><div>{item.route.map((stageId) => <i key={stageId} title={stageOf(dataset, stageId)?.name} style={{ background: stageOf(dataset, stageId)?.color }} />)}</div><b>{dataset.bom.filter((piece) => piece.bodyTypeId === item.id).length} materiales</b></button>)}</section>
-    {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div><QuickBomAssignment key={product.id} product={product} dataset={dataset} onSave={onQuickAssign} /><MaterialRequirementsByStage product={product} dataset={dataset} requirements={requirementsByStage} /><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
+    <section className="template-grid">{filteredProducts.map((item) => <button key={item.id} className={`panel template-card ${item.id === productId ? "selected" : ""}`} onClick={() => { setProductId(item.id); setQuickAssignOpen(false); }}><span>{item.code}</span><strong>{item.name}</strong><small>{item.family} · {item.targetDays} días</small><div>{item.route.map((stageId) => <i key={stageId} title={stageOf(dataset, stageId)?.name} style={{ background: stageOf(dataset, stageId)?.color }} />)}</div><b>{dataset.bom.filter((piece) => piece.bodyTypeId === item.id).length} materiales</b></button>)}</section>
+    {product && <section className="panel template-detail"><SectionHeader eyebrow="Plantilla seleccionada" title={`${product.code} · ${product.name}`} detail={`${product.route.length} fases · ${materials.length} componentes BOM`} action={<div className="section-actions"><Button variant="secondary" onClick={() => openDrawer({ type: "product", product })}>Editar plantilla</Button><Button onClick={() => setQuickAssignOpen((current) => !current)}>{quickAssignOpen ? "Cerrar asignación rápida" : "Asignar varios materiales"}</Button><Button variant="secondary" onClick={() => openDrawer({ type: "bom", productId })}>+ Material BOM</Button></div>} /><div className="template-route">{product.route.map((stageId, index) => <span key={stageId}><b>{index + 1}</b>{stageOf(dataset, stageId)?.name}</span>)}</div>{quickAssignOpen && <QuickBomAssignment key={product.id} product={product} dataset={dataset} onSave={onQuickAssign} onClose={() => setQuickAssignOpen(false)} />}<MaterialRequirementsByStage product={product} dataset={dataset} requirements={requirementsByStage} /><MaterialRequirementManager materials={materials} dataset={dataset} onUpdate={onUpdateBom} onDelete={onDeleteBom} /></section>}
   </div>;
 }
 
@@ -1431,7 +1432,7 @@ function MaterialRequirementsByStage({ product, dataset, requirements }) {
   </section>;
 }
 
-function QuickBomAssignment({ product, dataset, onSave }) {
+function QuickBomAssignment({ product, dataset, onSave, onClose }) {
   const [stageId, setStageId] = useState(product.route[0] ?? "");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState({});
@@ -1468,6 +1469,7 @@ function QuickBomAssignment({ product, dataset, onSave }) {
     });
     await onSave(items);
     setSelected({});
+    onClose?.();
   }
 
   return <section className="quick-bom">
