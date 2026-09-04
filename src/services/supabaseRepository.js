@@ -11,14 +11,16 @@ export const supabaseRepository = {
       throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
     }
     const requiredTables = ["flow_stages", "stage_activities", "stage_inventory", "ceco_activity_progress", "body_types", "product_routes", "inventory_items", "bom_items", "ceco_orders", "operation_logs", "warehouse_exits", "quality_checks", "inventory_movements", "material_categories", "measurement_units", "brands", "product_families", "production_lines"];
-    // La base actual puede no tener el módulo de recursos avanzados. No se
-    // consulta ni se reemplaza con datos ficticios salvo que el proyecto lo
-    // habilite explícitamente después de crear esas tablas.
-    const optionalTables = ["customers", "order_material_reservations", "work_shifts"];
-    const advancedResourceTables = import.meta.env.VITE_ENABLE_ADVANCED_RESOURCES === "true"
-      ? ["personnel", "equipment", "work_calendar", "resource_assignments", "operational_incidents"]
-      : [];
-    const tables = [...requiredTables, ...optionalTables, ...advancedResourceTables];
+    // El módulo de Recursos debe recargarse como un conjunto: si se guarda un
+    // trabajador, equipo, excepción, asignación o incidencia, getDataset()
+    // devuelve de inmediato esa misma colección. Las instalaciones previas a
+    // esta migración siguen siendo compatibles porque estas tablas son
+    // opcionales hasta que existan en el proyecto remoto.
+    const optionalTables = [
+      "customers", "order_material_reservations", "work_shifts", "personnel",
+      "equipment", "work_calendar", "resource_assignments", "operational_incidents"
+    ];
+    const tables = [...requiredTables, ...optionalTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
     const failed = results.slice(0, requiredTables.length).find((result) => result.error);
     if (failed) throw failed.error;
