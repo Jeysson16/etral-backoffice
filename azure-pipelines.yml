@@ -1,0 +1,44 @@
+trigger:
+  branches:
+    include:
+      - master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  azureServiceConnection: azure-etral-appservice
+  appName: etral-gemelo-digital-2026
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: 20.x
+    displayName: Usar Node.js 20
+
+  - script: |
+      npm ci
+      npm run build
+    displayName: Compilar interfaz React
+    env:
+      VITE_SUPABASE_URL: $(VITE_SUPABASE_URL)
+      VITE_SUPABASE_PUBLISHABLE_KEY: $(VITE_SUPABASE_PUBLISHABLE_KEY)
+      VITE_DATA_MODE: supabase
+      VITE_TWIN_ENGINE: python
+      VITE_TWIN_API_URL: ""
+
+  - script: |
+      mkdir -p release/app/static
+      cp -R backend/app/. release/app/
+      cp backend/requirements.txt release/requirements.txt
+      cp -R dist/. release/app/static/
+    displayName: Empaquetar FastAPI y la interfaz
+
+  - task: AzureWebApp@1
+    inputs:
+      azureSubscription: $(azureServiceConnection)
+      appType: webAppLinux
+      appName: $(appName)
+      package: $(System.DefaultWorkingDirectory)/release
+      startUpCommand: gunicorn --bind=0.0.0.0 --timeout 120 -k uvicorn.workers.UvicornWorker app.main:app
+    displayName: Desplegar ETRAL en Azure App Service
