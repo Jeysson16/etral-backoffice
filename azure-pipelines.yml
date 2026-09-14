@@ -7,7 +7,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  azureServiceConnection: azure-etral-appservice
+  azureServiceConnection: azure-etral-appservice-auto
   appName: etral-gemelo-digital-2026
 
 steps:
