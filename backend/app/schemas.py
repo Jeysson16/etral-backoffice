@@ -32,6 +32,7 @@ class ProductionOrder(BaseModel):
     stage_id: str | None = None
     priority: int = Field(default=999, ge=1)
     progress: Decimal = Field(default=0, ge=0, le=100)
+    planned_start_date: date | None = None
     due_date: date | None = None
 
 
@@ -110,6 +111,34 @@ class IncidentResource(BaseModel):
     severity: str
 
 
+class StageActivity(BaseModel):
+    """Actividad estándar de una fase, usada para relacionar partes con el DOP."""
+
+    id: str
+    stage_id: str
+    standard_minutes: Decimal = Field(gt=0, le=24 * 60)
+    active: bool = True
+
+
+class ActivityProgress(BaseModel):
+    ceco: str
+    activity_id: str
+    status: str
+    progress: Decimal = Field(default=0, ge=0, le=100)
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+class OperationLog(BaseModel):
+    """Parte de mano de obra. activity_id y worker_id permiten calibración trazable."""
+
+    ceco: str
+    activity_id: str | None = None
+    worker_id: str | None = None
+    total_hours: Decimal = Field(gt=0, le=24)
+    performed_on: date | None = Field(default=None, alias="date")
+
+
 class FactorySnapshot(BaseModel):
     """Estado operativo usado por el MRP y por una corrida del gemelo."""
 
@@ -127,6 +156,9 @@ class FactorySnapshot(BaseModel):
     calendar: list[CalendarResource] = Field(default_factory=list)
     assignments: list[AssignmentResource] = Field(default_factory=list)
     incidents: list[IncidentResource] = Field(default_factory=list)
+    stage_activities: list[StageActivity] = Field(default_factory=list)
+    activity_progress: list[ActivityProgress] = Field(default_factory=list)
+    operation_logs: list[OperationLog] = Field(default_factory=list)
 
     @field_validator("routes")
     @classmethod

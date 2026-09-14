@@ -1,8 +1,8 @@
 import unittest
 from decimal import Decimal
 
-from app.schemas import BomItem, EquipmentResource, FactorySnapshot, IncidentResource, Material, PersonnelResource, ProductionOrder, SimulationInput, Stage
-from app.services import evaluate_mrp, generate_ceco, simulate, simulate_comparison
+from app.schemas import ActivityProgress, BomItem, EquipmentResource, FactorySnapshot, IncidentResource, Material, OperationLog, PersonnelResource, ProductionOrder, SimulationInput, Stage, StageActivity
+from app.services import _historical_validation, calibrate_digital_twin, evaluate_mrp, generate_ceco, simulate, simulate_comparison
 
 
 def snapshot() -> FactorySnapshot:
@@ -51,6 +51,36 @@ class TwinServiceTests(unittest.TestCase):
         regular = simulate(SimulationInput(snapshot=snapshot()))
         self.assertLess(constrained["stage_capacity"][0]["available_hours"], regular["stage_capacity"][0]["available_hours"])
         self.assertEqual(constrained["stage_capacity"][0]["incident_hours"], 2)
+
+    def test_calibration_uses_only_closed_activities_linked_to_dop(self):
+        trained = snapshot().model_copy(update={
+            "personnel": [PersonnelResource(id="p1", status="active", efficiency=100)],
+            "stage_activities": [StageActivity(id="act-paint", stage_id="paint", standard_minutes=60)],
+            "activity_progress": [ActivityProgress(ceco="260180", activity_id="act-paint", status="completed", progress=100)],
+            "operation_logs": [OperationLog(ceco="260180", activity_id="act-paint", worker_id="p1", total_hours=2)],
+        })
+        calibration = calibrate_digital_twin(trained)
+        self.assertEqual(calibration["training_mode"], "calibrated")
+        self.assertEqual(calibration["completed_activity_observations"], 1)
+        self.assertGreater(calibration["standard_time_bias"], 1)
+        self.assertEqual(calibration["linked_operation_logs"], 1)
+
+    def test_schedule_respects_finite_capacity_and_marks_unscheduled_ceco(self):
+        result = simulate(SimulationInput(snapshot=snapshot(), horizon_days=1, absenteeism_rate=0))
+        schedule = {row["ceco"]: row for row in result["order_schedule"]}
+        self.assertEqual(schedule["260181"]["state"], "blocked_material")
+        self.assertEqual(schedule["260180"]["state"], "capacity_pending")
+        self.assertEqual(result["orders"]["estimated_throughput"], 0)
+
+    def test_historical_validation_requires_real_completion_dates(self):
+        historical = snapshot().model_copy(update={
+            "orders": [ProductionOrder(ceco="260180", body_type_id="furgon", progress=100, due_date="2026-01-10")],
+            "activity_progress": [ActivityProgress(ceco="260180", activity_id="act-paint", status="completed", progress=100, finished_at="2026-01-12T16:00:00")],
+        })
+        validation = _historical_validation(historical)
+        self.assertEqual(validation["ordersWithActualCompletion"], 1)
+        self.assertEqual(validation["lateOrders"], 1)
+        self.assertEqual(validation["averageDaysLate"], 2)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ export function getTwinEngine() {
 }
 
 function snapshotFromDataset(dataset) {
+  const activityIdByName = new Map((dataset.stageActivities ?? []).map((item) => [item.name, item.id]));
+  const workerIdByName = new Map((dataset.personnel ?? []).map((item) => [item.name, item.id]));
   return {
     materials: dataset.inventory.map((item) => ({
       code: item.code, description: item.description, physical: Number(item.physical), committed: Number(item.committed || 0),
@@ -22,7 +24,7 @@ function snapshotFromDataset(dataset) {
       lead_time_days: positiveNumberOrNull(item.leadTimeDays), unit: item.unit
     })),
     bom: dataset.bom.map((item) => ({ body_type_id: item.bodyTypeId, stage_id: item.stageId, material_code: item.materialCode, quantity: Number(item.quantity) })),
-    orders: dataset.orders.map((item) => ({ ceco: item.ceco, body_type_id: item.bodyTypeId, stage_id: item.stageId, priority: Number(item.priority), progress: Number(item.progress), due_date: item.dueDate || null })),
+    orders: dataset.orders.map((item) => ({ ceco: item.ceco, body_type_id: item.bodyTypeId, stage_id: item.stageId, priority: Number(item.priority), progress: Number(item.progress), planned_start_date: item.plannedStartDate || null, due_date: item.dueDate || null })),
     stages: dataset.flowStages.map((item, index) => ({ id: item.id, name: item.name, capacity_hours: Number(item.capacityHours), standard_hours: Number(item.standardHours), sequence: index + 1, color: item.color })),
     routes: Object.fromEntries(dataset.bodyTypes.map((item) => [item.id, item.route])),
     body_types: dataset.bodyTypes.map((item) => ({ id: item.id, name: item.name, route: item.route, target_days: Number(item.targetDays) || null })),
@@ -33,7 +35,10 @@ function snapshotFromDataset(dataset) {
     equipment: (dataset.equipment ?? []).map((item) => ({ id: item.id, stage_id: item.stageId, status: item.status, capacity_hours: Number(item.capacityHours) })),
     calendar: (dataset.workCalendar ?? []).map((item) => ({ date: item.date, day_type: item.dayType, available_hours: Number(item.availableHours) })),
     assignments: (dataset.assignments ?? []).map((item) => ({ personnel_id: item.personnelId, ceco: item.ceco, activity_id: item.activityId, planned_hours: Number(item.plannedHours), status: item.status })),
-    incidents: (dataset.incidents ?? []).map((item) => ({ stage_id: item.stageId, downtime_hours: Number(item.downtimeHours), status: item.status, severity: item.severity }))
+    incidents: (dataset.incidents ?? []).map((item) => ({ stage_id: item.stageId, downtime_hours: Number(item.downtimeHours), status: item.status, severity: item.severity })),
+    stage_activities: (dataset.stageActivities ?? []).map((item) => ({ id: item.id, stage_id: item.stageId, standard_minutes: Number(item.standardMinutes), active: item.active !== false })),
+    activity_progress: (dataset.activityProgress ?? []).map((item) => ({ ceco: item.ceco, activity_id: item.activityId, status: item.status, progress: Number(item.progress ?? 0), started_at: item.startedAt ?? null, finished_at: item.finishedAt ?? null })),
+    operation_logs: (dataset.operations ?? []).map((item) => ({ ceco: item.ceco, activity_id: activityIdByName.get(item.activity) ?? null, worker_id: workerIdByName.get(item.worker) ?? null, total_hours: Number(item.totalHours), date: item.date ?? null }))
   };
 }
 
