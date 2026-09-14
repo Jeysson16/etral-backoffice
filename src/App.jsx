@@ -1024,6 +1024,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
             <button className={tab === "materials" ? "active" : ""} onClick={() => setTab("materials")}>Impacto en materiales</button>
             <button className={tab === "demand" ? "active" : ""} onClick={() => setTab("demand")}>Demanda y productos</button>
             <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>Parámetros por orden CECO</button>
+            {result.scenario.cecoSchedule && <button className={tab === "schedule" ? "active" : ""} onClick={() => setTab("schedule")}>Programa finito CECO</button>}
             <button className={tab === "calibration" ? "active" : ""} onClick={() => setTab("calibration")}>Calibración Supabase</button>
             <button className={tab === "trace" ? "active" : ""} onClick={() => setTab("trace")}>Supuestos</button>
           </div>
@@ -1031,6 +1032,14 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           {tab === "capacity" && <CapacityChart rows={result.scenario.stageCapacity} bottleneck={result.scenario.bottleneck} />}
           {tab === "materials" && <MaterialSimulation rows={result.scenario.materials} />}
           {tab === "demand" && <DemandSimulation insights={result.scenario.demandInsights} />}
+          {tab === "schedule" && result.scenario.cecoSchedule && (
+            <div className="order-params-panel">
+              <SectionHeader eyebrow="Programación secuencial" title="Fecha factible por CECO" detail="La orden consume capacidad diaria de cada fase según su prioridad; no se promedian las sobrecargas." />
+              <div className="table-scroll"><table><thead><tr><th>CECO</th><th>Prioridad</th><th>Estado</th><th>Inicio factible</th><th>Fin factible</th><th>Fecha pactada</th></tr></thead><tbody>
+                {result.scenario.cecoSchedule.map((row) => <tr key={row.ceco}><td><strong>CECO {row.ceco}</strong><small>{row.product}</small></td><td>{row.priority}</td><td><span className={`status-pill ${row.state === "scheduled" ? "green" : row.state === "blocked_material" ? "red" : "orange"}`}>{row.state === "scheduled" ? (row.delayed ? "Programado con atraso" : "Programado") : row.state === "blocked_material" ? "Bloqueado por material" : "No cabe en horizonte"}</span></td><td>{row.startDate ?? "—"}</td><td>{row.endDate ?? "—"}</td><td>{row.dueDate ?? "—"}</td></tr>)}
+              </tbody></table></div>
+            </div>
+          )}
           
           {tab === "orders" && (
             <div className="order-params-panel">
@@ -1094,7 +1103,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           {tab === "calibration" && !result.calibration && <EmptyState text="No hay suficientes registros históricos comparables para recalibrar el modelo sin suposiciones." />}
           {tab === "calibration" && result.calibration && (
             <div className="calibration-details">
-              <SectionHeader eyebrow="Modelo entrenado" title="Parámetros de calibración desde Supabase" detail="Resultados del entrenamiento con la historia operativa registrada en la base de datos." />
+              <SectionHeader eyebrow={result.calibration.trainingMode === "calibrated" ? "Modelo calibrado" : "Modelo base"} title="Parámetros de calibración desde Supabase" detail={result.calibration.trainingMode === "calibrated" ? `Estimación trazable con ${result.calibration.completedActivityObservations} actividad(es) cerrada(s) y parte(s) vinculados.` : "No hay historia comparable suficiente; se usan los estándares registrados sin forzar un entrenamiento."} />
               <div className="calib-grid">
                 <div className="calib-block">
                   <span>Factor de sesgo de tiempos</span>
@@ -1112,6 +1121,8 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
                   <small>Ajuste estadístico global del gemelo digital.</small>
                 </div>
               </div>
+              {result.calibration.warnings?.length > 0 && <div className="notice warning"><strong>Calidad de datos:</strong> {result.calibration.warnings.join(" ")}</div>}
+              {result.scenario.historicalValidation && <div className="notice"><strong>Validación histórica:</strong> {result.scenario.historicalValidation.message} CECO cerrados con fecha real: {result.scenario.historicalValidation.ordersWithActualCompletion}/{result.scenario.historicalValidation.completedOrders}. {result.scenario.historicalValidation.onTimeRate != null && `Cumplimiento histórico: ${result.scenario.historicalValidation.onTimeRate}%; atraso promedio: ${result.scenario.historicalValidation.averageDaysLate} días.`}</div>}
               <h4>Eficiencia calibrada por trabajador:</h4>
               <div className="worker-eff-grid">
                 {dataset.personnel.map((p) => {
@@ -1530,7 +1541,7 @@ function InventoryView({ dataset, heatmap, openDrawer, onImportExcel, onExportEx
       <section className="panel"><SectionHeader eyebrow="Maestro de materiales" title="Existencias y cobertura" detail="Disponible = físico − comprometido. El stock de seguridad se calcula con factor de servicio × variabilidad × √plazo." /><div className="table-scroll"><table><thead><tr><th>Código / material</th><th>Categoría</th><th>Ubicación</th><th>Físico</th><th>Comprometido</th><th>Disponible</th><th>Proyección</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.category}</td><td>{item.location ?? "—"}</td><td>{item.physical} {item.unit}</td><td>{item.committed} {item.unit}</td><td>{item.available} {item.unit}</td><td><strong className={item.projected < 0 ? "negative" : ""}>{item.projected} {item.unit}</strong><small>Mínimo {item.safety}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span></td><td><button className="row-action" onClick={() => openDrawer({ type: "material", item })}>Editar</button></td></tr>)}</tbody></table></div></section>
     </>}
     {mode === "movements" && <section className="panel"><SectionHeader eyebrow="Kardex" title="Movimientos recientes" detail="Consulta los ingresos, ajustes, reservas, salidas y consumos sin perder el contexto del maestro de materiales." /><MovementsTable rows={dataset.inventoryMovements} /></section>}
-    {mode === "catalogs" && <section className="panel catalog-workspace"><SectionHeader eyebrow="Configuración de inventario" title="Categorías, unidades y marcas" detail="Opciones maestras utilizadas al registrar y clasificar materiales." /><CatalogManager standalone catalogs={dataset.catalogs} onCreate={onCreateCatalog} onUpdate={onUpdateCatalog} onDelete={onDeleteCatalog} /></section>}
+    {mode === "catalogs" && <section className="panel catalog-workspace"><SectionHeader eyebrow="Configuración de inventario" title="Catálogos maestros" detail="Opciones maestras utilizadas al registrar materiales y clasificar productos." /><CatalogManager standalone catalogs={dataset.catalogs} productFamilies={dataset.productFamilies} onCreate={onCreateCatalog} onUpdate={onUpdateCatalog} onDelete={onDeleteCatalog} /></section>}
   </div>;
 }
 
@@ -1613,18 +1624,18 @@ function SearchSelect({ name, options, value, defaultValue, onChange, required =
   </div>;
 }
 
-function CatalogManager({ catalogs, onCreate, onUpdate, onDelete, standalone = false }) {
+function CatalogManager({ catalogs, productFamilies = [], onCreate, onUpdate, onDelete, standalone = false }) {
   const [open, setOpen] = useState(standalone);
   const [type, setType] = useState("categories");
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [editing, setEditing] = useState(null);
-  const label = { categories: "Categorías", units: "Unidades", brands: "Marcas" }[type];
-  const items = catalogs[type] || [];
+  const items = type === "families" ? productFamilies : (catalogs[type] || []);
   async function create() { if (!name.trim()) return; await onCreate({ type, name, symbol }); setName(""); setSymbol(""); }
   async function save(item) { await onUpdate({ type, ...item }); setEditing(null); }
-  const singularLabels = { categories: "categoría", units: "unidad", brands: "marca" };
-  return <section className={`catalog-manager ${standalone ? "standalone" : ""}`}>{!standalone && <button type="button" className="catalog-toggle" onClick={() => setOpen((value) => !value)}>{open ? "Ocultar mantenedor de opciones" : "Gestionar categorías, unidades y marcas"}</button>}{open && <div className="catalog-panel"><div className="catalog-tabs">{Object.entries({ categories: "Categorías", units: "Unidades", brands: "Marcas" }).map(([key, text]) => <button key={key} type="button" className={type === key ? "active" : ""} onClick={() => { setType(key); setEditing(null); }}>{text}<span>{catalogs[key].length}</span></button>)}</div><div className="catalog-entry"><input value={name} onChange={(event) => setName(event.target.value)} placeholder={`Nueva ${singularLabels[type]}`} />{type === "units" && <input value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="Símbolo" />}<Button type="button" onClick={create} disabled={!name.trim()}>Agregar</Button></div><div className="catalog-list">{items.map((item) => { const draft = editing?.id === item.id ? editing : null; return <div key={item.id}>{draft ? <><input value={draft.name} onChange={(event) => setEditing({ ...draft, name: event.target.value })} />{type === "units" && <input value={draft.symbol || ""} onChange={(event) => setEditing({ ...draft, symbol: event.target.value })} />}<button type="button" onClick={() => save(draft)}>Guardar</button><button type="button" onClick={() => setEditing(null)}>Cancelar</button></> : <><span>{item.name}{item.symbol && ` · ${item.symbol}`}</span><button type="button" onClick={() => setEditing({ ...item })}>Editar</button><button type="button" onClick={() => onDelete({ type, id: item.id })}>Eliminar</button></>}</div>; })}</div></div>}</section>;
+  const singularLabels = { categories: "categoría", units: "unidad", brands: "marca", families: "familia" };
+  const tabLabels = { categories: "Categorías", units: "Unidades", brands: "Marcas", families: "Familias" };
+  return <section className={`catalog-manager ${standalone ? "standalone" : ""}`}>{!standalone && <button type="button" className="catalog-toggle" onClick={() => setOpen((value) => !value)}>{open ? "Ocultar mantenedor de opciones" : "Gestionar categorías, unidades, marcas y familias"}</button>}{open && <div className="catalog-panel"><div className="catalog-tabs">{Object.entries(tabLabels).map(([key, text]) => <button key={key} type="button" className={type === key ? "active" : ""} onClick={() => { setType(key); setEditing(null); }}>{text}<span>{(key === "families" ? productFamilies : catalogs[key]).length}</span></button>)}</div><div className="catalog-entry"><input value={name} onChange={(event) => setName(event.target.value)} placeholder={`Nueva ${singularLabels[type]}`} />{type === "units" && <input value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="Símbolo" />}<Button type="button" onClick={create} disabled={!name.trim()}>Agregar</Button></div><div className="catalog-list">{items.map((item) => { const draft = editing?.id === item.id ? editing : null; return <div key={item.id}>{draft ? <><input value={draft.name} onChange={(event) => setEditing({ ...draft, name: event.target.value })} />{type === "units" && <input value={draft.symbol || ""} onChange={(event) => setEditing({ ...draft, symbol: event.target.value })} />}<button type="button" onClick={() => save(draft)}>Guardar</button><button type="button" onClick={() => setEditing(null)}>Cancelar</button></> : <><span>{item.name}{item.symbol && ` · ${item.symbol}`}</span><button type="button" onClick={() => setEditing({ ...item })}>Editar</button><button type="button" onClick={() => onDelete({ type, id: item.id })}>Eliminar</button></>}</div>; })}</div></div>}</section>;
 }
 
 function OrderSelect({ dataset, value, onChange, optional = false }) {

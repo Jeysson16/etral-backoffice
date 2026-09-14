@@ -263,14 +263,14 @@ export const localRepository = {
   },
   async createCatalogItem(payload) {
     const dataset = load();
-    const collection = dataset.catalogs[payload.type];
+    const collection = payload.type === "families" ? dataset.productFamilies : dataset.catalogs[payload.type];
     if (!collection) throw new Error("Catálogo no válido");
     const name = String(payload.name || "").trim();
     if (!name) throw new Error("Ingresa un nombre para la opción");
     if (collection.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
       throw new Error("Esta opción ya existe en el catálogo");
     }
-    const prefix = payload.type === "categories" ? "cat" : payload.type === "units" ? "unit" : "brand";
+    const prefix = payload.type === "categories" ? "cat" : payload.type === "units" ? "unit" : payload.type === "brands" ? "brand" : "family";
     const id = `${prefix}-${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now()}`;
     const item = { id, name, ...(payload.type === "units" ? { symbol: String(payload.symbol || "").trim() || name.toLowerCase() } : {}) };
     collection.push(item);
@@ -279,7 +279,7 @@ export const localRepository = {
   },
   async updateCatalogItem(payload) {
     const dataset = load();
-    const item = dataset.catalogs[payload.type]?.find((entry) => entry.id === payload.id);
+    const item = (payload.type === "families" ? dataset.productFamilies : dataset.catalogs[payload.type])?.find((entry) => entry.id === payload.id);
     if (!item) throw new Error("Opción no encontrada");
     item.name = String(payload.name || "").trim() || item.name;
     if (payload.type === "units") item.symbol = String(payload.symbol || "").trim() || item.symbol;
@@ -288,11 +288,14 @@ export const localRepository = {
   },
   async deleteCatalogItem(payload) {
     const dataset = load();
-    const collection = dataset.catalogs[payload.type];
+    const collection = payload.type === "families" ? dataset.productFamilies : dataset.catalogs[payload.type];
     if (!collection?.some((item) => item.id === payload.id)) throw new Error("Opción no encontrada");
-    const linked = dataset.inventory.some((item) => item[payload.type === "categories" ? "categoryId" : payload.type === "units" ? "unitId" : "brandId"] === payload.id);
-    if (linked) throw new Error("No se puede eliminar una opción que está asignada a materiales");
-    dataset.catalogs[payload.type] = collection.filter((item) => item.id !== payload.id);
+    const linked = payload.type === "families"
+      ? dataset.bodyTypes.some((item) => item.familyId === payload.id || item.family === collection.find((entry) => entry.id === payload.id)?.name)
+      : dataset.inventory.some((item) => item[payload.type === "categories" ? "categoryId" : payload.type === "units" ? "unitId" : "brandId"] === payload.id);
+    if (linked) throw new Error(`No se puede eliminar una ${payload.type === "families" ? "familia" : "opción"} que está en uso`);
+    if (payload.type === "families") dataset.productFamilies = collection.filter((item) => item.id !== payload.id);
+    else dataset.catalogs[payload.type] = collection.filter((item) => item.id !== payload.id);
     save(dataset);
     return dataset;
   },

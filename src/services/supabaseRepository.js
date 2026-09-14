@@ -217,7 +217,8 @@ export const supabaseRepository = {
     const config = {
       categories: { table: "material_categories", prefix: "cat" },
       units: { table: "measurement_units", prefix: "unit" },
-      brands: { table: "brands", prefix: "brand" }
+      brands: { table: "brands", prefix: "brand" },
+      families: { table: "product_families", prefix: "family" }
     }[payload.type];
     if (!config) throw new Error("Catálogo no válido");
     const name = String(payload.name || "").trim();
@@ -230,7 +231,7 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async updateCatalogItem(payload) {
-    const config = { categories: { table: "material_categories" }, units: { table: "measurement_units" }, brands: { table: "brands" } }[payload.type];
+    const config = { categories: { table: "material_categories" }, units: { table: "measurement_units" }, brands: { table: "brands" }, families: { table: "product_families" } }[payload.type];
     if (!config) throw new Error("Catálogo no válido");
     const row = { name: String(payload.name || "").trim() };
     if (payload.type === "units") row.symbol = String(payload.symbol || "").trim();
@@ -239,7 +240,7 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async deleteCatalogItem(payload) {
-    const config = { categories: "material_categories", units: "measurement_units", brands: "brands" }[payload.type];
+    const config = { categories: "material_categories", units: "measurement_units", brands: "brands", families: "product_families" }[payload.type];
     if (!config) throw new Error("Catálogo no válido");
     const { error } = await supabase.from(config).delete().eq("id", payload.id);
     if (error) throw error;
