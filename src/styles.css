@@ -349,32 +349,33 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .alert-count.ok { color: #087443; background: #eaf7f0; }
 .alert-overview { margin: 0 20px 13px; padding: 11px 13px; display: grid; grid-template-columns: repeat(3, minmax(84px, auto)) 1fr; gap: 14px; align-items: center; border: 1px solid #f1d7d7; border-radius: 9px; background: linear-gradient(90deg, #fff8f8, #fffdfb); }
 .alert-overview > div { display: grid; gap: 1px; padding-right: 14px; border-right: 1px solid #f0e4e4; }
-.alert-overview strong { color: #b62525; font-family: var(--font-display); font-size: 18px; }
-.alert-overview span { color: #7b6870; font-size: 8px; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; }
-.alert-overview p { color: #6a7180; font-size: 9px; line-height: 1.4; }
+.alert-overview strong { color: #b62525; font-family: var(--font-display); font-size: 20px; }
+.alert-overview span { color: #7b6870; font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; }
+.alert-overview p { color: #5f6877; font-size: 10px; line-height: 1.45; }
 .alert-group-list { padding: 0 20px 20px; display: grid; gap: 8px; }
 .alert-group { border: 1px solid #e2e7ec; border-left: 3px solid #d58a17; border-radius: 9px; background: #fffdf8; overflow: hidden; }
 .alert-group.critical { border-color: #f1cece; border-left-color: #d52b2b; background: #fffafa; }
-.alert-group summary { min-height: 52px; padding: 10px 12px; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; cursor: pointer; list-style: none; }
-.alert-group summary::-webkit-details-marker, .alert-examples summary::-webkit-details-marker, .capacity-cecos summary::-webkit-details-marker { display: none; }
-.alert-group summary > div:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
-.alert-group summary span { color: #a6600b; font-size: 8px; font-weight: 850; text-transform: uppercase; letter-spacing: .07em; }
-.alert-group.critical summary span { color: #b62525; }
-.alert-group summary strong { overflow: hidden; color: #242d3c; font-family: var(--font-display); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.alert-group summary > b { color: #9a5700; font-family: var(--font-display); font-size: 12px; }
-.alert-group.critical summary > b { color: #bd2424; }
-.alert-group summary > em { color: #7b8594; font-size: 8px; font-style: normal; font-weight: 750; white-space: nowrap; }
-.alert-group[open] summary > em { color: #b62525; }
+.alert-group > summary { min-height: 58px; padding: 11px 14px; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; cursor: pointer; list-style: none; }
+.alert-group > summary::-webkit-details-marker, .alert-examples summary::-webkit-details-marker, .capacity-cecos summary::-webkit-details-marker { display: none; }
+.alert-group > summary > div:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
+.alert-group > summary span { color: #a6600b; font-size: 9px; font-weight: 850; text-transform: uppercase; letter-spacing: .07em; }
+.alert-group.critical > summary span { color: #b62525; }
+.alert-group > summary strong { overflow: hidden; color: #242d3c; font-family: var(--font-display); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.alert-group > summary > b { color: #9a5700; font-family: var(--font-display); font-size: 13px; }
+.alert-group.critical > summary > b { color: #bd2424; }
+.expand-control { min-width: 82px; display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; color: #576477; font-size: 10px; font-style: normal; font-weight: 850; white-space: nowrap; }
+.expand-control i { display: inline-block; color: #b62525; font-size: 14px; font-style: normal; transition: transform .15s ease; }
+.open-label { display: none; }.alert-group[open] .closed-label { display: none; }.alert-group[open] .open-label { display: inline; }.alert-group[open] .expand-control i { transform: rotate(180deg); }
 .alert-group.critical .alert-symbol { background: #ffe7e7; color: #b51f1f; }
-.alert-group-detail { display: grid; gap: 7px; padding: 0 14px 13px 50px; }
-.alert-group-detail p { color: #5d6879; font-size: 9px; line-height: 1.4; }
+.alert-group-detail { display: grid; gap: 9px; padding: 0 16px 15px 56px; }
+.alert-group-detail p { color: #536074; font-size: 11px; line-height: 1.45; }
 .affected-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.affected-chips span { border-radius: 999px; padding: 3px 6px; background: #f0f2f5; color: #536074; font-size: 8px; font-weight: 750; }
+.affected-chips span { border-radius: 999px; padding: 4px 7px; background: #f0f2f5; color: #536074; font-size: 9px; font-weight: 750; }
 .recommended-action { padding: 8px 9px; border-radius: 6px; background: #f7f2ed; color: #6c4f39 !important; }
 .alert-examples { padding-top: 2px; }
-.alert-examples summary, .capacity-cecos summary { color: #566274; cursor: pointer; font-size: 8px; font-weight: 800; }
-.alert-examples > div { display: grid; grid-template-columns: minmax(130px, auto) auto minmax(0, 1fr); gap: 7px; align-items: center; margin-top: 6px; padding: 6px 7px; border-radius: 5px; background: #f6f7f9; color: #667184; font-size: 8px; }
-.alert-examples code { overflow: hidden; color: #536074; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.alert-examples summary, .capacity-cecos summary { color: #3f526b; cursor: pointer; font-size: 10px; font-weight: 850; }
+.alert-examples > div { display: grid; grid-template-columns: minmax(180px, auto) auto minmax(0, 1fr); gap: 9px; align-items: center; margin-top: 7px; padding: 8px 9px; border-radius: 6px; background: #f6f7f9; color: #667184; font-size: 10px; }
+.alert-examples code { overflow: hidden; color: #536074; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .alert-list { padding: 0 20px 20px; display: grid; gap: 9px; }
 .alert-list article { display: grid; grid-template-columns: 31px minmax(0, 1fr) auto; align-items: start; gap: 11px; border: 1px solid #e2e7ec; border-left: 3px solid #d58a17; border-radius: 9px; padding: 12px 13px; background: #fffdf8; }
 .alert-list article.critical { border-color: #f1cece; border-left-color: #d52b2b; background: #fffafa; }
