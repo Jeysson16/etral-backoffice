@@ -1148,7 +1148,18 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
 
 
 function CapacityChart({ rows, bottleneck }) {
-  return <div className="chart-block"><div className="chart-summary"><div><span>Mayor carga proyectada</span><strong>{bottleneck}</strong></div><p>La carga se calcula con los CECO que aún recorren cada fase y la capacidad disponible del período.</p></div><div className="capacity-list">{rows.map((row) => <article key={row.stageId}><div className="capacity-label"><strong>{row.name}</strong><span>{row.demandHours} h requeridas / {row.availableHours} h disponibles · {row.period}</span></div><div className="bar-track"><span style={{ width: `${Math.min(100, row.utilization)}%`, background: row.utilization > 100 ? "#dc2626" : row.color }} /></div><b className={row.utilization > 100 ? "over" : ""}>{row.utilization}%</b>{(row.orders ?? []).length > 0 && <small>CECO: {(row.orders ?? []).map((item) => `${item.ceco} (${item.hours} h)`).join(" · ")}</small>}</article>)}</div></div>;
+  const orderedRows = [...rows].sort((a, b) => b.utilization - a.utilization);
+  return <div className="chart-block"><div className="chart-summary"><div><span>Cuello de botella</span><strong>{bottleneck}</strong></div><p>Las fases se ordenan por carga. Rojo significa que la demanda excede la capacidad disponible en el horizonte.</p></div><div className="capacity-list">{orderedRows.map((row) => {
+    const excessHours = Math.max(0, Number(row.demandHours) - Number(row.availableHours));
+    const tone = row.utilization > 100 ? "over" : row.utilization >= 85 ? "near" : "healthy";
+    const label = tone === "over" ? `Sobrecarga: faltan ${excessHours} h` : tone === "near" ? "Capacidad muy ajustada" : "Capacidad disponible";
+    return <article className={`capacity-row ${tone}`} key={row.stageId}>
+      <div className="capacity-label"><strong>{row.name}</strong><span>{row.demandHours} h requeridas de {row.availableHours} h disponibles</span></div>
+      <div className="capacity-meter"><div className="bar-track"><span style={{ width: `${Math.min(100, row.utilization)}%`, background: tone === "over" ? "#dc2626" : tone === "near" ? "#d58a17" : row.color }} /></div><small>{label}</small></div>
+      <b className={tone}>{row.utilization}%</b>
+      {(row.orders ?? []).length > 0 && <details className="capacity-cecos"><summary>Ver {row.orders.length} CECO que cargan esta fase</summary><div>{row.orders.map((item) => <span key={item.ceco}>CECO {item.ceco} · {item.hours} h</span>)}</div></details>}
+    </article>;
+  })}</div></div>;
 }
 
 function MaterialSimulation({ rows }) {
@@ -1162,15 +1173,25 @@ function DemandSimulation({ insights }) {
 
 function SimulationAlerts({ notifications }) {
   const critical = notifications.filter((item) => item.severity === "critical").length;
+  const groups = Array.from(notifications.reduce((map, alert) => {
+    const key = `${alert.severity}:${alert.category}`;
+    const group = map.get(key) ?? { ...alert, count: 0, affected: new Set(), examples: [] };
+    group.count += 1;
+    (alert.affected ?? []).forEach((item) => group.affected.add(item));
+    group.examples.push(alert);
+    map.set(key, group);
+    return map;
+  }, new Map()).values()).sort((a, b) => b.count - a.count);
+  const affectedCecos = new Set(notifications.flatMap((item) => item.affected ?? [])).size;
   return <section className="panel alert-center">
     <SectionHeader eyebrow="Alertas accionables" title="Situaciones previstas" action={<span className={`alert-count ${critical ? "critical" : "ok"}`}>{critical ? `${critical} críticas` : "Sin críticas"}</span>} />
-    <div className="alert-list">
+    {notifications.length > 0 && <div className="alert-overview"><div><strong>{critical}</strong><span>bloqueos críticos</span></div><div><strong>{affectedCecos}</strong><span>CECO afectados</span></div><div><strong>{groups.length}</strong><span>causas agrupadas</span></div><p>Revisa primero los grupos con más CECO y aplica la acción sugerida una sola vez por causa.</p></div>}
+    <div className="alert-group-list">
       {notifications.length === 0 && <EmptyState text="Los indicadores se mantienen dentro de los umbrales configurados." />}
-      {notifications.slice(0, 8).map((alert) => <article className={alert.severity} key={alert.id}>
-        <div className="alert-symbol">{alert.severity === "critical" ? "!" : "△"}</div>
-        <div className="alert-content"><div><span>{alert.category}</span><strong>{alert.title}</strong></div><p><b>Situación:</b> {alert.situation}</p><p><b>Cuándo:</b> {alert.period}</p><p><b>Por qué:</b> {alert.reason}</p>{alert.affected.length > 0 && <small><b>Afectados:</b> {alert.affected.join(" · ")}</small>}<p><b>Acción recomendada:</b> {alert.recommendedAction}</p><code>{alert.calculation}</code></div>
-        <b>{alert.value}</b>
-      </article>)}
+      {groups.map((group, index) => <details className={`alert-group ${group.severity}`} key={`${group.severity}-${group.category}`} open={index === 0}>
+        <summary><div className="alert-symbol">{group.severity === "critical" ? "!" : "△"}</div><div><span>{group.category}</span><strong>{group.count} {group.count === 1 ? "alerta" : "alertas"} · {group.title.replace(/^CECO \d+ /, "")}</strong></div><b>{group.value}</b><em>Ver detalle</em></summary>
+        <div className="alert-group-detail"><p><b>Qué ocurre:</b> {group.situation}</p><p><b>Por qué:</b> {group.reason}</p><div className="affected-chips">{Array.from(group.affected).slice(0, 10).map((item) => <span key={item}>{item}</span>)}{group.affected.size > 10 && <span>+{group.affected.size - 10} más</span>}</div><p className="recommended-action"><b>Acción recomendada:</b> {group.recommendedAction}</p><details className="alert-examples"><summary>Ver CECO y cálculos individuales ({group.examples.length})</summary>{group.examples.map((alert) => <div key={alert.id}><strong>{alert.title}</strong><span>{alert.period}</span><code>{alert.calculation}</code></div>)}</details></div>
+      </details>)}
     </div>
   </section>;
 }
