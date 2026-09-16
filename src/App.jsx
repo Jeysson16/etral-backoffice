@@ -890,7 +890,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
 
   const comparisons = result ? [
     ["Órdenes terminables", result.baseline.throughput, result.scenario.throughput, "órdenes"],
-    ["Cumplimiento PMP", result.baseline.pmpCompliance, `${result.scenario.pmpCompliance}%`, "%"],
+    ["Cumplimiento PMP por CECO", result.baseline.pmpCompliance, `${result.scenario.pmpCompliance}%`, "%"],
     ["Lead time estimado", result.baseline.estimatedLeadDays, result.scenario.estimatedLeadDays, "días"],
     ["Quiebres proyectados", result.baseline.stockouts, result.scenario.stockouts, "materiales"]
   ] : [];
@@ -1006,6 +1006,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
               <span>{label}</span>
               <div><small>Base</small><strong>{base}</strong><em>→</em><small>Escenario</small><strong>{scenario}</strong></div>
               <p className={delta === 0 ? "flat" : delta > 0 ? "up" : "down"}>{delta > 0 ? "+" : ""}{delta} {unit}</p>
+              {label.includes("PMP") && <small className="confidence-bounds">CECO a tiempo / CECO con fecha PMP: {result.scenario.pmpSummary?.on_time ?? 0} / {result.scenario.pmpSummary?.evaluable ?? 0}</small>}
               {result.confidenceIntervals && label.includes("PMP") && (
                 <small className="confidence-bounds">Rango Monte Carlo (95%): [{result.confidenceIntervals.pmpLower}% - {result.confidenceIntervals.pmpUpper}%]</small>
               )}
@@ -1034,9 +1035,9 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           {tab === "demand" && <DemandSimulation insights={result.scenario.demandInsights} />}
           {tab === "schedule" && result.scenario.cecoSchedule && (
             <div className="order-params-panel">
-              <SectionHeader eyebrow="Programación secuencial" title="Fecha factible por CECO" detail="La orden consume capacidad diaria de cada fase según su prioridad; no se promedian las sobrecargas." />
-              <div className="table-scroll"><table><thead><tr><th>CECO</th><th>Prioridad</th><th>Estado</th><th>Inicio factible</th><th>Fin factible</th><th>Fecha pactada</th></tr></thead><tbody>
-                {result.scenario.cecoSchedule.map((row) => <tr key={row.ceco}><td><strong>CECO {row.ceco}</strong><small>{row.product}</small></td><td>{row.priority}</td><td><span className={`status-pill ${row.state === "scheduled" ? "green" : row.state === "blocked_material" ? "red" : "orange"}`}>{row.state === "scheduled" ? (row.delayed ? "Programado con atraso" : "Programado") : row.state === "blocked_material" ? "Bloqueado por material" : "No cabe en horizonte"}</span></td><td>{row.startDate ?? "—"}</td><td>{row.endDate ?? "—"}</td><td>{row.dueDate ?? "—"}</td></tr>)}
+              <SectionHeader eyebrow="Programación secuencial" title="Cumplimiento PMP por CECO" detail="Cada CECO parte de su inicio PMP del Gantt y cumple únicamente si su programación finita termina en o antes de su fecha pactada." />
+              <div className="table-scroll"><table><thead><tr><th>CECO</th><th>Prioridad</th><th>Estado operativo</th><th>Inicio PMP</th><th>Fin factible</th><th>Fecha pactada</th><th>PMP por Gantt</th></tr></thead><tbody>
+                {result.scenario.cecoSchedule.map((row) => <tr key={row.ceco}><td><strong>CECO {row.ceco}</strong><small>{row.product}</small></td><td>{row.priority}</td><td><span className={`status-pill ${row.state === "scheduled" ? "green" : row.state === "blocked_material" ? "red" : "orange"}`}>{row.state === "scheduled" ? (row.delayed ? "Programado con atraso" : "Programado") : row.state === "blocked_material" ? "Bloqueado por material" : "No cabe en horizonte"}</span></td><td>{row.plannedStartDate ?? "—"}</td><td>{row.endDate ?? "—"}</td><td>{row.dueDate ?? "—"}</td><td><span className={`status-pill ${row.pmpState === "on_time" ? "green" : row.pmpState === "not_compliant" ? "red" : "orange"}`}>{row.pmpState === "on_time" ? "Cumple" : row.pmpState === "not_compliant" ? "No cumple" : "Sin fecha PMP"}</span></td></tr>)}
               </tbody></table></div>
             </div>
           )}

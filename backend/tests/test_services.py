@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from decimal import Decimal
 
 from app.schemas import ActivityProgress, BomItem, EquipmentResource, FactorySnapshot, IncidentResource, Material, OperationLog, PersonnelResource, ProductionOrder, SimulationInput, Stage, StageActivity
@@ -71,6 +72,22 @@ class TwinServiceTests(unittest.TestCase):
         self.assertEqual(schedule["260181"]["state"], "blocked_material")
         self.assertEqual(schedule["260180"]["state"], "capacity_pending")
         self.assertEqual(result["orders"]["estimated_throughput"], 0)
+
+    def test_pmp_is_measured_per_ceco_against_its_due_date(self):
+        today = date.today().isoformat()
+        yesterday = date.fromordinal(date.today().toordinal() - 1).isoformat()
+        gantt_snapshot = snapshot().model_copy(update={
+            "materials": [], "bom": [],
+            "stages": [Stage(id="paint", name="Pintura", sequence=1, capacity_hours=100, standard_hours=8)],
+            "orders": [
+                ProductionOrder(ceco="260180", body_type_id="furgon", stage_id="paint", priority=1, planned_start_date=today, due_date=today),
+                ProductionOrder(ceco="260181", body_type_id="furgon", stage_id="paint", priority=2, planned_start_date=today, due_date=yesterday),
+            ],
+        })
+        result = simulate(SimulationInput(snapshot=gantt_snapshot, horizon_days=7, absenteeism_rate=0))
+        self.assertEqual(result["pmp_summary"]["evaluable"], 2)
+        self.assertEqual(result["pmp_summary"]["on_time"], 1)
+        self.assertEqual(result["pmp_compliance"], 50)
 
     def test_historical_validation_requires_real_completion_dates(self):
         historical = snapshot().model_copy(update={

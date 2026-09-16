@@ -270,13 +270,23 @@ function calculateScenario(dataset, params) {
     ? activeOrders.reduce((sum, order) => sum + Number(dataset.bodyTypes.find((item) => item.id === order.bodyTypeId)?.targetDays ?? 14), 0) / activeOrders.length
     : 0;
   const estimatedLeadDays = Number((avgTarget / Math.max(0.35, completionRatio)).toFixed(1));
-  const delayedOrders = activeOrders.filter((order) => order.dueDate && new Date(`${order.dueDate}T23:59:59`) < addDays(startDate, estimatedLeadDays)).length;
-  const pmpCompliance = activeOrders.length === 0 ? 100 : Math.round((throughput / activeOrders.length) * 100);
+  // Respaldo local: conserva el indicador PMP por CECO y su propio Gantt.
+  // La API Python lo reemplaza por programación finita por fase cuando está disponible.
+  const pmpRows = activeOrders.filter((order) => order.dueDate).map((order) => {
+    const plannedStart = order.plannedStartDate ? new Date(`${order.plannedStartDate}T12:00:00`) : startDate;
+    const targetDays = Number(dataset.bodyTypes.find((item) => item.id === order.bodyTypeId)?.targetDays ?? estimatedLeadDays);
+    const projectedEnd = addDays(plannedStart, Math.max(0, Math.ceil(targetDays / Math.max(0.35, completionRatio)) - 1));
+    return { ceco: order.ceco, onTime: projectedEnd <= new Date(`${order.dueDate}T23:59:59`) };
+  });
+  const pmpOnTime = pmpRows.filter((row) => row.onTime).length;
+  const delayedOrders = pmpRows.length - pmpOnTime;
+  const pmpCompliance = pmpRows.length === 0 ? 100 : Math.round((pmpOnTime / pmpRows.length) * 100);
 
   return {
     activeOrders: activeOrders.length,
     throughput,
     pmpCompliance,
+    pmpSummary: { evaluable: pmpRows.length, onTime: pmpOnTime, withoutDueDate: activeOrders.length - pmpRows.length },
     delayedOrders,
     stockouts,
     estimatedLeadDays,

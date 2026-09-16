@@ -214,18 +214,24 @@ def _schedule_orders(
     ))
     schedule = []
     for order in ordered:
+        planned_start = order.planned_start_date or start
+        planned_cursor = max(0, (planned_start - start).days)
         if order.ceco in blocked_cecos:
             schedule.append({
                 "ceco": order.ceco, "product": products.get(order.body_type_id, order.body_type_id),
                 "priority": input_data.priority_overrides.get(order.ceco, order.priority), "state": "blocked_material",
                 "startDate": None, "endDate": None, "dueDate": order.due_date.isoformat() if order.due_date else None,
+                "plannedStartDate": planned_start.isoformat(),
+                "pmpState": "not_measurable" if not order.due_date else "not_compliant",
                 "delayed": False, "stages": [],
             })
             continue
 
         route = snapshot.routes.get(order.body_type_id, [])
         current_index = route.index(order.stage_id) if order.stage_id in route else 0
-        cursor = 0
+        # El CECO no se adelanta artificialmente: su cola empieza en el inicio
+        # PMP definido en su Gantt. Si ya venció, se evalúa desde hoy.
+        cursor = planned_cursor
         stage_plan = []
         all_scheduled = True
         for stage_id in route[current_index:]:
@@ -264,11 +270,15 @@ def _schedule_orders(
         first_date = next((item["startDate"] for item in stage_plan if item["startDate"]), None)
         end_date = stage_plan[-1]["endDate"] if all_scheduled and stage_plan else None
         due = order.due_date.isoformat() if order.due_date else None
+        pmp_state = "not_measurable"
+        if due:
+            pmp_state = "on_time" if all_scheduled and end_date and end_date <= due else "not_compliant"
         schedule.append({
             "ceco": order.ceco, "product": products.get(order.body_type_id, order.body_type_id),
             "priority": input_data.priority_overrides.get(order.ceco, order.priority),
             "state": "scheduled" if all_scheduled else "capacity_pending", "startDate": first_date,
             "endDate": end_date, "dueDate": due,
+            "plannedStartDate": planned_start.isoformat(), "pmpState": pmp_state,
             "delayed": bool(end_date and due and end_date > due) or not all_scheduled,
             "stages": stage_plan,
         })
@@ -367,13 +377,18 @@ def simulate(input_data: SimulationInput) -> dict:
     order_schedule = _schedule_orders(snapshot, input_data, active, blocked_cecos, capacity, calibration["standard_time_bias"])
     ready_orders = len([order for order in active if order.ceco not in blocked_cecos])
     throughput = sum(1 for row in order_schedule if row["state"] == "scheduled")
+    pmp_evaluable = [row for row in order_schedule if row["dueDate"]]
+    pmp_on_time = [row for row in pmp_evaluable if row["pmpState"] == "on_time"]
     return {
         "scenario_isolated": True,
         "orders": {"active": len(active), "ready": ready_orders, "blocked": len(blocked_cecos), "estimated_throughput": throughput},
         "mrp": mrp,
         "stage_capacity": capacity,
         "bottleneck": bottleneck["name"] if bottleneck and bottleneck["bottleneck"] else None,
-        "pmp_compliance": round((throughput / len(active) * 100), 2) if active else 100,
+        # PMP se mide por CECO frente a su propio Gantt: solo cumple si la
+        # programación finita termina en o antes de su fecha comprometida.
+        "pmp_compliance": round((len(pmp_on_time) / len(pmp_evaluable) * 100), 2) if pmp_evaluable else 100,
+        "pmp_summary": {"evaluable": len(pmp_evaluable), "on_time": len(pmp_on_time), "without_due_date": len(order_schedule) - len(pmp_evaluable)},
         "calibration": calibration,
         "order_schedule": order_schedule,
     }
@@ -527,6 +542,7 @@ def _present_scenario(raw: dict, snapshot: FactorySnapshot, horizon_days: int) -
         "activeOrders": active,
         "throughput": throughput,
         "pmpCompliance": raw["pmp_compliance"],
+        "pmpSummary": raw["pmp_summary"],
         "delayedOrders": sum(1 for row in scheduled if row["delayed"]),
         "stockouts": sum(1 for material in materials if material["projected"] < 0),
         "estimatedLeadDays": round(sum(completed_leads) / len(completed_leads), 1) if completed_leads else round(horizon_days / max(0.35, completion_ratio), 1),
