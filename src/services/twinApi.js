@@ -50,26 +50,31 @@ export async function runTwinSimulation(dataset, draft) {
   );
   const priority_overrides = Object.fromEntries((draft.priorityCecos ?? []).map((ceco, index) => [ceco, Number(draft.orderPriorityOverrides?.[ceco] ?? index + 1)]));
   const { data: { session } = {} } = supabase ? await supabase.auth.getSession() : {};
-  const response = await fetch(`${baseUrl}/api/v1/simulations`, {
-    method: "POST", headers: {
-      "Content-Type": "application/json",
-      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
-    },
-    body: JSON.stringify({ name: "Simulación desde interfaz", input: {
-      snapshot: snapshotFromDataset(dataset), horizon_days: Number(draft.horizonDays),
-      labor_availability: Number(draft.laborAvailability), shifts_per_day: Number(draft.shiftsPerDay),
-      demand_percent: Number(draft.demandPercent), material_adjustments, priority_overrides,
-      order_complexity_map: draft.orderComplexityMap ?? {},
-      order_worker_assignments: draft.orderWorkerAssignments ?? {},
-      worker_inconsistency_mode: draft.workerInconsistencyMode ?? "stochastic",
-      inconsistency_std_dev: Number(draft.inconsistencyStdDev ?? 10),
-      absenteeism_rate: Number(draft.absenteeismRate ?? 5)
-    } })
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || "No fue posible ejecutar el gemelo digital.");
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/simulations`, {
+      method: "POST", headers: {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+      },
+      body: JSON.stringify({ name: "Simulación desde interfaz", input: {
+        snapshot: snapshotFromDataset(dataset), horizon_days: Number(draft.horizonDays),
+        labor_availability: Number(draft.laborAvailability), shifts_per_day: Number(draft.shiftsPerDay),
+        demand_percent: Number(draft.demandPercent), material_adjustments, priority_overrides,
+        order_complexity_map: draft.orderComplexityMap ?? {},
+        order_worker_assignments: draft.orderWorkerAssignments ?? {},
+        worker_inconsistency_mode: draft.workerInconsistencyMode ?? "stochastic",
+        inconsistency_std_dev: Number(draft.inconsistencyStdDev ?? 10),
+        absenteeism_rate: Number(draft.absenteeismRate ?? 5)
+      } })
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || "No fue posible ejecutar el gemelo digital.");
+    }
+    const payload = await response.json();
+    return payload.result;
+  } catch (error) {
+    console.warn("La API Python no respondió; se usa el motor JS de respaldo.", error);
+    return runDigitalTwin(dataset, draft);
   }
-  const payload = await response.json();
-  return payload.result;
 }
