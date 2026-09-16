@@ -1006,7 +1006,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
               <span>{label}</span>
               <div><small>Base</small><strong>{base}</strong><em>→</em><small>Escenario</small><strong>{scenario}</strong></div>
               <p className={delta === 0 ? "flat" : delta > 0 ? "up" : "down"}>{delta > 0 ? "+" : ""}{delta} {unit}</p>
-              {label.includes("PMP") && <small className="confidence-bounds">CECO a tiempo / CECO con fecha PMP: {result.scenario.pmpSummary?.on_time ?? 0} / {result.scenario.pmpSummary?.evaluable ?? 0}</small>}
+              {label.includes("PMP") && <small className="confidence-bounds">{result.scenario.pmpSummary ? `CECO a tiempo / CECO con fecha PMP: ${result.scenario.pmpSummary.on_time} / ${result.scenario.pmpSummary.evaluable}` : "Pendiente de recibir el cálculo PMP por CECO desde la API."}</small>}
               {result.confidenceIntervals && label.includes("PMP") && (
                 <small className="confidence-bounds">Rango Monte Carlo (95%): [{result.confidenceIntervals.pmpLower}% - {result.confidenceIntervals.pmpUpper}%]</small>
               )}
