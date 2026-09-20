@@ -51,7 +51,7 @@ function orderCompletion(dataset, order) {
 }
 
 function orderStart(dataset, order) {
-  const explicit = dateOnly(order.orderDate || order.requestDate || order.createdAt);
+  const explicit = dateOnly(order.orderDate || order.requestDate || order.createdAt || order.plannedStartDate);
   if (explicit) return explicit;
   const candidates = [
     ...(dataset.operations ?? []).filter((item) => item.ceco === order.ceco).map((item) => item.date),
@@ -90,7 +90,7 @@ function calculatePeriod(dataset, start, end) {
   const leadTimes = completed.map(({ order, date }) => {
     const startDate = orderStart(dataset, order);
     const days = startDate && date ? dayNumber(date) - dayNumber(startDate) : null;
-    return days != null && days > 0 ? days : null;
+    return days != null && days >= 0 ? days : null;
   }).filter((value) => value != null);
 
   const inventory = dataset.inventory ?? [];
