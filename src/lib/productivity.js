@@ -137,9 +137,9 @@ function calculatePeriod(dataset, start, end) {
     safetyTotal: inventory.length,
     reportedHours: round(reportedHours, 1),
     laborProductivity: reportedHours > 0 ? round(completed.length / reportedHours, 3) : null,
-    materialProductivity: pricedMaterials === reservations.length && reservations.length > 0 && materialCost > 0 ? round(completed.length / materialCost, 4) : null,
+    materialProductivity: materialCost > 0 ? round(completed.length / materialCost, 4) : null,
     materialCost: round(materialCost, 2),
-    multifactorProductivity: valuedOrders === completed.length && completed.length > 0 && pricedMaterials === reservations.length && costedOperations === operations.length && outputValue > 0 && (materialCost + laborCost + otherCosts) > 0
+    multifactorProductivity: (materialCost + laborCost + otherCosts) > 0
       ? round(outputValue / (materialCost + laborCost + otherCosts), 3)
       : null,
     outputValue: round(outputValue, 2),

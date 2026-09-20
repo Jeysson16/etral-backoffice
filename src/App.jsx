@@ -709,7 +709,12 @@ function IndicatorsView({ dataset }) {
       }
       if (end > dateRange.end) end = dateRange.end;
       const period = calculateProductivityReport(dataset, cursor, end).current;
-      rows.push({ label: grouping === "week" ? `${cursor.slice(5)}–${end.slice(5)}` : new Intl.DateTimeFormat("es-PE", { month: "short", year: "2-digit", timeZone: "UTC" }).format(new Date(`${cursor}T12:00:00Z`)), ...period });
+      rows.push({
+        label: grouping === "week"
+          ? new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${cursor}T12:00:00Z`))
+          : new Intl.DateTimeFormat("es-PE", { month: "short", year: "2-digit", timeZone: "UTC" }).format(new Date(`${cursor}T12:00:00Z`)),
+        ...period
+      });
       cursor = addDaysUtc(end, 1);
     }
     return rows;

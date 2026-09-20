@@ -1,10 +1,10 @@
 import * as XLSX from "xlsx";
 
-const NAVY = "20384F";
-const ORANGE = "D95D19";
-const LIGHT = "F3F6F8";
-const BORDER = "D9E1E8";
-const SUBTLE = "667789";
+const NAVY = "1A237E";
+const ORANGE = "FF6F00";
+const LIGHT = "F5F7FA";
+const BORDER = "E4E7EB";
+const SUBTLE = "546E7A";
 
 function cell(sheet, row, column) {
   const address = XLSX.utils.encode_cell({ r: row, c: column });
@@ -53,7 +53,7 @@ export function styleWorkbookSheet(sheet, { title = "", subtitle = "", headerRow
 
   sheet["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: headerRow, c: range.s.c }, e: { r: range.e.r, c: range.e.c } }) };
   if (title && range.e.c > 0) sheet["!merges"] = [...(sheet["!merges"] ?? []), { s: { r: firstRow, c: 0 }, e: { r: firstRow, c: range.e.c } }];
-  sheet["!rows"] = Array.from({ length: Math.max(range.e.r + 1, headerRow + 1) }, (_, row) => ({ hpt: row === firstRow ? 28 : row === firstRow + 1 ? 19 : row === headerRow ? 34 : 23 }));
+  sheet["!rows"] = Array.from({ length: Math.max(range.e.r + 1, headerRow + 1) }, (_, row) => ({ hpt: row === firstRow ? 32 : row === firstRow + 1 ? 22 : row === headerRow ? 36 : 26 }));
   sheet["!margins"] = { left: 0.35, right: 0.35, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
   sheet["!pageSetup"] = { orientation: range.e.c > 7 ? "landscape" : "portrait", fitToWidth: 1, fitToHeight: 0 };
   sheet["!sheetPr"] = { outlinePr: { summaryBelow: true } };
@@ -78,7 +78,7 @@ export function styleInstructionSheet(sheet) {
     entry.s = { fill: { fgColor: { rgb: row % 2 ? "FFF4EB" : "FFFFFF" } }, font: { color: { rgb: "324A5E" } }, alignment: { vertical: "center", wrapText: true }, border: { bottom: { style: "thin", color: { rgb: BORDER } } } };
   }
   sheet["!cols"] = [{ wch: 105 }];
-  sheet["!rows"] = Array.from({ length: range.e.r + 1 }, (_, row) => ({ hpt: row === 0 ? 30 : 34 }));
+  sheet["!rows"] = Array.from({ length: range.e.r + 1 }, (_, row) => ({ hpt: row === 0 ? 34 : 38 }));
   sheet["!margins"] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
   sheet["!tabColor"] = { rgb: ORANGE };
   return sheet;
