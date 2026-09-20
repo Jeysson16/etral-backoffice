@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 
 const NAVY = "1A237E";
 const ORANGE = "FF6F00";

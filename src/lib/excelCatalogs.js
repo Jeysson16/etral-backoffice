@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import { addExportTitle, styleInstructionSheet, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 
 const normalize = (value) => String(value ?? "")
