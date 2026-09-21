@@ -496,7 +496,7 @@ function mapActivityProgress(row) {
 }
 
 function mapOrder(row) {
-  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, createdAt: row.created_at || null, active: row.active !== false };
+  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, createdAt: row.created_at || null, active: row.active !== false, outputValue: Number(row.output_value || 0), energyCost: Number(row.energy_cost || 0), capitalCost: Number(row.capital_cost || 0) };
 }
 
 function mapCustomer(row) { return { id: row.id, documentNumber: row.document_number, name: row.name, contactName: row.contact_name, phone: row.phone, email: row.email, active: row.active }; }
@@ -507,7 +507,7 @@ function legacyCustomers(orders) {
 }
 
 function mapOperation(row) {
-  return { id: row.id, date: row.date, ceco: row.ceco, worker: row.worker, activity: row.activity, totalHours: Number(row.total_hours) };
+  return { id: row.id, date: row.date, ceco: row.ceco, worker: row.worker, activity: row.activity, totalHours: Number(row.total_hours), hourlyCost: Number(row.hourly_cost || 0) };
 }
 
 function mapWarehouse(row) {
