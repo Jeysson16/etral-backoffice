@@ -647,10 +647,10 @@ function changeBetween(current, previous) {
   return Math.round((current - previous) * 10) / 10;
 }
 
-function ProductivityCard({ label, value, previous, suffix, detail, formula, tone = "neutral" }) {
+function ProductivityCard({ label, value, previous, suffix, detail, formula, tone = "neutral", tooltip }) {
   const delta = changeBetween(value, previous);
   const width = value == null ? 0 : Math.max(4, Math.min(100, suffix === "%" ? value : value * 100));
-  return <article className={`productive-card ${tone} ${value == null ? "unavailable" : ""}`}>
+  return <article className={`productive-card ${tone} ${value == null ? "unavailable" : ""}`} title={value == null ? tooltip : undefined}>
     <header><span>{label}</span>{delta != null && delta !== 0 && <b className={delta > 0 ? "up" : "down"}>{delta > 0 ? "↑" : "↓"} {Math.abs(delta)}</b>}</header>
     <strong>{formatIndicator(value, suffix)}</strong>
     <div className="indicator-track"><i style={{ width: `${width}%` }} /></div>
@@ -664,11 +664,11 @@ function ProductivityDashboard({ report, onOpen }) {
   const rows = [
     { label: "Cumplimiento PMP", value: current.pmpCompliance, previous: previous.pmpCompliance, suffix: "%", detail: `${current.producedUnits} producidas / ${current.plannedUnits} planificadas`, formula: "Unidades producidas ÷ unidades planificadas × 100", tone: "orange" },
     { label: "Nivel de avance", value: current.progressRate, previous: previous.progressRate, suffix: "%", detail: `${current.executedActivities} ejecutadas / ${current.programmedActivities} programadas`, formula: "Actividades ejecutadas ÷ actividades programadas × 100", tone: "blue" },
-    { label: "Lead time promedio", value: current.averageLeadTime, previous: previous.averageLeadTime, suffix: " días", detail: current.leadTimeSamples ? `${current.leadTimeSamples} órdenes con fechas completas` : "Falta registrar fecha de pedido y entrega", formula: "Fecha de entrega − fecha de pedido", tone: "purple" },
+    { label: "Lead time promedio", value: current.averageLeadTime, previous: previous.averageLeadTime, suffix: " días", detail: current.leadTimeSamples ? `${current.leadTimeSamples} órdenes con fechas completas` : "Falta registrar fecha de pedido y entrega", formula: "Fecha de entrega − fecha de pedido", tone: "purple", tooltip: "Para obtener este dato:\n1. Ve a Producción > Gestión de órdenes.\n2. Edita una orden y registra su 'Fecha de inicio planificada' y 'Fecha de entrega pactada'." },
     { label: "Cobertura de seguridad", value: current.safetyCoverage, previous: previous.safetyCoverage, suffix: "%", detail: `${current.safetyCovered} de ${current.safetyTotal} materiales sobre el mínimo`, formula: "Disponible ≥ stock de seguridad calculado", tone: "green" },
-    { label: "Productividad de mano de obra", value: current.laborProductivity, previous: previous.laborProductivity, suffix: " und/HH", detail: `${current.producedUnits} unidades / ${current.reportedHours} horas reportadas`, formula: "Unidades producidas ÷ horas-hombre", tone: "teal" },
-    { label: "Productividad de materiales", value: current.materialProductivity, previous: previous.materialProductivity, suffix: " und/S/", detail: current.materialProductivity == null ? "Falta costo unitario de materiales e insumos" : `Costo trazado S/ ${current.materialCost}`, formula: "Unidades producidas ÷ costo de materiales", tone: "yellow" },
-    { label: "Productividad multifactorial", value: current.multifactorProductivity, previous: previous.multifactorProductivity, suffix: "", detail: current.multifactorProductivity == null ? "Faltan valor producido y costos de factores" : `Valor producido S/ ${current.outputValue}`, formula: "Producto total ÷ factores utilizados", tone: "navy" }
+    { label: "Productividad de mano de obra", value: current.laborProductivity, previous: previous.laborProductivity, suffix: " und/HH", detail: `${current.producedUnits} unidades / ${current.reportedHours} horas reportadas`, formula: "Unidades producidas ÷ horas-hombre", tone: "teal", tooltip: "Para obtener este dato:\n1. Ve a Producción > Partes de operación.\n2. Registra las horas trabajadas en las actividades." },
+    { label: "Productividad de materiales", value: current.materialProductivity, previous: previous.materialProductivity, suffix: " und/S/", detail: current.materialProductivity == null ? "Falta costo unitario de materiales e insumos" : `Costo trazado S/ ${current.materialCost}`, formula: "Unidades producidas ÷ costo de materiales", tone: "yellow", tooltip: "Para obtener este dato:\n1. Ve a Inventario > Insumos y partes.\n2. Edita los materiales y asígnales un Costo Unitario." },
+    { label: "Productividad multifactorial", value: current.multifactorProductivity, previous: previous.multifactorProductivity, suffix: "", detail: current.multifactorProductivity == null ? "Faltan valor producido y costos de factores" : `Valor producido S/ ${current.outputValue}`, formula: "Producto total ÷ factores utilizados", tone: "navy", tooltip: "Para obtener este dato:\n1. Registra el Costo Unitario de los materiales (Inventario).\n2. Asigna un Costo por Hora a las operaciones (Recursos).\n3. Define el Valor de Salida de las órdenes terminadas." }
   ];
   const available = rows.filter((item) => item.value != null).length;
   return <section className="panel productivity-panel">
