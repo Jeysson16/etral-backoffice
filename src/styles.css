@@ -97,11 +97,11 @@ select option { color: #1f2937; background: #fff; font-weight: 500; }
 .date-range { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
 .date-range label { display: grid; gap: 5px; color: #596476; font-size: 10px; font-weight: 800; }
 .date-range input { min-width: 140px; }
-.productivity-panel { overflow: hidden; }
+.productivity-panel { }
 .coverage-chip { align-self: center; padding: 7px 10px; border-radius: 999px; background: #edf7f2; color: #14704a; font-size: 11px; font-weight: 850; }
 .productivity-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 0 22px 16px; }
-.productive-card { --indicator: #64748b; min-width: 0; padding: 18px 20px; border: 1px solid #e1e7ee; border-radius: 14px; background: white; box-shadow: 0 4px 15px rgba(28, 49, 69, .04); display: grid; align-content: start; gap: 8px; position: relative; overflow: hidden; }
-.productive-card::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--indicator); }
+.productive-card { --indicator: #64748b; min-width: 0; padding: 18px 20px; border: 1px solid #e1e7ee; border-radius: 14px; background: white; box-shadow: 0 4px 15px rgba(28, 49, 69, .04); display: grid; align-content: start; gap: 8px; position: relative; }
+.productive-card::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--indicator); border-radius: 13px 13px 0 0; }
 .productive-card.orange { --indicator: #ed6a20; }.productive-card.blue { --indicator: #3679b9; }.productive-card.purple { --indicator: #7655b5; }.productive-card.green { --indicator: #1b8a5a; }.productive-card.teal { --indicator: #0f8b8d; }.productive-card.yellow { --indicator: #c98a13; }.productive-card.navy { --indicator: #334f70; }
 .productive-card header { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 .productive-card header > span { color: #5d6878; font-size: 11px; font-weight: 800; line-height: 1.35; }
@@ -1087,12 +1087,11 @@ pre,
 .eff-card span { font-size: 9px; color: #64748b; }
 .eff-card b { font-size: 11px; color: #16a34a; margin-top: 4px; }
 
-.card-tooltip { position: absolute; top: 18px; right: 20px; z-index: 10; }
+.card-tooltip { position: absolute; top: 18px; right: 20px; z-index: 100; }
 .tooltip-icon { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #dfe5ec; color: #64748b; font-size: 10px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
 .card-tooltip:hover .tooltip-icon { background: #3b82f6; color: white; }
-.tooltip-content { position: absolute; top: calc(100% + 5px); right: -10px; width: 220px; padding: 12px; border-radius: 8px; background: #1e293b; color: white; font-size: 11px; line-height: 1.5; box-shadow: 0 10px 25px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transform: translateY(-5px); transition: all 0.2s ease-in-out; pointer-events: none; }
+.tooltip-content { position: absolute; top: calc(100% + 5px); right: -10px; width: 220px; padding: 12px; border-radius: 8px; background: #1e293b; color: white; font-size: 11px; line-height: 1.5; box-shadow: 0 10px 25px rgba(0,0,0,0.2); opacity: 0; visibility: hidden; transform: translateY(-5px); transition: all 0.2s ease-in-out; pointer-events: none; z-index: 100; }
 .card-tooltip:hover .tooltip-content { opacity: 1; visibility: visible; transform: translateY(0); }
 .tooltip-content div { margin-bottom: 4px; }
 .tooltip-content div:last-child { margin-bottom: 0; }
-.tooltip-content div:first-child { font-weight: bold; color: #94a3b8; margin-bottom: 6px; }
 
