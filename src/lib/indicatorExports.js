@@ -101,8 +101,46 @@ export function exportIndicatorsWorkbook(dataset, report, range, grouping = "mon
 
 export function exportPeriodRecords(dataset, range) {
   const workbook = XLSX.utils.book_new();
-  appendSheet(workbook, "Partes operacion", [["fecha", "ceco", "trabajador", "actividad", "horas_hombre"], ...(dataset.operations ?? []).filter((item) => inRange(item.date, range.start, range.end)).map((item) => [item.date, item.ceco, item.worker, item.activity, Number(item.totalHours ?? 0)])], { numberFormats: { 4: "#,##0.00" } });
-  appendSheet(workbook, "Avance actividades", [["ceco", "actividad_id", "estado", "avance_pct", "inicio", "fin"], ...(dataset.activityProgress ?? []).filter((item) => inRange(item.startedAt ?? item.finishedAt, range.start, range.end)).map((item) => [item.ceco, item.activityId, item.status, Number(item.progress ?? 0), item.startedAt ?? "", item.finishedAt ?? ""])], { numberFormats: { 3: "0.00" } });
-  appendSheet(workbook, "Movimientos materiales", [["fecha", "tipo", "material", "ceco", "cantidad", "nota"], ...(dataset.inventoryMovements ?? []).filter((item) => inRange(item.timestamp, range.start, range.end)).map((item) => [item.timestamp, item.type, item.code, item.ceco ?? "", Number(item.quantity ?? 0), item.note ?? ""])], { numberFormats: { 4: "#,##0.00" } });
+
+  // Función ayudante para exportar cualquier arreglo de objetos
+  const exportTable = (sheetName, dataArray, dateField = null) => {
+    if (!Array.isArray(dataArray) || dataArray.length === 0) return;
+    
+    // Filtrar por fecha si se especifica un campo de fecha
+    const filteredData = dateField 
+      ? dataArray.filter(item => inRange(item[dateField], range.start, range.end))
+      : dataArray;
+      
+    if (filteredData.length === 0) return;
+
+    const headers = Object.keys(filteredData[0]).filter(k => typeof filteredData[0][k] !== "object");
+    const rows = [headers, ...filteredData.map(item => headers.map(h => {
+      const val = item[h];
+      return typeof val === "boolean" ? (val ? "Sí" : "No") : val;
+    }))];
+    
+    appendSheet(workbook, sheetName.substring(0, 31), rows); // Nombres de hojas en Excel tienen límite de 31 caracteres
+  };
+
+  exportTable("Órdenes", dataset.orders, "createdAt");
+  exportTable("Operaciones", dataset.operations, "date");
+  exportTable("Avance actividades", dataset.activityProgress);
+  exportTable("Movimientos materiales", dataset.inventoryMovements, "timestamp");
+  exportTable("Inventario", dataset.inventory);
+  exportTable("BOM", dataset.bom);
+  exportTable("Salidas almacén", dataset.warehouse, "date");
+  exportTable("Controles de calidad", dataset.quality, "date");
+  exportTable("Clientes", dataset.customers);
+  exportTable("Personal", dataset.personnel);
+  exportTable("Equipos", dataset.equipment);
+  exportTable("Tipos de carrocería", dataset.bodyTypes);
+  exportTable("Fases de flujo", dataset.flowStages);
+  exportTable("Actividades", dataset.stageActivities);
+  exportTable("Reservas de material", dataset.orderMaterialReservations);
+  exportTable("Turnos", dataset.shifts);
+  exportTable("Calendario", dataset.workCalendar, "date");
+  exportTable("Asignaciones", dataset.assignments, "date");
+  exportTable("Incidencias", dataset.incidents, "date");
+
   downloadWorkbook(workbook, `ETRAL_registros_${range.start}_${range.end}.xlsx`);
 }
