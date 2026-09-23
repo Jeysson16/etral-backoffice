@@ -19,7 +19,7 @@ export function styleWorkbookSheet(sheet, { title = "", subtitle = "", headerRow
     const titleCell = cell(sheet, firstRow, 0);
     titleCell.v = title;
     titleCell.t = "s";
-    titleCell.s = { fill: { fgColor: { rgb: NAVY } }, font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } }, alignment: { vertical: "center" } };
+    titleCell.s = { fill: { patternType: "solid", fgColor: { rgb: NAVY } }, font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } }, alignment: { vertical: "center" } };
     if (subtitle) {
       const subtitleCell = cell(sheet, firstRow + 1, 0);
       subtitleCell.v = subtitle;
@@ -31,7 +31,7 @@ export function styleWorkbookSheet(sheet, { title = "", subtitle = "", headerRow
   for (let column = range.s.c; column <= range.e.c; column += 1) {
     const header = cell(sheet, headerRow, column);
     header.s = {
-      fill: { fgColor: { rgb: NAVY } },
+      fill: { patternType: "solid", fgColor: { rgb: NAVY } },
       font: { bold: true, color: { rgb: "FFFFFF" } },
       alignment: { horizontal: "center", vertical: "center", wrapText: true },
       border: { top: { style: "thin", color: { rgb: "FFFFFF" } }, bottom: { style: "thin", color: { rgb: "FFFFFF" } }, left: { style: "thin", color: { rgb: "FFFFFF" } }, right: { style: "thin", color: { rgb: "FFFFFF" } } }
@@ -43,7 +43,7 @@ export function styleWorkbookSheet(sheet, { title = "", subtitle = "", headerRow
       const entry = cell(sheet, row, column);
       entry.s = {
         ...(entry.s || {}),
-        fill: row % 2 === 0 ? { fgColor: { rgb: LIGHT } } : { fgColor: { rgb: "FFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: row % 2 === 0 ? LIGHT : "FFFFFF" } },
         alignment: { vertical: "top", wrapText: true },
         border: { bottom: { style: "thin", color: { rgb: BORDER } } }
       };
@@ -72,10 +72,10 @@ export function styleInstructionSheet(sheet) {
   const endColumn = Math.max(range.e.c, 0);
   sheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: endColumn } }];
   const heading = cell(sheet, 0, 0);
-  heading.s = { fill: { fgColor: { rgb: NAVY } }, font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } }, alignment: { vertical: "center" } };
+  heading.s = { fill: { patternType: "solid", fgColor: { rgb: NAVY } }, font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } }, alignment: { vertical: "center" } };
   for (let row = 1; row <= range.e.r; row += 1) {
     const entry = cell(sheet, row, 0);
-    entry.s = { fill: { fgColor: { rgb: row % 2 ? "FFF4EB" : "FFFFFF" } }, font: { color: { rgb: "324A5E" } }, alignment: { vertical: "center", wrapText: true }, border: { bottom: { style: "thin", color: { rgb: BORDER } } } };
+    entry.s = { fill: { patternType: "solid", fgColor: { rgb: row % 2 ? "FFF4EB" : "FFFFFF" } }, font: { color: { rgb: "324A5E" } }, alignment: { vertical: "center", wrapText: true }, border: { bottom: { style: "thin", color: { rgb: BORDER } } } };
   }
   sheet["!cols"] = [{ wch: 105 }];
   sheet["!rows"] = Array.from({ length: range.e.r + 1 }, (_, row) => ({ hpt: row === 0 ? 34 : 38 }));
