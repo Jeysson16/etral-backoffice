@@ -650,12 +650,20 @@ function changeBetween(current, previous) {
 function ProductivityCard({ label, value, previous, suffix, detail, formula, tone = "neutral", tooltip }) {
   const delta = changeBetween(value, previous);
   const width = value == null ? 0 : Math.max(4, Math.min(100, suffix === "%" ? value : value * 100));
-  return <article className={`productive-card ${tone} ${value == null ? "unavailable" : ""}`} title={value == null ? tooltip : undefined}>
+  return <article className={`productive-card ${tone} ${value == null ? "unavailable" : ""}`}>
     <header><span>{label}</span>{delta != null && delta !== 0 && <b className={delta > 0 ? "up" : "down"}>{delta > 0 ? "↑" : "↓"} {Math.abs(delta)}</b>}</header>
     <strong>{formatIndicator(value, suffix)}</strong>
     <div className="indicator-track"><i style={{ width: `${width}%` }} /></div>
     <small>{detail}</small>
     <p>{formula}</p>
+    {value == null && tooltip && (
+      <div className="card-tooltip">
+        <span className="tooltip-icon">i</span>
+        <div className="tooltip-content">
+          {tooltip.split('\n').map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      </div>
+    )}
   </article>;
 }
 
