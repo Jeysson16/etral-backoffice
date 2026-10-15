@@ -216,6 +216,8 @@ create table if not exists operation_logs (
   ceco text not null references ceco_orders(ceco) on update cascade on delete cascade,
   worker text not null,
   activity text not null,
+  activity_id text references stage_activities(id),
+  stage_id text references flow_stages(id),
   total_hours numeric not null default 0 check (total_hours > 0),
   created_at timestamptz not null default now()
 );
@@ -225,6 +227,8 @@ create table if not exists warehouse_exits (
   ticket text unique not null,
   ceco text references ceco_orders(ceco) on update cascade on delete cascade,
   material_code text not null references inventory_items(code),
+  activity_id text references stage_activities(id),
+  stage_id text references flow_stages(id),
   quantity numeric not null default 0 check (quantity > 0),
   timestamp timestamptz not null default now()
 );
@@ -244,6 +248,8 @@ create table if not exists inventory_movements (
   type text not null check (type in ('ingreso', 'reserva', 'salida', 'consumo', 'ajuste', 'liberacion')),
   code text not null references inventory_items(code),
   ceco text,
+  activity_id text references stage_activities(id),
+  stage_id text references flow_stages(id),
   quantity numeric not null check (quantity > 0),
   timestamp timestamptz not null default now(),
   note text
@@ -287,6 +293,9 @@ create index if not exists idx_bom_product on bom_items(body_type_id);
 create index if not exists idx_movements_code_time on inventory_movements(code, timestamp desc);
 create index if not exists idx_wip_stage on stage_inventory(stage_id, status);
 create index if not exists idx_activity_progress_ceco on ceco_activity_progress(ceco, status);
+create index if not exists idx_operation_logs_activity on operation_logs(ceco, activity_id);
+create index if not exists idx_warehouse_exits_activity on warehouse_exits(ceco, activity_id);
+create index if not exists idx_inventory_movements_activity on inventory_movements(ceco, activity_id);
 create index if not exists idx_personnel_shift on personnel(shift_id, status) where active;
 create index if not exists idx_equipment_stage on equipment(stage_id, status);
 create index if not exists idx_assignments_person_date on resource_assignments(personnel_id, assigned_date);

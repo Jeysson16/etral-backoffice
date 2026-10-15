@@ -76,6 +76,26 @@ function recalculateAllOrders(dataset) {
   (dataset.orders ?? []).forEach((order) => recalculateOrder(dataset, order.ceco));
 }
 
+function setActivityProgress(dataset, ceco, activityId, patch) {
+  dataset.activityProgress = dataset.activityProgress || [];
+  const activity = dataset.stageActivities.find((item) => item.id === activityId && item.active !== false);
+  const order = dataset.orders.find((item) => item.ceco === ceco);
+  const product = dataset.bodyTypes.find((item) => item.id === order?.bodyTypeId);
+  if (!activity || !order || !product?.route.includes(activity.stageId)) throw new Error("La actividad no pertenece a la ruta de esta orden");
+  const index = dataset.activityProgress.findIndex((item) => item.ceco === ceco && item.activityId === activityId);
+  const current = index >= 0 ? dataset.activityProgress[index] : { id: `progress-${ceco}-${activityId}`, ceco, activityId, status: "pending", progress: 0, startedAt: null, finishedAt: null };
+  const progress = Math.max(0, Math.min(100, Number(patch.progress ?? current.progress)));
+  const status = patch.status ?? (progress === 100 ? "completed" : progress > 0 ? "in_progress" : "pending");
+  const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const next = { ...current, ...patch, progress, status, startedAt: status === "pending" ? null : current.startedAt || now, finishedAt: status === "completed" ? current.finishedAt || now : null };
+  if (index >= 0) dataset.activityProgress[index] = next; else dataset.activityProgress.push(next);
+  const currentStageIndex = product.route.indexOf(order.stageId);
+  const activityStageIndex = product.route.indexOf(activity.stageId);
+  if (status !== "pending" && activityStageIndex > currentStageIndex) order.stageId = activity.stageId;
+  recalculateOrder(dataset, ceco);
+  return next;
+}
+
 export const localRepository = {
   async getDataset() {
     return load();
@@ -156,14 +176,7 @@ export const localRepository = {
   },
   async updateActivityProgress(ceco, activityId, patch) {
     const dataset = load();
-    dataset.activityProgress = dataset.activityProgress || [];
-    const index = dataset.activityProgress.findIndex((item) => item.ceco === ceco && item.activityId === activityId);
-    const current = index >= 0 ? dataset.activityProgress[index] : { id: `progress-${ceco}-${activityId}`, ceco, activityId, status: "pending", progress: 0, startedAt: null, finishedAt: null };
-    const progress = Math.max(0, Math.min(100, Number(patch.progress ?? current.progress)));
-    const status = patch.status ?? (progress === 100 ? "completed" : progress > 0 ? "in_progress" : "pending");
-    const next = { ...current, ...patch, progress, status, startedAt: status === "pending" ? null : current.startedAt || new Date().toISOString().slice(0, 16).replace("T", " "), finishedAt: status === "completed" ? new Date().toISOString().slice(0, 16).replace("T", " ") : null };
-    if (index >= 0) dataset.activityProgress[index] = next; else dataset.activityProgress.push(next);
-    recalculateOrder(dataset, ceco);
+    setActivityProgress(dataset, ceco, activityId, patch);
     save(dataset);
     return dataset;
   },
@@ -425,13 +438,15 @@ export const localRepository = {
   },
   async createWarehouseExit(payload) {
     const dataset = load();
-    const reservations = dataset.orderMaterialReservations?.filter((item) => item.ceco === payload.ceco && item.materialCode === payload.materialCode) || [];
+    const activity = dataset.stageActivities.find((item) => item.id === payload.activityId);
+    if (!activity) throw new Error("Selecciona una actividad válida");
+    const reservations = dataset.orderMaterialReservations?.filter((item) => item.ceco === payload.ceco && item.materialCode === payload.materialCode && item.stageId === activity.stageId) || [];
     const pending = reservations.reduce((sum, item) => sum + Number(item.reservedQuantity) - Number(item.issuedQuantity || 0), 0);
     if (pending < Number(payload.quantity)) throw new Error("La cantidad supera la reserva pendiente de la orden");
     let left = Number(payload.quantity);
     reservations.forEach((item) => { const take = Math.min(left, Number(item.reservedQuantity) - Number(item.issuedQuantity || 0)); item.issuedQuantity = Number(item.issuedQuantity || 0) + take; item.status = item.issuedQuantity >= item.requiredQuantity ? "issued" : "partial"; left -= take; });
     const ticket = nextWarehouseTicket(dataset.warehouse);
-    dataset.warehouse.unshift({ id: `wh-${ticket}`, ticket, timestamp: new Date().toISOString().slice(0, 16).replace("T", " "), ...payload });
+    dataset.warehouse.unshift({ id: `wh-${ticket}`, ticket, timestamp: new Date().toISOString().slice(0, 16).replace("T", " "), ...payload, stageId: activity.stageId });
     dataset.inventory = dataset.inventory.map((item) => (
       item.code === payload.materialCode
         ? {
@@ -441,7 +456,7 @@ export const localRepository = {
           }
         : item
     ));
-    addMovement(dataset, { type: "salida", code: payload.materialCode, ceco: payload.ceco, quantity: Number(payload.quantity), note: `Ticket ${ticket}` });
+    addMovement(dataset, { type: "salida", code: payload.materialCode, ceco: payload.ceco, stageId: activity.stageId, activityId: activity.id, quantity: Number(payload.quantity), note: `Ticket ${ticket} · ${activity.name}` });
     save(dataset);
     return dataset;
   },
@@ -454,6 +469,8 @@ export const localRepository = {
   async createOperation(payload) {
     const dataset = load();
     dataset.operations.unshift({ id: `op-${Date.now()}`, ...payload, totalHours: Number(payload.totalHours) });
+    const current = dataset.activityProgress?.find((item) => item.ceco === payload.ceco && item.activityId === payload.activityId);
+    if (current?.status !== "completed") setActivityProgress(dataset, payload.ceco, payload.activityId, { status: "in_progress", progress: Number(current?.progress || 0) });
     save(dataset);
     return dataset;
   },

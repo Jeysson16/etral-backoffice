@@ -350,7 +350,7 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async createWarehouseExit(payload) {
-    const { error } = await supabase.rpc("issue_material_to_order", { p_ceco: payload.ceco, p_material_code: payload.materialCode, p_quantity: Number(payload.quantity) });
+    const { error } = await supabase.rpc("issue_material_to_activity", { p_ceco: payload.ceco, p_material_code: payload.materialCode, p_quantity: Number(payload.quantity), p_activity_id: payload.activityId });
     if (error) throw error;
     return this.getDataset();
   },
@@ -367,13 +367,12 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async createOperation(payload) {
-    const { error } = await supabase.from("operation_logs").insert({
-      id: `op-${Date.now()}`,
-      date: payload.date,
-      ceco: payload.ceco,
-      worker: payload.worker,
-      activity: payload.activity,
-      total_hours: Number(payload.totalHours)
+    const { error } = await supabase.rpc("register_operation_activity", {
+      p_date: payload.date,
+      p_ceco: payload.ceco,
+      p_worker: payload.worker,
+      p_activity_id: payload.activityId,
+      p_total_hours: Number(payload.totalHours)
     });
     if (error) throw error;
     return this.getDataset();
@@ -556,11 +555,11 @@ function legacyCustomers(orders) {
 }
 
 function mapOperation(row) {
-  return { id: row.id, date: row.date, ceco: row.ceco, worker: row.worker, activity: row.activity, totalHours: Number(row.total_hours), hourlyCost: Number(row.hourly_cost || 0) };
+  return { id: row.id, date: row.date, ceco: row.ceco, worker: row.worker, activityId: row.activity_id, stageId: row.stage_id, activity: row.activity, totalHours: Number(row.total_hours), hourlyCost: Number(row.hourly_cost || 0) };
 }
 
 function mapWarehouse(row) {
-  return { id: row.id, ticket: row.ticket, ceco: row.ceco, materialCode: row.material_code, quantity: Number(row.quantity), timestamp: String(row.timestamp).replace("T", " ").slice(0, 16) };
+  return { id: row.id, ticket: row.ticket, ceco: row.ceco, materialCode: row.material_code, stageId: row.stage_id, activityId: row.activity_id, quantity: Number(row.quantity), timestamp: String(row.timestamp).replace("T", " ").slice(0, 16) };
 }
 
 function mapQuality(row) {
@@ -568,7 +567,7 @@ function mapQuality(row) {
 }
 
 function mapMovement(row) {
-  return { id: row.id, type: row.type, code: row.code, ceco: row.ceco || "", quantity: Number(row.quantity), timestamp: String(row.timestamp).replace("T", " ").slice(0, 16), note: row.note };
+  return { id: row.id, type: row.type, code: row.code, ceco: row.ceco || "", stageId: row.stage_id, activityId: row.activity_id, quantity: Number(row.quantity), timestamp: String(row.timestamp).replace("T", " ").slice(0, 16), note: row.note };
 }
 
 function mapShift(row) { return { id: row.id, code: row.code, name: row.name, startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), breakMinutes: Number(row.break_minutes), active: row.active }; }
