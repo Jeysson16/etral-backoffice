@@ -501,14 +501,35 @@ export const localRepository = {
     dataset.shifts.unshift({ id: `shift-${Date.now()}`, ...payload, breakMinutes: Number(payload.breakMinutes), active: true });
     save(dataset); return dataset;
   },
+  async updateShift(id, payload) {
+    const dataset = load();
+    const row = dataset.shifts.find((item) => item.id === id);
+    if (!row) throw new Error("Turno no encontrado.");
+    Object.assign(row, payload, { breakMinutes: Number(payload.breakMinutes) });
+    save(dataset); return dataset;
+  },
   async createPersonnel(payload) {
     const dataset = load();
     dataset.personnel.unshift({ id: `person-${Date.now()}`, ...payload, efficiency: Number(payload.efficiency), weeklyHours: Number(payload.weeklyHours), active: true });
     save(dataset); return dataset;
   },
+  async updatePersonnel(id, payload) {
+    const dataset = load();
+    const row = dataset.personnel.find((item) => item.id === id);
+    if (!row) throw new Error("Trabajador no encontrado.");
+    Object.assign(row, payload, { efficiency: Number(payload.efficiency), weeklyHours: Number(payload.weeklyHours) });
+    save(dataset); return dataset;
+  },
   async createEquipment(payload) {
     const dataset = load();
     dataset.equipment.unshift({ id: `equipment-${Date.now()}`, ...payload, capacityHours: Number(payload.capacityHours) });
+    save(dataset); return dataset;
+  },
+  async updateEquipment(id, payload) {
+    const dataset = load();
+    const row = dataset.equipment.find((item) => item.id === id);
+    if (!row) throw new Error("Equipo no encontrado.");
+    Object.assign(row, payload, { capacityHours: Number(payload.capacityHours) });
     save(dataset); return dataset;
   },
   async createCalendarDay(payload) {
@@ -517,14 +538,35 @@ export const localRepository = {
     dataset.workCalendar = [row, ...dataset.workCalendar.filter((item) => item.date !== payload.date)];
     save(dataset); return dataset;
   },
+  async updateCalendarDay(id, payload) {
+    const dataset = load();
+    const row = dataset.workCalendar.find((item) => item.id === id);
+    if (!row) throw new Error("Excepción de calendario no encontrada.");
+    Object.assign(row, payload, { availableHours: Number(payload.availableHours) });
+    save(dataset); return dataset;
+  },
   async createAssignment(payload) {
     const dataset = load();
     dataset.assignments.unshift({ id: `assignment-${Date.now()}`, ...payload, plannedHours: Number(payload.plannedHours) });
     save(dataset); return dataset;
   },
+  async updateAssignment(id, payload) {
+    const dataset = load();
+    const row = dataset.assignments.find((item) => item.id === id);
+    if (!row) throw new Error("Asignación no encontrada.");
+    Object.assign(row, payload, { plannedHours: Number(payload.plannedHours) });
+    save(dataset); return dataset;
+  },
   async createIncident(payload) {
     const dataset = load();
     dataset.incidents.unshift({ id: `incident-${Date.now()}`, ...payload, downtimeHours: Number(payload.downtimeHours), status: "open" });
+    save(dataset); return dataset;
+  },
+  async updateIncident(id, payload) {
+    const dataset = load();
+    const row = dataset.incidents.find((item) => item.id === id);
+    if (!row) throw new Error("Incidencia no encontrada.");
+    Object.assign(row, payload, { downtimeHours: Number(payload.downtimeHours) });
     save(dataset); return dataset;
   },
   subscribe(callback) {

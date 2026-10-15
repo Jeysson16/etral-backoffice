@@ -451,8 +451,18 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async updateShift(id, payload) {
+    const { error } = await supabase.from("work_shifts").update({ code: payload.code, name: payload.name, start_time: payload.startTime, end_time: payload.endTime, break_minutes: Number(payload.breakMinutes) }).eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
   async createPersonnel(payload) {
     const { error } = await supabase.from("personnel").insert({ id: `person-${Date.now()}`, employee_code: payload.employeeCode, name: payload.name, role: payload.role, specialty: payload.specialty, shift_id: payload.shiftId || null, status: payload.status, efficiency: Number(payload.efficiency), weekly_hours: Number(payload.weeklyHours), active: true });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updatePersonnel(id, payload) {
+    const { error } = await supabase.from("personnel").update({ employee_code: payload.employeeCode, name: payload.name, role: payload.role, specialty: payload.specialty || null, shift_id: payload.shiftId || null, status: payload.status, efficiency: Number(payload.efficiency), weekly_hours: Number(payload.weeklyHours) }).eq("id", id);
     if (error) throw error;
     return this.getDataset();
   },
@@ -461,8 +471,18 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async updateEquipment(id, payload) {
+    const { error } = await supabase.from("equipment").update({ code: payload.code, name: payload.name, stage_id: payload.stageId, status: payload.status, capacity_hours: Number(payload.capacityHours), maintenance_due: payload.maintenanceDue || null }).eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
   async createCalendarDay(payload) {
     const { error } = await supabase.from("work_calendar").upsert({ id: `calendar-${payload.date}`, calendar_date: payload.date, day_type: payload.dayType, available_hours: Number(payload.availableHours), note: payload.note }, { onConflict: "calendar_date" });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updateCalendarDay(id, payload) {
+    const { error } = await supabase.from("work_calendar").update({ calendar_date: payload.date, day_type: payload.dayType, available_hours: Number(payload.availableHours), note: payload.note || null }).eq("id", id);
     if (error) throw error;
     return this.getDataset();
   },
@@ -471,8 +491,18 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async updateAssignment(id, payload) {
+    const { error } = await supabase.from("resource_assignments").update({ personnel_id: payload.personnelId, ceco: payload.ceco, activity_id: payload.activityId, assigned_date: payload.assignedDate, planned_hours: Number(payload.plannedHours), status: payload.status }).eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
   async createIncident(payload) {
     const { error } = await supabase.from("operational_incidents").insert({ id: `incident-${Date.now()}`, occurred_at: payload.occurredAt, type: payload.type, severity: payload.severity, stage_id: payload.stageId, ceco: payload.ceco || null, equipment_id: payload.equipmentId || null, downtime_hours: Number(payload.downtimeHours), description: payload.description, status: "open" });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updateIncident(id, payload) {
+    const { error } = await supabase.from("operational_incidents").update({ occurred_at: payload.occurredAt, type: payload.type, severity: payload.severity, stage_id: payload.stageId, ceco: payload.ceco || null, equipment_id: payload.equipmentId || null, downtime_hours: Number(payload.downtimeHours), description: payload.description, status: payload.status }).eq("id", id);
     if (error) throw error;
     return this.getDataset();
   },
