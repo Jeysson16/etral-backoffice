@@ -170,6 +170,8 @@ export const supabaseRepository = {
       return current;
     };
     const importedCodes = new Map();
+    const materialRowsByCode = new Map();
+    const movementRows = [];
     for (const row of consolidateImportedMaterials(payload.materials)) {
       const category = await ensureCatalog("categories", row.category);
       const unit = await ensureCatalog("units", row.unit, row.unit);
@@ -179,14 +181,27 @@ export const supabaseRepository = {
       if (generated?.error) throw generated.error;
       const code = existing?.code || row.code || generated?.data;
       if (!code) throw new Error(`No se pudo generar el código para material fila ${row.row}.`);
-      const data = { category: category.name, category_id: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), safety: Number(row.safety || 0), unit: unit.symbol, unit_id: unit.id, brand_id: brand?.id || null, location: row.location || null, service_factor: nullableNumber(row.serviceFactor), demand_std_dev: nullableNumber(row.demandStdDev), lead_time_days: nullableNumber(row.leadTimeDays), unit_cost: nullableNumber(row.unitCost), currency: row.currency || "PEN" };
-      const result = existing ? await supabase.from("inventory_items").update(data).eq("code", code) : await supabase.from("inventory_items").insert({ id: `inv-${code}`, code, committed: 0, ...data });
-      if (result.error) throw result.error;
-      importedCodes.set(row.code, code);
-      if (Number(row.physical) !== 0) {
-        const { error } = await supabase.from("inventory_movements").insert({ id: `mov-import-${stamp}-${row.row}`, type: "ingreso", code, ceco: "", quantity: Number(row.physical), note: "Carga inicial mediante Excel" });
-        if (error) throw error;
+      const previous = materialRowsByCode.get(code);
+      const physical = previous
+        ? Number(previous.physical || 0) + Number(row.physical || 0)
+        : Number(existing?.physical || 0) + Number(row.physical || 0);
+      const data = { category: category.name, category_id: category.id, description: row.description, physical, safety: Number(row.safety || 0), unit: unit.symbol, unit_id: unit.id, brand_id: brand?.id || null, location: row.location || null, service_factor: nullableNumber(row.serviceFactor), demand_std_dev: nullableNumber(row.demandStdDev), lead_time_days: nullableNumber(row.leadTimeDays), unit_cost: nullableNumber(row.unitCost), currency: row.currency || "PEN" };
+      materialRowsByCode.set(code, { id: existing?.id || previous?.id || `inv-${code}`, code, committed: Number(existing?.committed ?? previous?.committed ?? 0), ...data });
+      for (const sourceCode of row.sourceCodes?.length ? row.sourceCodes : [row.code]) {
+        importedCodes.set(sourceCode, code);
       }
+      if (Number(row.physical) !== 0) {
+        movementRows.push({ id: `mov-import-${stamp}-${row.row}`, type: "ingreso", code, ceco: "", quantity: Number(row.physical), note: "Carga inicial mediante Excel" });
+      }
+    }
+    const materialRows = [...materialRowsByCode.values()];
+    if (materialRows.length) {
+      const { error } = await supabase.from("inventory_items").upsert(materialRows, { onConflict: "code" });
+      if (error) throw error;
+    }
+    if (movementRows.length) {
+      const { error } = await supabase.from("inventory_movements").insert(movementRows);
+      if (error) throw error;
     }
     const refreshed = await this.getDataset();
     for (const row of payload.products || []) {
@@ -200,6 +215,7 @@ export const supabaseRepository = {
       if (error) throw error;
     }
     const finalDataset = await this.getDataset();
+    const bomRows = [];
     for (const row of payload.bom || []) {
       const product = finalDataset.bodyTypes.find((item) => item.code === row.productCode);
       const materialCode = importedCodes.get(row.materialCode) || row.materialCode;
@@ -208,8 +224,11 @@ export const supabaseRepository = {
       if (!product || !material || !stage || !row.pieceCode || Number(row.quantity) <= 0) throw new Error(`BOM fila ${row.row}: producto, material, fase, código de pieza y cantidad deben ser válidos.`);
       const existing = finalDataset.bom.find((item) => item.bodyTypeId === product.id && item.pieceCode === row.pieceCode);
       const data = { body_type_id: product.id, stage_id: stage.id, material_code: material.code, piece_code: row.pieceCode, description: row.description || material.description, length_mm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
-      const result = existing ? await supabase.from("bom_items").update(data).eq("id", existing.id) : await supabase.from("bom_items").insert({ id: `bom-import-${stamp}-${row.row}`, ...data });
-      if (result.error) throw result.error;
+      bomRows.push({ id: existing?.id || `bom-import-${slug(product.code)}-${slug(row.pieceCode)}`, ...data });
+    }
+    if (bomRows.length) {
+      const { error } = await supabase.from("bom_items").upsert(bomRows, { onConflict: "id" });
+      if (error) throw error;
     }
     return this.getDataset();
   },

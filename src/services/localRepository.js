@@ -236,7 +236,9 @@ export const localRepository = {
       const code = existing?.code || row.code || nextInventoryCode(dataset.inventory, row.category || "MAT");
       const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety || 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor, demandStdDev: row.demandStdDev, leadTimeDays: row.leadTimeDays, unitCost: row.unitCost, currency: row.currency || "PEN" };
       if (existing) Object.assign(existing, material); else dataset.inventory.unshift(material);
-      importedCodes.set(row.code, code);
+      for (const sourceCode of row.sourceCodes?.length ? row.sourceCodes : [row.code]) {
+        importedCodes.set(sourceCode, code);
+      }
     }
     for (const row of payload.products || []) {
       const family = dataset.productFamilies.find((item) => item.name.toLowerCase() === row.family.toLowerCase());
