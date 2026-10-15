@@ -229,6 +229,12 @@ export const supabaseRepository = {
     if (bomRows.length) {
       const { error } = await supabase.from("bom_items").upsert(bomRows, { onConflict: "id" });
       if (error) throw error;
+      const affectedProducts = new Set(bomRows.map((row) => row.body_type_id));
+      const affectedCecos = finalDataset.orders.filter((order) => affectedProducts.has(order.bodyTypeId)).map((order) => order.ceco);
+      for (const ceco of affectedCecos) {
+        const { error: reservationError } = await supabase.rpc("refresh_order_material_reservations", { p_ceco: ceco });
+        if (reservationError) throw reservationError;
+      }
     }
     return this.getDataset();
   },

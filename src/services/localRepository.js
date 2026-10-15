@@ -57,6 +57,33 @@ function reserveBom(dataset, order) {
     });
 }
 
+function syncOrderReservations(dataset, ceco) {
+  const order = dataset.orders.find((item) => item.ceco === ceco);
+  if (!order) throw new Error("CECO no encontrado");
+  dataset.orderMaterialReservations = dataset.orderMaterialReservations || [];
+  dataset.bom.filter((piece) => piece.bodyTypeId === order.bodyTypeId).forEach((piece) => {
+    let reservation = dataset.orderMaterialReservations.find((item) => item.ceco === ceco && item.bomItemId === piece.id);
+    if (!reservation) {
+      reservation = { id: newInternalId("reservation"), ceco, bomItemId: piece.id, stageId: piece.stageId, materialCode: piece.materialCode, requiredQuantity: Number(piece.quantity), reservedQuantity: 0, issuedQuantity: 0, consumedQuantity: 0, status: "pending" };
+      dataset.orderMaterialReservations.push(reservation);
+    } else {
+      Object.assign(reservation, { stageId: piece.stageId, materialCode: piece.materialCode, requiredQuantity: Number(piece.quantity) });
+    }
+    if (Number(reservation.reservedQuantity) >= Number(reservation.requiredQuantity)) return;
+    const material = dataset.inventory.find((item) => item.code === reservation.materialCode);
+    if (!material) return;
+    const missing = Number(reservation.requiredQuantity) - Number(reservation.reservedQuantity);
+    const available = Math.max(0, Number(material.physical || 0) - Number(material.committed || 0));
+    const added = Math.min(missing, available);
+    if (added <= 0) return;
+    reservation.reservedQuantity = Number(reservation.reservedQuantity) + added;
+    reservation.status = reservation.reservedQuantity >= reservation.requiredQuantity ? "reserved" : "partial";
+    material.committed = Number(material.committed || 0) + added;
+    addMovement(dataset, { type: "reserva", code: reservation.materialCode, ceco, stageId: reservation.stageId, quantity: added, note: "Reserva sincronizada con la BOM de la orden" });
+  });
+  recalculateOrder(dataset, ceco);
+}
+
 function recalculateOrder(dataset, ceco) {
   const order = dataset.orders.find((item) => item.ceco === ceco);
   if (!order) return;
@@ -273,6 +300,8 @@ export const localRepository = {
       const data = { bodyTypeId: product.id, stageId: stage.id, materialCode: material.code, pieceCode: row.pieceCode, description: row.description || material.description, lengthMm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
       if (existing) Object.assign(existing, data); else dataset.bom.unshift({ id: `bom-import-${slug(product.code)}-${slug(row.pieceCode)}`, ...data });
     }
+    const importedProductCodes = new Set((payload.bom || []).map((row) => row.productCode));
+    dataset.orders.filter((order) => importedProductCodes.has(dataset.bodyTypes.find((item) => item.id === order.bodyTypeId)?.code)).forEach((order) => syncOrderReservations(dataset, order.ceco));
     save(dataset);
     return dataset;
   },
@@ -361,19 +390,7 @@ export const localRepository = {
   },
   async refreshOrderReservations(ceco) {
     const dataset = load();
-    const reservations = (dataset.orderMaterialReservations ?? []).filter((item) => item.ceco === ceco && Number(item.reservedQuantity) < Number(item.requiredQuantity));
-    reservations.forEach((reservation) => {
-      const material = dataset.inventory.find((item) => item.code === reservation.materialCode);
-      const missing = Number(reservation.requiredQuantity) - Number(reservation.reservedQuantity);
-      const available = Math.max(0, Number(material?.physical || 0) - Number(material?.committed || 0));
-      const added = Math.min(missing, available);
-      if (added <= 0 || !material) return;
-      reservation.reservedQuantity = Number(reservation.reservedQuantity) + added;
-      reservation.status = reservation.reservedQuantity >= reservation.requiredQuantity ? "reserved" : "partial";
-      material.committed = Number(material.committed || 0) + added;
-      addMovement(dataset, { type: "reserva", code: reservation.materialCode, ceco, quantity: added, note: "Reserva complementaria tras reposición rápida" });
-    });
-    recalculateOrder(dataset, ceco);
+    syncOrderReservations(dataset, ceco);
     save(dataset);
     return dataset;
   },
