@@ -2,6 +2,7 @@ import { initialDataset } from "../data/seed.js";
 import { calculateCecoProgress } from "../lib/mrp.js";
 import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/correlatives.js";
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
+import { orderProductRoute } from "../lib/productRoutes.js";
 
 const STORAGE_KEY = "etral.production.dataset.v5";
 
@@ -23,6 +24,10 @@ function load() {
     stageActivities: stored.stageActivities || structuredClone(initialDataset.stageActivities),
     stageInventory: stored.stageInventory || structuredClone(initialDataset.stageInventory)
   };
+  dataset.bodyTypes = dataset.bodyTypes.map((product) => ({
+    ...product,
+    route: orderProductRoute(dataset.flowStages, product.route)
+  }));
   recalculateAllOrders(dataset);
   return dataset;
 }
@@ -284,7 +289,7 @@ export const localRepository = {
       const family = dataset.productFamilies.find((item) => item.name.toLowerCase() === row.family.toLowerCase());
       const brand = ensureCatalog("brands", row.brand || "Genérico");
       const unit = ensureCatalog("units", row.outputUnit, row.outputUnit);
-      const route = row.route.map((code) => dataset.flowStages.find((stage) => stage.id === code || stage.code === code)?.id).filter(Boolean);
+      const route = orderProductRoute(dataset.flowStages, row.route.map((code) => dataset.flowStages.find((stage) => stage.id === code || stage.code === code)?.id).filter(Boolean));
       if (!row.code || !row.name || !family || !route.length) throw new Error(`Producto fila ${row.row}: código, nombre, familia y ruta válida son obligatorios.`);
       const product = dataset.bodyTypes.find((item) => item.code === row.code);
       const data = { code: row.code, name: row.name, family: family.name, familyId: family.id, brandId: brand.id, outputUnit: unit.symbol, outputUnitId: unit.id, targetDays: Number(row.targetDays || 1), route };
@@ -397,7 +402,7 @@ export const localRepository = {
   async createBodyType(payload) {
     const dataset = load();
     const id = `body-${String(payload.code).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-    dataset.bodyTypes.push({ id, ...payload, targetDays: Number(payload.targetDays) });
+    dataset.bodyTypes.push({ id, ...payload, route: orderProductRoute(dataset.flowStages, payload.route), targetDays: Number(payload.targetDays) });
     save(dataset);
     return dataset;
   },
@@ -405,7 +410,7 @@ export const localRepository = {
     const dataset = load();
     const item = dataset.bodyTypes.find((entry) => entry.id === id);
     if (!item) throw new Error("Producto no encontrado");
-    Object.assign(item, payload, { targetDays: Number(payload.targetDays) });
+    Object.assign(item, payload, { route: orderProductRoute(dataset.flowStages, payload.route), targetDays: Number(payload.targetDays) });
     save(dataset);
     return dataset;
   },

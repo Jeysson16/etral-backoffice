@@ -1,5 +1,6 @@
 import { supabase } from "../supabase/client.js";
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
+import { orderProductRoute } from "../lib/productRoutes.js";
 
 export function hasSupabaseConfig() {
   return Boolean(import.meta.env.VITE_SUPABASE_URL && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY));
@@ -208,7 +209,7 @@ export const supabaseRepository = {
       const family = refreshed.productFamilies.find((item) => item.name.toLowerCase() === row.family.toLowerCase());
       const brand = await ensureCatalog("brands", row.brand || "Genérico");
       const unit = await ensureCatalog("units", row.outputUnit, row.outputUnit);
-      const route = row.route.map((code) => refreshed.flowStages.find((stage) => stage.id === code || stage.code === code)?.id).filter(Boolean);
+      const route = orderProductRoute(refreshed.flowStages, row.route.map((code) => refreshed.flowStages.find((stage) => stage.id === code || stage.code === code)?.id).filter(Boolean));
       const existing = refreshed.bodyTypes.find((item) => item.code === row.code);
       if (!row.code || !row.name || !family || !route.length) throw new Error(`Producto fila ${row.row}: código, nombre, familia y ruta válida son obligatorios.`);
       const { error } = await supabase.rpc("save_product_template", { p_id: existing?.id || "", p_code: row.code, p_family_id: family.id, p_brand_id: brand.id, p_name: row.name, p_target_days: Number(row.targetDays || 1), p_output_unit_id: unit.id, p_route: route });
