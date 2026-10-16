@@ -186,6 +186,8 @@ class SimulationInput(BaseModel):
     worker_inconsistency_mode: str = Field(default="stochastic")
     inconsistency_std_dev: Decimal = Field(default=Decimal("10"), ge=0, le=50)
     absenteeism_rate: Decimal = Field(default=Decimal("5"), ge=0, le=50)
+    monte_carlo_runs: int = Field(default=250, ge=50, le=1000)
+    random_seed: int = Field(default=42, ge=0, le=2_147_483_647)
 
 
 class SimulationRun(BaseModel):

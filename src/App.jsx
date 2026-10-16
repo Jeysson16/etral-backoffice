@@ -8,6 +8,7 @@ import { getRepository } from "./services/repository.js";
 import { getTwinEngine, runTwinSimulation } from "./services/twinApi.js";
 import { downloadBulkImportWorkbook, downloadCatalogWorkbook, parseCatalogWorkbook } from "./lib/excelCatalogs.js";
 import { nextCecoCode } from "./lib/correlatives.js";
+import { formatHours, personnelWeeklyHours, shiftWeeklyHours } from "./lib/workShifts.js";
 import { supabase } from "./supabase/client.js";
 import ResourcesView from "./components/ResourcesView.jsx";
 import etralLogo from "../assets/etral-logo.png";
@@ -154,11 +155,14 @@ export default function App() {
     orderWorkerAssignments: {},
     workerInconsistencyMode: "stochastic",
     inconsistencyStdDev: 10,
-    absenteeismRate: 5
+    absenteeismRate: 5,
+    monteCarloRuns: 250,
+    randomSeed: 42
   });
 
   const [simParams, setSimParams] = useState(simDraft);
   const [twin, setTwin] = useState(null);
+  const [simulationRunning, setSimulationRunning] = useState(false);
   const [simulationTime, setSimulationTime] = useState("Escenario inicial");
   const [dataReady, setDataReady] = useState(false);
   const [session, setSession] = useState(null);
@@ -410,11 +414,13 @@ export default function App() {
       }), "Parte diario registrado y actividad iniciada.");
     }
     if (drawer.type === "shift") {
-      const payload = { code: values.code, name: values.name, startTime: values.startTime, endTime: values.endTime, breakMinutes: Number(values.breakMinutes) };
+      const payload = { code: values.code, name: values.name, startTime: values.startTime, endTime: values.endTime, breakMinutes: Number(values.breakMinutes), daysPerWeek: Number(values.daysPerWeek) };
       return persist(() => drawer.shift ? repo.updateShift(drawer.shift.id, payload) : repo.createShift(payload), drawer.shift ? "Turno actualizado." : "Turno registrado y disponible para asignaciones.");
     }
     if (drawer.type === "personnel") {
-      const payload = { employeeCode: values.employeeCode, name: values.name, role: values.role, specialty: values.specialty, shiftId: values.shiftId, status: values.status, efficiency: Number(values.efficiency), weeklyHours: Number(values.weeklyHours) };
+      const shiftIds = form.getAll("shiftIds");
+      if (!shiftIds.length) return setError("Selecciona al menos un turno para el trabajador.");
+      const payload = { employeeCode: values.employeeCode, name: values.name, role: values.role, specialty: values.specialty, shiftIds, status: values.status, efficiency: Number(values.efficiency) };
       return persist(() => drawer.personnel ? repo.updatePersonnel(drawer.personnel.id, payload) : repo.createPersonnel(payload), drawer.personnel ? "Trabajador actualizado." : "Trabajador incorporado a la alimentación del gemelo.");
     }
     if (drawer.type === "equipment") {
@@ -437,14 +443,20 @@ export default function App() {
   }
 
   async function executeSimulation() {
+    if (simulationRunning) return;
+    setSimulationRunning(true);
+    setError("");
+    setSimulationTime("Calculando escenario…");
     try {
       const result = await runTwinSimulation(dataset, simDraft);
       setSimParams({ ...simDraft });
       setTwin(result);
-      setError("");
       setSimulationTime(`Ejecutado ${new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`);
     } catch (err) {
       setError(`No se pudo ejecutar la simulación: ${err.message}`);
+      setSimulationTime("La simulación no pudo completarse");
+    } finally {
+      setSimulationRunning(false);
     }
   }
 
@@ -498,7 +510,7 @@ export default function App() {
         <div className="page-content">
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} />}
           {view === "indicators" && <IndicatorsView dataset={dataset} />}
-          {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} />}
+          {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} isRunning={simulationRunning} />}
           {view === "orders" && <OrdersView dataset={dataset} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), patch.ceco && patch.ceco !== ceco ? `CECO renombrado a ${patch.ceco}.` : "Datos de la orden actualizados.")} onDeleteOrder={(ceco) => mutate(() => repo.deleteOrder(ceco), `CECO ${ceco} eliminado y reservas pendientes liberadas.`)} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} />}
           {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "products")} onQuickAssign={(items) => mutate(() => repo.saveBomItems(items), `${items.length} material${items.length === 1 ? "" : "es"} asignado${items.length === 1 ? "" : "s"} a la BOM.`)} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
           {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "materials")} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Catálogo actualizado.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada del catálogo.")} />}
@@ -810,7 +822,7 @@ function IndicatorsView({ dataset }) {
   </div>;
 }
 
-function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities, simulationTime, dataReady }) {
+function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities, simulationTime, dataReady, isRunning }) {
   const [tab, setTab] = useState("capacity");
   const [calibInfo, setCalibInfo] = useState(null);
   const [adjustmentsReviewed, setAdjustmentsReviewed] = useState(false);
@@ -918,7 +930,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
     if (values.filter((item) => item.priority === priority).length > 1) return [`CECO ${ceco}: el orden ${priority} está repetido.`];
     return [];
   });
-  const canExecute = dataReady && materialAdjustmentErrors.length === 0 && priorityErrors.length === 0 && (!(draft.materialAdjustments ?? []).length || adjustmentsReviewed);
+  const canExecute = dataReady && !isRunning && materialAdjustmentErrors.length === 0 && priorityErrors.length === 0 && (!(draft.materialAdjustments ?? []).length || adjustmentsReviewed);
 
   const comparisons = result ? [
     ["Órdenes terminables", result.baseline.throughput, result.scenario.throughput, "órdenes"],
@@ -956,6 +968,16 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           </Field>
           <Field label="Tasa de ausentismo esperada" hint={`Probabilidad de inasistencia/retraso: ${draft.absenteeismRate}%.`}>
             <input type="range" min="0" max="25" value={draft.absenteeismRate} onChange={(e) => update("absenteeismRate", Number(e.target.value))} />
+          </Field>
+          <Field label="Corridas Monte Carlo" hint="Más corridas estabilizan el intervalo, pero requieren más tiempo de cálculo.">
+            <select value={draft.monteCarloRuns} onChange={(e) => update("monteCarloRuns", Number(e.target.value))}>
+              <option value="100">100 corridas</option>
+              <option value="250">250 corridas</option>
+              <option value="500">500 corridas</option>
+            </select>
+          </Field>
+          <Field label="Semilla reproducible" hint="La misma semilla y los mismos datos producen el mismo intervalo.">
+            <input type="number" min="0" max="2147483647" value={draft.randomSeed} onChange={(e) => update("randomSeed", Number(e.target.value))} />
           </Field>
         </>}
 
@@ -1022,13 +1044,22 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
         </div>
       </div>
 
-      <Button onClick={execute} disabled={!canExecute}>{dataReady ? "Ejecutar simulación gemela" : "Esperando datos…"}</Button>
+      <Button onClick={execute} disabled={!canExecute}>{isRunning ? "Calculando escenario…" : dataReady ? "Ejecutar simulación gemela" : "Esperando datos…"}</Button>
       <p className="run-stamp">{simulationTime}</p>
     </aside>
 
     <div className="simulation-results stack-lg">
-      {!result && <section className="panel"><EmptyState text={`Ejecuta el escenario para calcularlo con ${twinEngineLabel.toLowerCase()}.`} /></section>}
-      {result && <>
+      {isRunning && <section className="panel simulation-loading" aria-live="polite" aria-busy="true">
+        <div className="simulation-loading-title"><span className="simulation-spinner" aria-hidden="true" /><div><strong>Calculando el escenario</strong><small>El panel se actualizará automáticamente cuando termine el motor.</small></div></div>
+        <div className="simulation-loading-steps"><span>1. Preparando datos</span><span>2. Calculando materiales y capacidad</span><span>3. Generando resultados</span></div>
+      </section>}
+      {!isRunning && !result && <section className="panel"><EmptyState text={`Ejecuta el escenario para calcularlo con ${twinEngineLabel.toLowerCase()}.`} /></section>}
+      {!isRunning && result && <>
+        <section className={`simulation-execution ${result.execution?.fallback ? "fallback" : "verified"}`}>
+          <div><span>Motor ejecutado</span><strong>{result.execution?.label ?? "Motor no identificado"}</strong></div>
+          <div><span>Modelo</span><strong>{result.execution?.model ?? "Determinista"}{result.execution?.runs > 1 ? ` · ${result.execution.runs} corridas` : ""}</strong></div>
+          {result.execution?.fallback && <p>La API Python no respondió. Esta corrida fue calculada con el respaldo local. {result.execution.reason}</p>}
+        </section>
         <section className="comparison-grid">
           {comparisons.map(([label, base, scenario, unit]) => {
             const baseNum = typeof base === "number" ? base : parseFloat(base);
@@ -1038,7 +1069,10 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
               <span>{label}</span>
               <div><small>Base</small><strong>{base}</strong><em>→</em><small>Escenario</small><strong>{scenario}</strong></div>
               <p className={delta === 0 ? "flat" : delta > 0 ? "up" : "down"}>{delta > 0 ? "+" : ""}{delta} {unit}</p>
-              {label.includes("PMP") && <small className="confidence-bounds">{result.scenario.pmpSummary ? `CECO a tiempo / CECO con fecha PMP: ${result.scenario.pmpSummary.on_time} / ${result.scenario.pmpSummary.evaluable}` : "Pendiente de recibir el cálculo PMP por CECO desde la API."}</small>}
+              {label.includes("PMP") && <small className="confidence-bounds">{result.scenario.pmpSummary ? `CECO a tiempo / CECO con fecha PMP: ${result.scenario.pmpSummary.onTime ?? result.scenario.pmpSummary.on_time ?? 0} / ${result.scenario.pmpSummary.evaluable}` : "Pendiente de recibir el cálculo PMP por CECO desde la API."}</small>}
+              {result.confidenceIntervals && label.includes("Órdenes") && (
+                <small className="confidence-bounds">Rango Monte Carlo (95%): [{result.confidenceIntervals.throughputLower} - {result.confidenceIntervals.throughputUpper}]</small>
+              )}
               {result.confidenceIntervals && label.includes("PMP") && (
                 <small className="confidence-bounds">Rango Monte Carlo (95%): [{result.confidenceIntervals.pmpLower}% - {result.confidenceIntervals.pmpUpper}%]</small>
               )}
@@ -1048,6 +1082,16 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
             </article>;
           })}
         </section>
+
+        {result.confidenceIntervals && <section className="panel monte-carlo-summary">
+          <SectionHeader eyebrow="Incertidumbre cuantificada" title="Intervalos Monte Carlo al 95%" detail={`${result.confidenceIntervals.runs} corridas reproducibles con semilla ${result.confidenceIntervals.seed}.`} />
+          <div className="monte-carlo-grid">
+            <article><span>Órdenes terminables</span><strong>{result.confidenceIntervals.throughputLower}–{result.confidenceIntervals.throughputUpper}</strong></article>
+            <article><span>Cumplimiento PMP</span><strong>{result.confidenceIntervals.pmpLower}%–{result.confidenceIntervals.pmpUpper}%</strong></article>
+            <article><span>Lead time</span><strong>{result.confidenceIntervals.leadLower}–{result.confidenceIntervals.leadUpper} días</strong></article>
+          </div>
+          <p>{result.confidenceIntervals.method}</p>
+        </section>}
 
         <SimulationAlerts notifications={result.notifications} />
 
@@ -1725,6 +1769,25 @@ function IncidentFields({ drawer, dataset }) {
   return <><Field label="Fecha y hora"><input name="occurredAt" type="datetime-local" defaultValue={incident?.occurredAt?.replace(" ", "T")} required /></Field><Field label="Orden CECO (opcional)" hint="Al elegirla, solo aparecen las fases de su producto"><OrderSelect dataset={dataset} value={ceco} onChange={(event) => setCeco(event.target.value)} optional /></Field><Field label="Fase afectada"><SearchSelect key={`${ceco}-${defaultStage}`} name="stageId" defaultValue={defaultStage} options={availableStages.map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><div className="form-row"><Field label="Tipo"><select name="type" defaultValue={incident?.type || "equipment"}><option value="equipment">Equipo</option><option value="material">Material</option><option value="quality">Calidad</option><option value="personnel">Personal</option><option value="safety">Seguridad</option><option value="other">Otro</option></select></Field><Field label="Severidad"><select name="severity" defaultValue={incident?.severity || "low"}><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="critical">Crítica</option></select></Field></div><Field label="Equipo (opcional)"><SearchSelect name="equipmentId" defaultValue={incident?.equipmentId || ""} options={[{ value: "", label: "Sin equipo" }, ...dataset.equipment.map((item) => ({ value: item.id, label: item.name, meta: `${item.code} · ${stageOf(dataset, item.stageId)?.name}` }))]} searchPlaceholder="Buscar equipo" /></Field><div className="form-row"><Field label="Horas de detención"><input name="downtimeHours" type="number" min="0" step="0.25" defaultValue={incident?.downtimeHours ?? 0} required /></Field>{incident && <Field label="Estado"><select name="status" defaultValue={incident.status}><option value="open">Abierta</option><option value="investigating">En análisis</option><option value="resolved">Resuelta</option></select></Field>}</div><Field label="Descripción"><textarea name="description" defaultValue={incident?.description} required placeholder="Describe el evento y su impacto" /></Field></>;
 }
 
+function PersonnelFields({ drawer, dataset, onOpenRelated }) {
+  const person = drawer.personnel;
+  const initialShiftIds = person?.shiftIds?.length ? person.shiftIds : person?.shiftId ? [person.shiftId] : [];
+  const [shiftIds, setShiftIds] = useState(initialShiftIds);
+  const weeklyHours = personnelWeeklyHours(dataset.shifts, shiftIds);
+
+  function toggleShift(shiftId) {
+    setShiftIds((current) => current.includes(shiftId) ? current.filter((id) => id !== shiftId) : [...current, shiftId]);
+  }
+
+  return <>
+    <div className="form-row"><Field label="Código"><input name="employeeCode" defaultValue={person?.employeeCode ?? drawer.draft?.employeeCode} required placeholder="ETR-007" /></Field><Field label="Estado"><select name="status" defaultValue={person?.status ?? drawer.draft?.status ?? "available"}><option value="available">Disponible</option><option value="assigned">Asignado</option><option value="absent">Ausente</option><option value="leave">Permiso</option></select></Field></div>
+    <Field label="Nombre completo"><input name="name" defaultValue={person?.name ?? drawer.draft?.name} required /></Field>
+    <div className="form-row"><Field label="Cargo"><input name="role" defaultValue={person?.role ?? drawer.draft?.role} required placeholder="Ej. Soldador" /></Field><Field label="Especialidad"><input name="specialty" defaultValue={person?.specialty ?? drawer.draft?.specialty} placeholder="Competencia principal" /></Field></div>
+    <fieldset className="route-picker shift-picker"><legend>Turnos del trabajador</legend><p>Selecciona uno o varios. Las horas semanales se calculan automáticamente.</p>{dataset.shifts.map((shift) => <label key={shift.id}><input type="checkbox" name="shiftIds" value={shift.id} checked={shiftIds.includes(shift.id)} onChange={() => toggleShift(shift.id)} /><span>{shift.code}</span><b>{shift.name} · {formatHours(shiftWeeklyHours(shift))} h/sem</b></label>)}{dataset.shifts.length === 0 && <button type="button" className="row-action" onClick={(event) => onOpenRelated?.("shift", Object.fromEntries(new FormData(event.currentTarget.form)))}>+ Registrar turno</button>}</fieldset>
+    <div className="form-row"><Field label="Eficiencia estimada"><div className="input-suffix"><input name="efficiency" type="number" min="1" max="150" defaultValue={person?.efficiency ?? drawer.draft?.efficiency ?? "100"} required /><span>%</span></div></Field><Field label="Horas semanales calculadas"><div className="calculated-field"><strong>{formatHours(weeklyHours)} h</strong><small>Suma de los turnos seleccionados</small></div></Field></div>
+  </>;
+}
+
 function RecordDrawer({ drawer, dataset, onClose, onOpenRelated, onSubmit, onCreateCatalog, onUpdateCatalog, onDeleteCatalog }) {
   if (!drawer) return null;
   const titles = { material: drawer.item ? "Editar material" : "Registrar material", movement: "Movimiento de inventario", warehouse: "Entregar material reservado", order: "Nueva orden CECO", product: drawer.product ? "Editar plantilla" : "Registrar producto", customer: drawer.customer ? "Editar cliente" : "Registrar cliente", activity: drawer.activity ? "Editar actividad" : "Añadir actividad", bom: "Añadir componente BOM", operation: "Registrar parte diario", personnel: drawer.personnel ? "Editar trabajador" : "Registrar trabajador", shift: drawer.shift ? "Editar turno" : "Registrar turno", equipment: drawer.equipment ? "Editar equipo" : "Registrar equipo", calendar: drawer.calendar ? "Editar excepción" : "Registrar excepción", assignment: drawer.assignment ? "Editar asignación" : "Asignar recurso", incident: drawer.incident ? "Editar incidencia" : "Registrar incidencia" };
@@ -1739,8 +1802,8 @@ function RecordDrawer({ drawer, dataset, onClose, onOpenRelated, onSubmit, onCre
     {drawer.type === "activity" && <><Field label="Fase"><SearchSelect name="stageId" defaultValue={drawer.activity?.stageId} options={byOrder(dataset).map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><Field label="Nombre de la actividad"><input name="name" defaultValue={drawer.activity?.name} required /></Field><Field label="Tiempo estándar"><div className="input-suffix"><input name="standardMinutes" type="number" min="1" defaultValue={drawer.activity?.standardMinutes} required /><span>min</span></div></Field>{drawer.activity && <Field label="Estado"><select name="active" defaultValue={String(drawer.activity.active)}><option value="true">Activa</option><option value="false">Inactiva</option></select></Field>}</>}
     {drawer.type === "bom" && <><Field label="Producto"><SearchSelect name="bodyTypeId" defaultValue={drawer.productId} options={dataset.bodyTypes.map((item) => ({ value: item.id, label: item.name, meta: item.code }))} searchPlaceholder="Buscar producto" /></Field><Field label="Material"><SearchSelect name="materialCode" options={dataset.inventory.map((item) => ({ value: item.code, label: item.description, meta: item.code }))} searchPlaceholder="Buscar material o código" /></Field><Field label="Fase de consumo"><SearchSelect name="stageId" options={byOrder(dataset).map((item) => ({ value: item.id, label: item.name, meta: item.shortName }))} searchPlaceholder="Buscar fase" /></Field><div className="form-row"><Field label="Código de pieza"><input name="pieceCode" required /></Field><Field label="Cantidad"><input name="quantity" type="number" min="0.01" step="0.01" required /></Field></div><Field label="Descripción"><input name="description" required /></Field><Field label="Longitud (opcional)"><input name="lengthMm" type="number" min="0" /></Field></>}
     {drawer.type === "operation" && <OperationFields drawer={drawer} dataset={dataset} />}
-    {drawer.type === "personnel" && <><div className="form-row"><Field label="Código"><input name="employeeCode" defaultValue={drawer.personnel?.employeeCode ?? drawer.draft?.employeeCode} required placeholder="ETR-007" /></Field><Field label="Estado"><select name="status" defaultValue={drawer.personnel?.status ?? drawer.draft?.status ?? "available"}><option value="available">Disponible</option><option value="assigned">Asignado</option><option value="absent">Ausente</option><option value="leave">Permiso</option></select></Field></div><Field label="Nombre completo"><input name="name" defaultValue={drawer.personnel?.name ?? drawer.draft?.name} required /></Field><div className="form-row"><Field label="Cargo"><input name="role" defaultValue={drawer.personnel?.role ?? drawer.draft?.role} required placeholder="Ej. Soldador" /></Field><Field label="Turno"><select name="shiftId" defaultValue={drawer.personnel?.shiftId ?? drawer.draft?.shiftId ?? ""}>{dataset.shifts.length === 0 && <option value="">Sin turnos registrados</option>}{dataset.shifts.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select>{dataset.shifts.length === 0 && <button type="button" className="row-action" onClick={(event) => onOpenRelated?.("shift", Object.fromEntries(new FormData(event.currentTarget.form)))}>+ Registrar turno</button>}</Field></div><Field label="Especialidad"><input name="specialty" defaultValue={drawer.personnel?.specialty ?? drawer.draft?.specialty} placeholder="Competencia principal" /></Field><div className="form-row"><Field label="Eficiencia estimada"><div className="input-suffix"><input name="efficiency" type="number" min="1" max="150" defaultValue={drawer.personnel?.efficiency ?? drawer.draft?.efficiency ?? "100"} required /><span>%</span></div></Field><Field label="Horas semanales"><input name="weeklyHours" type="number" min="0" max="84" defaultValue={drawer.personnel?.weeklyHours ?? drawer.draft?.weeklyHours ?? "48"} required /></Field></div></>}
-    {drawer.type === "shift" && <><div className="form-row"><Field label="Código"><input name="code" defaultValue={drawer.shift?.code} required placeholder="T3" /></Field><Field label="Nombre"><input name="name" defaultValue={drawer.shift?.name} required placeholder="Turno noche" /></Field></div><div className="form-row"><Field label="Hora de inicio"><input name="startTime" type="time" defaultValue={drawer.shift?.startTime} required /></Field><Field label="Hora de fin"><input name="endTime" type="time" defaultValue={drawer.shift?.endTime} required /></Field></div><Field label="Descanso"><div className="input-suffix"><input name="breakMinutes" type="number" min="0" max="240" defaultValue={drawer.shift?.breakMinutes ?? "60"} required /><span>min</span></div></Field></>}
+    {drawer.type === "personnel" && <PersonnelFields drawer={drawer} dataset={dataset} onOpenRelated={onOpenRelated} />}
+    {drawer.type === "shift" && <><div className="form-row"><Field label="Código"><input name="code" defaultValue={drawer.shift?.code} required placeholder="T3" /></Field><Field label="Nombre"><input name="name" defaultValue={drawer.shift?.name} required placeholder="Turno noche" /></Field></div><div className="form-row"><Field label="Hora de inicio"><input name="startTime" type="time" defaultValue={drawer.shift?.startTime} required /></Field><Field label="Hora de fin"><input name="endTime" type="time" defaultValue={drawer.shift?.endTime} required /></Field></div><div className="form-row"><Field label="Descanso"><div className="input-suffix"><input name="breakMinutes" type="number" min="0" max="240" defaultValue={drawer.shift?.breakMinutes ?? "60"} required /><span>min</span></div></Field><Field label="Días por semana" hint="Cuántos días aplica este horario"><input name="daysPerWeek" type="number" min="1" max="7" defaultValue={drawer.shift?.daysPerWeek ?? "1"} required /></Field></div></>}
     {drawer.type === "equipment" && <><div className="form-row"><Field label="Código"><input name="code" defaultValue={drawer.equipment?.code} required placeholder="EQ-XXX-01" /></Field><Field label="Estado"><select name="status" defaultValue={drawer.equipment?.status || "operational"}><option value="operational">Operativo</option><option value="restricted">Restringido</option><option value="maintenance">Mantenimiento</option><option value="out_of_service">Fuera de servicio</option></select></Field></div><Field label="Nombre del equipo"><input name="name" defaultValue={drawer.equipment?.name} required /></Field><Field label="Fase asociada"><select name="stageId" defaultValue={drawer.equipment?.stageId}>{byOrder(dataset).map((item) => <option key={item.id} value={item.id}>{item.shortName} · {item.name}</option>)}</select></Field><div className="form-row"><Field label="Capacidad semanal"><div className="input-suffix"><input name="capacityHours" type="number" min="0" defaultValue={drawer.equipment?.capacityHours} required /><span>h</span></div></Field><Field label="Próximo mantenimiento"><input name="maintenanceDue" type="date" defaultValue={drawer.equipment?.maintenanceDue || ""} /></Field></div></>}
     {drawer.type === "calendar" && <><div className="workweek-picker"><span>Días laborables base</span><label><input type="checkbox" checked readOnly />Lun</label><label><input type="checkbox" checked readOnly />Mar</label><label><input type="checkbox" checked readOnly />Mié</label><label><input type="checkbox" checked readOnly />Jue</label><label><input type="checkbox" checked readOnly />Vie</label><label><input type="checkbox" checked readOnly />Sáb</label><small>Domingo queda como no laborable por defecto.</small></div><Field label="Fecha de excepción"><input name="date" type="date" defaultValue={drawer.calendar?.date} required /></Field><Field label="Tipo"><select name="dayType" defaultValue={drawer.calendar?.dayType || "holiday"}><option value="holiday">Feriado</option><option value="shutdown">No laborable / parada</option><option value="reduced">Jornada especial reducida</option></select></Field><Field label="Horas si es jornada reducida"><div className="input-suffix"><input name="availableHours" type="number" min="0" max="24" step="0.25" defaultValue={drawer.calendar?.availableHours ?? "4"} /><span>h</span></div></Field><Field label="Descripción opcional"><textarea name="note" defaultValue={drawer.calendar?.note} placeholder="Ej. Feriado nacional, mantenimiento general, inventario" /></Field><p className="form-info">Para feriados y paradas las horas se calculan como 0. Solo completa horas cuando elijas jornada reducida.</p></>}
     {drawer.type === "assignment" && <AssignmentFields drawer={drawer} dataset={dataset} />}

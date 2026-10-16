@@ -131,11 +131,22 @@ test("personal, equipos e incidencias alimentan la capacidad real del gemelo", (
   assert.equal(constrainedAssembly.incidentHours, 4);
 });
 
-test("entrenamiento del gemelo digital calcula métricas de calibración desde Supabase", () => {
+test("calibración del gemelo informa baja confiabilidad cuando faltan vínculos históricos", () => {
   const calibration = calibrateDigitalTwin(initialDataset);
-  assert.ok(calibration.reliabilityScore > 50);
-  assert.ok(calibration.workerInconsistencyStdDev >= 4);
+  assert.ok(calibration.reliabilityScore >= 0);
+  assert.equal(calibration.trainingMode, "baseline_without_history");
+  assert.ok(calibration.warnings.length > 0);
   assert.ok(calibration.sampleSizeOperations > 0);
+});
+
+test("Monte Carlo es reproducible y entrega intervalos trazables", () => {
+  const params = { workerInconsistencyMode: "stochastic", monteCarloRuns: 50, randomSeed: 123, inconsistencyStdDev: 12, absenteeismRate: 8 };
+  const first = runDigitalTwin(initialDataset, params);
+  const second = runDigitalTwin(initialDataset, params);
+  assert.deepEqual(first.confidenceIntervals, second.confidenceIntervals);
+  assert.equal(first.confidenceIntervals.runs, 50);
+  assert.equal(first.execution.model, "Monte Carlo");
+  assert.ok(first.confidenceIntervals.pmpLower <= first.confidenceIntervals.pmpUpper);
 });
 
 test("parámetros específicos por orden incrementan la demanda en la fase correspondiente", () => {
@@ -144,4 +155,5 @@ test("parámetros específicos por orden incrementan la demanda en la fase corre
   const normalPaint = normal.scenario.stageCapacity.find((s) => s.stageId === "stage-paint");
   const complexPaint = complex.scenario.stageCapacity.find((s) => s.stageId === "stage-paint");
   assert.ok(complexPaint.demandHours > normalPaint.demandHours);
+  assert.equal(complex.baseline.stageCapacity.find((s) => s.stageId === "stage-paint").demandHours, normal.baseline.stageCapacity.find((s) => s.stageId === "stage-paint").demandHours);
 });

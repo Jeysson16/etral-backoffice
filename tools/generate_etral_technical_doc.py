@@ -16,6 +16,7 @@ DOCS = ROOT / "docs"
 ASSETS = DOCS / "assets" / "etral-diagrams"
 SCREENSHOT_DIR = DOCS / "assets" / "etral-screenshots"
 OUTPUT = DOCS / "ETRAL_documentacion_tecnica_sistema_web_y_gemelo_digital_con_capturas.docx"
+OUTPUT_BASE = DOCS / "ETRAL_documentacion_tecnica_sistema_web_y_gemelo_digital.docx"
 
 NAVY = "0B2545"
 BLUE = "2E74B5"
@@ -277,7 +278,7 @@ def create_database_diagram():
     groups = [
         ((70, 250, 520, 1050), "MAESTROS", ["Categorias, unidades y marcas", "flow_stages", "stage_activities", "body_types", "work_shifts"]),
         ((570, 250, 1170, 1050), "PLANEAMIENTO Y OPERACION", ["product_routes", "bom_items", "inventory_items", "ceco_orders", "stage_inventory", "ceco_activity_progress"]),
-        ((1220, 250, 1880, 1050), "RECURSOS, CONTROL Y ANALITICA", ["personnel y equipment", "work_calendar", "resource_assignments", "incidents y quality_checks", "movements y operation_logs", "simulation_runs"]),
+        ((1220, 250, 1880, 1050), "RECURSOS, CONTROL Y ANALITICA", ["personnel y equipment", "work_calendar", "resource_assignments", "incidents y quality_checks", "movements y operation_logs", "simulation_runs (opcional)"]),
     ]
     for rect, title, items in groups:
         x1, y1, x2, y2 = rect
@@ -291,44 +292,61 @@ def create_database_diagram():
     arrow(draw, (520, 650), (570, 650), color=TEAL, label="define")
     arrow(draw, (1170, 650), (1220, 650), color=TEAL, label="ejecuta")
     draw.rounded_rectangle((70, 1120, 1880, 1215), radius=20, fill=pc(LIGHT_GOLD), outline=pc(GOLD), width=3)
-    center_text(draw, "Los maestros definen el proceso; las tablas de operacion registran la realidad; analitica conserva la evidencia de las corridas.", (100, 1136, 1850, 1200), F_SMALL, NAVY)
+    center_text(draw, "Los maestros definen el proceso; las tablas operativas registran la realidad; la persistencia de corridas es futura.", (100, 1136, 1850, 1200), F_SMALL, NAVY)
     return save(image, "06_diagrama_base_datos")
 
 
 def create_er_diagram():
-    image, draw = base_diagram("Diagrama entidad-relacion", "Relaciones principales que sostienen la trazabilidad de produccion", 2200, 1500)
+    black = "#000000"
+    image = Image.new("RGBA", (2200, 1500), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.text((52, 28), "Diagrama entidad-relacion", font=F_TITLE, fill=black)
+    draw.text((54, 112), "Vista resumida de claves foraneas declaradas en PostgreSQL", font=F_SMALL, fill=black)
     nodes = {
-        "producto": (90, 280, 420, 455, "body_types", "Producto fabricado"),
-        "fases": (90, 690, 420, 865, "flow_stages", "Fases de produccion"),
-        "ruta": (600, 270, 960, 455, "product_routes", "Ruta por producto y fase"),
-        "bom": (600, 690, 960, 875, "bom_items", "Materiales requeridos"),
-        "orden": (1160, 430, 1530, 630, "ceco_orders", "Orden de produccion"),
-        "inventario": (600, 1090, 960, 1275, "inventory_items", "Existencia y stock comprometido"),
-        "avance": (1740, 245, 2110, 430, "ceco_activity_progress", "Progreso de actividades"),
-        "wip": (1740, 570, 2110, 755, "stage_inventory", "WIP por fase"),
-        "asig": (1740, 895, 2110, 1080, "resource_assignments", "Personal, orden y actividad"),
-        "recursos": (1160, 1030, 1530, 1215, "personnel / equipment", "Recursos disponibles"),
+        "producto": (80, 230, 450, 400, "body_types", "PK id; UK code"),
+        "fases": (80, 650, 450, 820, "flow_stages", "PK id"),
+        "inventario": (80, 1060, 450, 1230, "inventory_items", "PK id; UK code"),
+        "ruta": (620, 190, 1000, 360, "product_routes", "FK product_id, stage_id"),
+        "bom": (620, 505, 1000, 675, "bom_items", "FK body_type_id, material_code"),
+        "actividad": (620, 835, 1000, 1005, "stage_activities", "FK stage_id"),
+        "orden": (1160, 290, 1540, 480, "ceco_orders", "FK body_type_id, stage_id"),
+        "reserva": (1160, 690, 1540, 860, "order_material_reservations", "FK ceco, bom_item_id, material_code"),
+        "personal": (1160, 1080, 1540, 1250, "personnel", "PK id"),
+        "avance": (1710, 180, 2120, 350, "ceco_activity_progress", "FK ceco, activity_id"),
+        "wip": (1710, 465, 2120, 635, "stage_inventory", "FK ceco, stage_id"),
+        "asig": (1710, 745, 2120, 915, "resource_assignments", "FK ceco, personnel_id, activity_id"),
+        "calidad": (1710, 1040, 2120, 1210, "quality_checks", "FK ceco, stage_id"),
     }
+    relations = [
+        ((450, 300), (620, 275)),
+        ((450, 730), (620, 305)),
+        ((450, 360), (620, 580)),
+        ((450, 740), (620, 610)),
+        ((450, 1140), (620, 640)),
+        ((450, 770), (620, 920)),
+        ((450, 320), (1160, 370)),
+        ((450, 760), (1160, 410)),
+        ((1000, 580), (1160, 770)),
+        ((450, 1160), (1160, 810)),
+        ((1350, 480), (1350, 690)),
+        ((1540, 450), (1710, 265)),
+        ((1000, 930), (1710, 315)),
+        ((1540, 430), (1710, 545)),
+        ((450, 790), (1710, 595)),
+        ((1540, 440), (1710, 825)),
+        ((1540, 1160), (1710, 865)),
+        ((1000, 965), (1710, 900)),
+        ((1540, 465), (1710, 1120)),
+        ((450, 800), (1710, 1180)),
+    ]
+    for start, end in relations:
+        arrow(draw, start, end, color=black, width=4)
     for rect in nodes.values():
         x1, y1, x2, y2, title, detail = rect
-        box(draw, (x1, y1, x2, y2), title, detail, fill=LIGHT, border=BLUE)
-    relations = [
-        ((420, 365), (600, 365), "1:N"),
-        ((420, 775), (600, 775), "1:N"),
-        ((420, 365), (1160, 500), "1:N"),
-        ((420, 775), (1160, 560), "1:N"),
-        ((960, 365), (1160, 500), "ruta"),
-        ((960, 780), (600, 1180), "material"),
-        ((960, 780), (1160, 560), "BOM"),
-        ((1530, 500), (1740, 335), "1:N"),
-        ((1530, 560), (1740, 660), "1:N"),
-        ((1530, 600), (1740, 985), "1:N"),
-        ((1530, 1120), (1740, 985), "1:N"),
-    ]
-    for start, end, label in relations:
-        arrow(draw, start, end, color=TEAL, width=4, label=label)
-    draw.rounded_rectangle((90, 1340, 2110, 1435), radius=18, fill=pc("F2F4F7"))
-    center_text(draw, "Una orden CECO vincula el producto y fase con avances, WIP y recursos; el BOM conecta producto, fase y materiales.", (120, 1355, 2080, 1422), F_SMALL, NAVY)
+        draw.rounded_rectangle((x1, y1, x2, y2), radius=20, fill=(0, 0, 0, 0), outline=black, width=4)
+        wrapped_center(draw, title, (x1 + 14, y1 + 12, x2 - 14, y1 + 58), F_LABEL, fill=black)
+        wrapped_center(draw, detail, (x1 + 18, y1 + 64, x2 - 18, y2 - 16), F_SMALL, fill=black)
+    center_text(draw, "Vista resumida. El diagrama completo contiene 28 tablas y 40 claves foraneas; se entrega en Markdown.", (120, 1355, 2080, 1422), F_SMALL, black)
     return save(image, "07_diagrama_entidad_relacion")
 
 
@@ -532,7 +550,7 @@ def configure_doc(doc):
     set_run_font(run, size=8.5, color=MUTED)
 
 
-def build_doc(figures):
+def build_doc(figures, output, include_screenshots=False):
     doc = Document()
     configure_doc(doc)
 
@@ -574,10 +592,11 @@ def build_doc(figures):
         "5. Modelo de datos y diagrama entidad-relacion",
         "6. Ejemplos de codigo y decisiones de diseno",
         "7. Evidencias y guion para sustentacion",
+        *(("8. Capturas de referencia de la interfaz",) if include_screenshots else ()),
     ])
     doc.add_heading("1. Proposito y alcance", level=1)
     add_paragraph(doc, "Este documento explica la construccion tecnica del sistema ETRAL. El sistema registra productos, rutas, ordenes CECO, inventario, avances, recursos e incidencias de una planta. Sobre esta base opera un gemelo digital que permite comparar escenarios de capacidad, disponibilidad de materiales, demanda y mano de obra antes de ejecutar cambios en la operacion real.")
-    add_paragraph(doc, "La finalidad es entregar al jurado una vista verificable de la arquitectura, el modelo de datos, los componentes y los flujos que conectan el registro operativo con el analisis de escenarios.")
+    add_paragraph(doc, "La finalidad es entregar al jurado una vista verificable de la arquitectura, el modelo de datos, los componentes y los flujos que conectan el registro operativo con el analisis de escenarios. Estado de implementacion revisado al 1 de octubre de 2026.")
     doc.add_heading("2. Arquitectura general", level=1)
     add_paragraph(doc, "La arquitectura esta dividida en capas para separar la experiencia de usuario, la coordinacion de servicios, las reglas de negocio y la infraestructura. Esta separacion reduce el acoplamiento y permite evolucionar el motor del gemelo digital sin reescribir los modulos de operacion.")
     add_table(doc, ["Capa", "Responsabilidad", "Implementacion"], [
@@ -604,6 +623,11 @@ def build_doc(figures):
         "ExecutionPanel: registra avance, movimientos y controles de ejecucion.",
         "ResourcesView: administra turnos, personal, equipos, calendario y asignaciones.",
     ])
+    doc.add_heading("3.2 Indicadores y exportacion de datos", level=2)
+    add_paragraph(doc, "La pantalla de indicadores compara un periodo elegido con el periodo anterior. Muestra cumplimiento PMP, avance de actividades, lead time, cobertura de seguridad y productividad de mano de obra, materiales y factores combinados. Cada tarjeta explica su formula y ofrece instrucciones cuando faltan datos para calcularla.")
+    add_paragraph(doc, "El cumplimiento PMP del tablero de indicadores usa ordenes terminadas en el periodo frente a ordenes con fecha pactada en ese periodo. El lead time promedia los dias entre el inicio de la orden y su finalizacion; el inicio prioriza la fecha planificada y puede inferirse de los registros operativos. La productividad de materiales divide las unidades terminadas entre el costo del material consumido; la multifactorial divide el valor de salida entre materiales, mano de obra y otros costos registrados.")
+    add_paragraph(doc, "La informacion economica proviene de inventory_items.unit_cost, operation_logs.hourly_cost y de output_value, energy_cost y capital_cost de las ordenes CECO. Si falta un denominador valido, el indicador correspondiente se presenta sin valor calculado.")
+    add_paragraph(doc, "El boton Resumen Excel crea hojas de resumen, serie temporal, CECO, partes, avance, movimientos y diccionario de variables para SPSS. Registros Excel exporta hasta 19 colecciones presentes en el dataset cargado, una hoja por coleccion; omite las vacias y filtra por fecha solo las fuentes configuradas para ello. Los libros usan xlsx-js-style para conservar sus estilos en Excel.")
     doc.add_heading("4. Flujos operativos", level=1)
     add_paragraph(doc, "Los flujos muestran como el sistema conserva la trazabilidad de una orden y como el gemelo digital transforma datos operativos en informacion de decision.")
     doc.add_heading("4.1 Flujo de una orden CECO", level=2)
@@ -614,6 +638,8 @@ def build_doc(figures):
     doc.add_heading("4.2 Flujo de ejecucion del gemelo digital", level=2)
     add_figure(doc, figures["twin"], "Figura 5. Flujo de datos y calculo del gemelo digital.")
     add_paragraph(doc, "El gemelo recibe un escenario y construye un snapshot de la operacion. Esto significa que el analisis usa una copia de los datos para calcular resultados. La corrida no modifica el estado real de las ordenes, el inventario ni los avances de planta.")
+    add_paragraph(doc, "El motor Python programa por fase la capacidad finita de cada CECO y respeta su fecha de inicio planificada, prioridades, calendario, recursos y restricciones de materiales. El cumplimiento PMP de la simulacion se mide por CECO: ordenes evaluables con finalizacion proyectada dentro de la fecha pactada sobre todas las ordenes con fecha pactada. Las ordenes sin dicha fecha se informan aparte. El motor JavaScript conserva una estimacion local y sirve de respaldo si la API Python falla.")
+    add_paragraph(doc, "La calibracion del escenario permite variar demanda, disponibilidad laboral, turnos, ausentismo, dispersion de rendimiento, complejidad y asignacion de trabajadores por orden. El resultado compara escenario base y escenario alternativo mediante Gantt, capacidad, materiales, alertas e indicadores; la decision final corresponde al usuario.")
     doc.add_heading("5. Modelo de datos", level=1)
     add_paragraph(doc, "El modelo relacional se organiza en maestros, planeamiento y operacion, recursos y control, y analitica. Esta estructura permite relacionar una orden con su producto, ruta, materiales, recursos, eventos de ejecucion y resultados de simulacion.")
     add_figure(doc, figures["database"], "Figura 6. Agrupacion logica de las tablas de base de datos.")
@@ -624,13 +650,14 @@ def build_doc(figures):
         ("inventory_items", "Existencias, reservas y stock de seguridad.", "Abastece BOM y movimientos."),
         ("stage_inventory", "Trabajo en proceso por fase.", "Relaciona CECO con una etapa."),
         ("resource_assignments", "Horas asignadas de personal a una actividad.", "Relaciona recurso, CECO y actividad."),
-        ("simulation_runs", "Parametros y resultados de una corrida.", "Conserva evidencia analitica en JSONB."),
+        ("simulation_runs", "Tabla prevista para guardar corridas.", "La interfaz actual no persiste aqui sus resultados."),
     ], [1950, 3920, 3490])
 
     doc.add_page_break()
     doc.add_heading("5.2 Diagrama entidad-relacion", level=2)
-    add_figure(doc, figures["er"], "Figura 7. Relaciones principales del modelo entidad-relacion.")
-    add_paragraph(doc, "Una orden CECO enlaza el producto y la fase actual con sus avances, WIP y recursos. El BOM enlaza el producto con los materiales requeridos. Estas relaciones son la base de la trazabilidad y de la simulacion de restricciones.")
+    add_figure(doc, figures["er"], "Figura 7. Vista resumida de las relaciones declaradas con claves foraneas.")
+    add_paragraph(doc, "El esquema entregado contiene 28 tablas de public y 40 claves foraneas. Esta figura muestra el nucleo de produccion; el diagrama completo y ampliable esta en docs/diagrama-entidad-relacion.md y tambien en el anexo tecnico Markdown.")
+    add_paragraph(doc, "Las referencias a ceco_orders.ceco e inventory_items.code apuntan a claves unicas, no a sus id. Por ejemplo, inventory_movements.ceco y operation_logs.worker son campos de texto sin restriccion FOREIGN KEY en el esquema entregado; no se representan como relaciones fisicas. simulation_runs.created_by apunta a auth.users.id, aunque la interfaz actual no persiste corridas alli.")
     doc.add_heading("6. Ejemplos de codigo y decisiones de diseno", level=1)
     doc.add_heading("6.1 Patron Repository", level=2)
     add_paragraph(doc, "El patron Repository evita que las vistas conozcan los detalles de Supabase o de los datos de prueba. La interfaz pide un repositorio y utiliza un contrato de operaciones comun.")
@@ -644,19 +671,21 @@ export function getRepository() {
     doc.add_heading("6.2 Snapshot y adaptador del gemelo", level=2)
     add_paragraph(doc, "El snapshot concentra los datos que necesita la simulacion. El adaptador decide si la corrida se resuelve con JavaScript en el navegador o con la API Python.")
     add_code_block(doc, '''export async function runTwinSimulation(dataset, draft) {
-  if (twinEngine !== "python") {
-    return runDigitalTwin(dataset, draft);
-  }
-
-  const response = await fetch(`${baseUrl}/api/v1/simulations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Simulacion desde interfaz", input: {
-      snapshot: snapshotFromDataset(dataset)
-    } }),
-  });
-  return response.json();
+  if (twinEngine !== "python") return runDigitalTwin(dataset, draft);
+  const { data: { session } } = await supabase.auth.getSession();
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/simulations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ name: "Simulacion desde interfaz",
+        input: buildSimulationInput(dataset, draft) })
+    });
+    if (!response.ok) throw new Error("API no disponible");
+    return (await response.json()).result;
+  } catch (error) { return runDigitalTwin(dataset, draft); }
 }''')
+    add_paragraph(doc, "El bloque anterior resume el flujo para explicarlo; buildSimulationInput representa la construccion del payload detallada en src/services/twinApi.js. En produccion la API exige un JWT valido de Supabase; el fallback local se activa ante un fallo de la solicitud.")
 
     doc.add_page_break()
     doc.add_heading("6.3 API de dominio", level=2)
@@ -664,13 +693,18 @@ export function getRepository() {
     add_code_block(doc, '''app = FastAPI(title="ETRAL Digital Twin API", version="0.1.0")
 
 @app.post("/api/v1/mrp/evaluate")
-def mrp(snapshot: FactorySnapshot) -> dict:
+def mrp(snapshot: FactorySnapshot,
+        _user: dict = Depends(require_authenticated_user)) -> dict:
     return evaluate_mrp(snapshot)
 
 @app.post("/api/v1/simulations")
-def run_simulation(run: SimulationRun) -> dict:
+def run_simulation(run: SimulationRun,
+        _user: dict = Depends(require_authenticated_user)) -> dict:
     return {"name": run.name, "result": simulate_comparison(run.input)}''')
-    doc.add_heading("6.4 Decisiones de diseno que se deben defender", level=2)
+    doc.add_heading("6.4 Seguridad y despliegue", level=2)
+    add_paragraph(doc, "La aplicacion publicada exige inicio de sesion con Supabase Auth. Las politicas RLS restringen los datos operativos a usuarios autenticados. La interfaz envia el access token como Bearer y FastAPI valida la firma y los datos del JWT con las claves publicas de Supabase. No se incorpora service_role ni contrasena de base de datos al navegador.")
+    add_paragraph(doc, "La publicacion principal usa Azure App Service Linux: FastAPI sirve el frontend React compilado y la API en el mismo dominio. El flujo de GitHub Actions compila y despliega la aplicacion. La version local puede ejecutar el motor JavaScript o el motor Python segun VITE_TWIN_ENGINE; sin SUPABASE_URL, el API Python permite pruebas locales aisladas.")
+    doc.add_heading("6.5 Decisiones de diseno que se deben defender", level=2)
     add_bullets(doc, [
         "Separacion por capas: la interfaz, las reglas y la persistencia evolucionan con menor impacto entre si.",
         "Repository: permite trabajar con Supabase o datos de demostracion sin modificar las vistas.",
@@ -685,7 +719,7 @@ def run_simulation(run: SimulationRun) -> dict:
         ("Consulta de ceco_orders, stage_inventory y ceco_activity_progress", "Persistencia y avance de la orden."),
         ("Movimiento de inventario y BOM asociado", "Consumo y disponibilidad de materiales."),
         ("Corrida base vs. corrida con restriccion", "Uso del gemelo para toma de decisiones."),
-        ("Resultado almacenado en simulation_runs", "Evidencia y comparabilidad de escenarios."),
+        ("Resultado base y alternativo mostrado en la sesion", "Comparacion de escenarios sin alterar registros operativos."),
     ], [3000, 6360])
     doc.add_heading("7.1 Mensaje de cierre sugerido", level=2)
     add_paragraph(doc, "ETRAL integra el registro operacional con un gemelo digital orientado a decisiones. La base de datos conserva lo ocurrido en planta y el motor evalua escenarios sobre snapshots; por ello es posible anticipar restricciones sin poner en riesgo la operacion real.")
@@ -707,15 +741,15 @@ def run_simulation(run: SimulationRun) -> dict:
         ("07_simulacion.png", "Figura 14. Interfaz de simulacion: calibracion, horizonte de planificacion y configuracion del escenario."),
     ]
     available_screenshots = [(SCREENSHOT_DIR / name, caption) for name, caption in screenshots if (SCREENSHOT_DIR / name).exists()]
-    if available_screenshots:
+    if include_screenshots and available_screenshots:
         doc.add_page_break()
-        doc.add_heading("8. Capturas de las interfaces del sistema", level=1)
-        add_paragraph(doc, "Las siguientes capturas documentan la interfaz real utilizada para registrar y consultar la operacion. Se incluyen como evidencia visual del alcance implementado y como apoyo para explicar la demostracion ante el jurado.")
+        doc.add_heading("8. Capturas de referencia de la interfaz", level=1)
+        add_paragraph(doc, "Estas capturas corresponden a la interfaz documentada en julio de 2026. Desde entonces cambiaron indicadores, exportaciones y simulacion; para demostrar la version actual se debe usar la aplicacion en ejecucion o reemplazar estas imagenes por capturas nuevas. Las secciones anteriores describen el comportamiento vigente del codigo.")
         for index, (path, caption) in enumerate(available_screenshots):
             if index > 0:
                 doc.add_page_break()
             add_screenshot(doc, path, caption)
-    doc.save(OUTPUT)
+    doc.save(output)
 
 
 def main():
@@ -729,7 +763,9 @@ def main():
         "database": create_database_diagram(),
         "er": create_er_diagram(),
     }
-    build_doc(figures)
+    build_doc(figures, OUTPUT_BASE)
+    build_doc(figures, OUTPUT, include_screenshots=True)
+    print(OUTPUT_BASE)
     print(OUTPUT)
 
 

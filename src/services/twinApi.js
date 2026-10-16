@@ -43,12 +43,16 @@ function snapshotFromDataset(dataset) {
 }
 
 export async function runTwinSimulation(dataset, draft) {
-  if (twinEngine !== "python") return runDigitalTwin(dataset, draft);
+  const simulationDraft = {
+    ...draft,
+    laborAvailability: draft.workerInconsistencyMode === "stochastic" ? 100 : Number(draft.laborAvailability)
+  };
+  if (twinEngine !== "python") return runDigitalTwin(dataset, simulationDraft);
 
   const material_adjustments = Object.fromEntries(
-    (draft.materialAdjustments ?? []).map((item) => [item.materialCode, Number(item.stockAdjustment ?? 0)])
+    (simulationDraft.materialAdjustments ?? []).map((item) => [item.materialCode, Number(item.stockAdjustment ?? 0)])
   );
-  const priority_overrides = Object.fromEntries((draft.priorityCecos ?? []).map((ceco, index) => [ceco, Number(draft.orderPriorityOverrides?.[ceco] ?? index + 1)]));
+  const priority_overrides = Object.fromEntries((simulationDraft.priorityCecos ?? []).map((ceco, index) => [ceco, Number(simulationDraft.orderPriorityOverrides?.[ceco] ?? index + 1)]));
   const { data: { session } = {} } = supabase ? await supabase.auth.getSession() : {};
   try {
     const response = await fetch(`${baseUrl}/api/v1/simulations`, {
@@ -57,14 +61,16 @@ export async function runTwinSimulation(dataset, draft) {
         ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
       },
       body: JSON.stringify({ name: "Simulación desde interfaz", input: {
-        snapshot: snapshotFromDataset(dataset), horizon_days: Number(draft.horizonDays),
-        labor_availability: Number(draft.laborAvailability), shifts_per_day: Number(draft.shiftsPerDay),
-        demand_percent: Number(draft.demandPercent), material_adjustments, priority_overrides,
-        order_complexity_map: draft.orderComplexityMap ?? {},
-        order_worker_assignments: draft.orderWorkerAssignments ?? {},
-        worker_inconsistency_mode: draft.workerInconsistencyMode ?? "stochastic",
-        inconsistency_std_dev: Number(draft.inconsistencyStdDev ?? 10),
-        absenteeism_rate: Number(draft.absenteeismRate ?? 5)
+        snapshot: snapshotFromDataset(dataset), horizon_days: Number(simulationDraft.horizonDays),
+        labor_availability: Number(simulationDraft.laborAvailability), shifts_per_day: Number(simulationDraft.shiftsPerDay),
+        demand_percent: Number(simulationDraft.demandPercent), material_adjustments, priority_overrides,
+        order_complexity_map: simulationDraft.orderComplexityMap ?? {},
+        order_worker_assignments: simulationDraft.orderWorkerAssignments ?? {},
+        worker_inconsistency_mode: simulationDraft.workerInconsistencyMode ?? "stochastic",
+        inconsistency_std_dev: Number(simulationDraft.inconsistencyStdDev ?? 10),
+        absenteeism_rate: Number(simulationDraft.absenteeismRate ?? 5),
+        monte_carlo_runs: Number(simulationDraft.monteCarloRuns ?? 250),
+        random_seed: Number(simulationDraft.randomSeed ?? 42)
       } })
     });
     if (!response.ok) {
@@ -75,6 +81,16 @@ export async function runTwinSimulation(dataset, draft) {
     return payload.result;
   } catch (error) {
     console.warn("La API Python no respondió; se usa el motor JS de respaldo.", error);
-    return runDigitalTwin(dataset, draft);
+    const fallback = runDigitalTwin(dataset, simulationDraft);
+    return {
+      ...fallback,
+      execution: {
+        ...fallback.execution,
+        engine: "javascript_fallback",
+        label: "Motor JavaScript de respaldo",
+        fallback: true,
+        reason: error instanceof Error ? error.message : String(error)
+      }
+    };
   }
 }

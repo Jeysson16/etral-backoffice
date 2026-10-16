@@ -1,6 +1,6 @@
 # Modelo de datos y flujo operativo ETRAL
 
-Este documento resume para qué sirve cada tabla, su relación y qué pantalla del frontend la utiliza. El esquema fuente está en `src/supabase/schema.sql`.
+Este documento resume para qué sirve cada tabla, su relación y qué pantalla del frontend la utiliza. El esquema base está en `src/supabase/schema.sql` y se amplía mediante migraciones en `supabase/migrations`. Las 40 claves foráneas del esquema entregado se muestran en el [diagrama entidad-relación completo](diagrama-entidad-relacion.md).
 
 ## Flujo de negocio
 
@@ -38,7 +38,6 @@ erDiagram
   FLOW_STAGES ||--o{ CECO_ORDERS : etapa_actual
   CECO_ORDERS ||--o{ CECO_ACTIVITY_PROGRESS : avanza
   STAGE_ACTIVITIES ||--o{ CECO_ACTIVITY_PROGRESS : mide
-  CECO_ORDERS ||--o{ INVENTORY_MOVEMENTS : origina
   INVENTORY_ITEMS ||--o{ INVENTORY_MOVEMENTS : afecta
 ```
 

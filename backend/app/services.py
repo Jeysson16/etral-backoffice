@@ -5,12 +5,25 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_CEILING
 from math import sqrt
+from random import Random
 
 from .schemas import FactorySnapshot, Material, SimulationInput
 
 
 def _number(value: Decimal | float | int) -> float:
     return float(value)
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    """Percentil lineal reproducible sin depender de librerías numéricas."""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    fraction = position - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
 
 
 def safety_stock(material: Material) -> Decimal:
@@ -542,7 +555,11 @@ def _present_scenario(raw: dict, snapshot: FactorySnapshot, horizon_days: int) -
         "activeOrders": active,
         "throughput": throughput,
         "pmpCompliance": raw["pmp_compliance"],
-        "pmpSummary": raw["pmp_summary"],
+        "pmpSummary": {
+            "evaluable": raw["pmp_summary"]["evaluable"],
+            "onTime": raw["pmp_summary"]["on_time"],
+            "withoutDueDate": raw["pmp_summary"]["without_due_date"],
+        },
         "delayedOrders": sum(1 for row in scheduled if row["delayed"]),
         "stockouts": sum(1 for material in materials if material["projected"] < 0),
         "estimatedLeadDays": round(sum(completed_leads) / len(completed_leads), 1) if completed_leads else round(horizon_days / max(0.35, completion_ratio), 1),
@@ -562,11 +579,69 @@ def _present_scenario(raw: dict, snapshot: FactorySnapshot, horizon_days: int) -
     }
 
 
+def _monte_carlo_intervals(input_data: SimulationInput) -> dict | None:
+    """Propaga variación de rendimiento y ausentismo por corridas repetibles."""
+    if input_data.worker_inconsistency_mode != "stochastic":
+        return None
+
+    rng = Random(input_data.random_seed)
+    active_personnel = [person for person in input_data.snapshot.personnel if person.status != "inactive"]
+    currently_available = [person for person in active_personnel if person.status not in ("absent", "leave")]
+    worker_count = len(currently_available)
+    sigma = _number(input_data.inconsistency_std_dev) / 100
+    absence_probability = _number(input_data.absenteeism_rate) / 100
+    throughput_values: list[float] = []
+    pmp_values: list[float] = []
+    lead_values: list[float] = []
+
+    for _ in range(input_data.monte_carlo_runs):
+        attendance_ratio = (
+            sum(1 for _person in currently_available if rng.random() >= absence_probability) / worker_count
+            if worker_count else max(0.0, 1.0 - absence_probability)
+        )
+        performance_factor = max(0.45, min(1.55, rng.gauss(1.0, sigma)))
+        effective_labor = max(5.0, min(150.0, _number(input_data.labor_availability) * attendance_ratio * performance_factor))
+        sampled_input = input_data.model_copy(update={
+            "labor_availability": Decimal(str(effective_labor)),
+            "absenteeism_rate": Decimal(0),
+            "worker_inconsistency_mode": "flat",
+        })
+        raw = simulate(sampled_input)
+        active = raw["orders"]["active"]
+        throughput = raw["orders"]["estimated_throughput"]
+        scheduled = raw["order_schedule"]
+        completed_leads = [
+            (date.fromisoformat(row["endDate"]) - date.fromisoformat(row["startDate"])).days + 1
+            for row in scheduled if row["state"] == "scheduled" and row["startDate"] and row["endDate"]
+        ]
+        lead = sum(completed_leads) / len(completed_leads) if completed_leads else input_data.horizon_days / max(0.35, throughput / active if active else 1)
+        throughput_values.append(float(throughput))
+        pmp_values.append(float(raw["pmp_compliance"]))
+        lead_values.append(float(lead))
+
+    return {
+        "confidenceLevel": 95,
+        "runs": input_data.monte_carlo_runs,
+        "seed": input_data.random_seed,
+        "pmpLower": round(_percentile(pmp_values, 0.025), 1),
+        "pmpUpper": round(_percentile(pmp_values, 0.975), 1),
+        "leadLower": round(_percentile(lead_values, 0.025), 1),
+        "leadUpper": round(_percentile(lead_values, 0.975), 1),
+        "throughputLower": round(_percentile(throughput_values, 0.025), 1),
+        "throughputUpper": round(_percentile(throughput_values, 0.975), 1),
+        "method": "Muestreo de rendimiento normal truncado y ausentismo Bernoulli por trabajador disponible.",
+    }
+
+
 def simulate_comparison(input_data: SimulationInput) -> dict:
     """Entrega el escenario base y What-if con el contrato que consume el frontend."""
+    active_shifts = max(1, min(3, sum(1 for shift in input_data.snapshot.shifts if shift.active)))
     baseline_input = input_data.model_copy(update={
-        "labor_availability": Decimal(100), "shifts_per_day": 1,
+        "labor_availability": Decimal(100), "shifts_per_day": active_shifts,
         "demand_percent": Decimal(100), "material_adjustments": {}, "priority_overrides": {},
+        "order_complexity_map": {}, "order_worker_assignments": {},
+        "worker_inconsistency_mode": "flat", "inconsistency_std_dev": Decimal(0),
+        "absenteeism_rate": Decimal(0),
     })
     baseline_raw = simulate(baseline_input)
     scenario_raw = simulate(input_data)
@@ -625,9 +700,12 @@ def simulate_comparison(input_data: SimulationInput) -> dict:
                               "calculation": f"{material['physical']} físico − {material['required']} programado = {material['projected']} {material['unit']}; mínimo = {material['safety']}", "affected": affected})
     changes = [
         f"Horizonte: {input_data.horizon_days} días.",
-        f"Personal disponible: {input_data.labor_availability}%; {input_data.shifts_per_day} turno(s).",
+        (f"Personal: ausentismo esperado {input_data.absenteeism_rate}% y variación de rendimiento σ={input_data.inconsistency_std_dev}%; {input_data.shifts_per_day} turno(s)."
+         if input_data.worker_inconsistency_mode == "stochastic"
+         else f"Personal disponible: {input_data.labor_availability}%; {input_data.shifts_per_day} turno(s)."),
         f"Demanda considerada: {input_data.demand_percent}% de las órdenes abiertas.",
         "La corrida es aislada: no modifica CECO, inventario ni prioridades operativas.",
+        f"La base usa el estado operativo registrado y {active_shifts} turno(s) activo(s), sin ajustes hipotéticos.",
     ]
     params = {
         "horizon_days": input_data.horizon_days, "labor_availability": float(input_data.labor_availability),
@@ -646,5 +724,12 @@ def simulate_comparison(input_data: SimulationInput) -> dict:
         "completedActivityObservations": raw_calibration["completed_activity_observations"],
         "warnings": raw_calibration["warnings"],
     }
+    confidence_intervals = _monte_carlo_intervals(input_data)
     return {"params": params, "baseline": baseline, "scenario": scenario,
-            "changes": changes, "notifications": notifications, "calibration": calibration}
+            "changes": changes, "notifications": notifications, "calibration": calibration,
+            "confidenceIntervals": confidence_intervals,
+            "execution": {
+                "engine": "python", "label": "Motor Python", "fallback": False,
+                "model": "Monte Carlo" if confidence_intervals else "Determinista",
+                "runs": confidence_intervals["runs"] if confidence_intervals else 1,
+            }}

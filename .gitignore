@@ -11,6 +11,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 ETRAL/
-docs
+docs/*
+!docs/diagrama-entidad-relacion.md
 backend/.venv/
 .pnpm-store/

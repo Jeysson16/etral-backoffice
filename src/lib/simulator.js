@@ -6,62 +6,59 @@ function daysUntil(date, now = new Date("2026-07-26T12:00:00")) {
 }
 
 export function calibrateDigitalTwin(dataset) {
-
   const operations = dataset.operations ?? [];
   const progress = dataset.activityProgress ?? [];
-  const personnel = dataset.personnel ?? [];
+  const personnel = (dataset.personnel ?? []).filter((person) => person.active !== false && person.status !== "inactive");
   const incidents = dataset.incidents ?? [];
+  const activities = new Map((dataset.stageActivities ?? []).filter((item) => item.active !== false).map((item) => [item.id, item]));
+  const activityIdByName = new Map((dataset.stageActivities ?? []).map((item) => [item.name, item.id]));
+  const completed = new Set(progress.filter((item) => item.status === "completed" || Number(item.progress) >= 100).map((item) => `${item.ceco}|${item.activityId}`));
+  const workerByName = new Map(personnel.map((item) => [item.name, item]));
+  const loggedByActivity = new Map();
+  const workerTotals = new Map();
+  let linkedOperationLogs = 0;
 
-  // 1. Bias Factor de Tiempos Estándar (Horas reales vs teóricas registradas)
-  let totalLoggedHours = operations.reduce((sum, op) => sum + Number(op.totalHours || 0), 0);
-  let totalStandardHours = 0;
-
-  progress.forEach((p) => {
-    if (p.status === "completed") {
-      const act = (dataset.stageActivities ?? []).find((a) => a.id === p.activityId);
-      if (act) {
-        totalStandardHours += Number(act.standardMinutes || 60) / 60;
-      }
+  operations.forEach((operation) => {
+    const activityId = operation.activityId ?? activityIdByName.get(operation.activity);
+    const activity = activities.get(activityId);
+    if (!activity) return;
+    linkedOperationLogs += 1;
+    const key = `${operation.ceco}|${activityId}`;
+    loggedByActivity.set(key, (loggedByActivity.get(key) ?? 0) + Number(operation.totalHours || 0));
+    const worker = operation.workerId ? personnel.find((item) => item.id === operation.workerId) : workerByName.get(operation.worker);
+    if (worker && completed.has(key)) {
+      const totals = workerTotals.get(worker.id) ?? { actual: 0, expected: 0 };
+      totals.actual += Number(operation.totalHours || 0);
+      totals.expected += Number(activity.standardMinutes || 0) / 60;
+      workerTotals.set(worker.id, totals);
     }
   });
 
-  const standardTimeBias = totalStandardHours > 0 && totalLoggedHours > 0
-    ? Number((totalLoggedHours / totalStandardHours).toFixed(2))
-    : 1.05;
-
-  // 2. Eficiencia Empírica por Trabajador
-  const workerStats = {};
-  personnel.forEach((p) => {
-    workerStats[p.name] = { id: p.id, name: p.name, loggedHours: 0, completedTasks: 0, nominalEfficiency: Number(p.efficiency || 100) };
+  const ratios = [...loggedByActivity.entries()].flatMap(([key, actual]) => {
+    if (!completed.has(key)) return [];
+    const activityId = key.split("|")[1];
+    const expected = Number(activities.get(activityId)?.standardMinutes || 0) / 60;
+    return expected > 0 ? [Math.max(0.5, Math.min(2.5, actual / expected))] : [];
   });
-
-  operations.forEach((op) => {
-    if (workerStats[op.worker]) {
-      workerStats[op.worker].loggedHours += Number(op.totalHours || 0);
-      workerStats[op.worker].completedTasks += 1;
-    }
-  });
+  const completedActivityObservations = ratios.length;
+  const standardTimeBias = completedActivityObservations
+    ? Number(((5 + ratios.reduce((sum, value) => sum + value, 0)) / (5 + completedActivityObservations)).toFixed(3))
+    : 1;
 
   const workerEfficiencyMap = {};
-  let totalVarianceSum = 0;
-  let evaluatedWorkers = 0;
-
-  Object.values(workerStats).forEach((w) => {
-    let empiricalEff = w.nominalEfficiency;
-    if (w.completedTasks > 0 && w.loggedHours > 0) {
-      // Comparar horas promedio esperadas (8h por tarea promedio) vs horas registradas
-      const expectedHours = w.completedTasks * 6.5;
-      empiricalEff = Math.round(Math.min(130, Math.max(60, (expectedHours / w.loggedHours) * 100)));
-    }
-    workerEfficiencyMap[w.id] = empiricalEff;
-    totalVarianceSum += Math.pow((empiricalEff - w.nominalEfficiency), 2);
-    evaluatedWorkers++;
+  const empiricalEfficiencies = [];
+  personnel.forEach((person) => {
+    const totals = workerTotals.get(person.id);
+    const efficiency = totals?.actual > 0 && totals.expected > 0
+      ? Math.max(60, Math.min(130, (totals.expected / totals.actual) * 100))
+      : Number(person.efficiency ?? 100);
+    workerEfficiencyMap[person.id] = Number(efficiency.toFixed(1));
+    if (totals?.actual > 0) empiricalEfficiencies.push(efficiency);
   });
+  const meanEfficiency = empiricalEfficiencies.length ? empiricalEfficiencies.reduce((sum, value) => sum + value, 0) / empiricalEfficiencies.length : 100;
+  const variance = empiricalEfficiencies.length ? empiricalEfficiencies.reduce((sum, value) => sum + ((value - meanEfficiency) ** 2), 0) / empiricalEfficiencies.length : 0;
+  const workerInconsistencyStdDev = Number(Math.sqrt(variance).toFixed(1));
 
-  const rmseVariance = evaluatedWorkers > 0 ? Math.sqrt(totalVarianceSum / evaluatedWorkers) : 5.2;
-  const workerInconsistencyStdDev = Number((Math.max(4, Math.min(25, rmseVariance))).toFixed(1));
-
-  // 3. Riesgo de Inactividad por Fase (basado en incidencias de la planta en Supabase)
   const stageDowntimeRisk = {};
   (dataset.flowStages ?? []).forEach((stage) => {
     const stageIncidents = incidents.filter((inc) => inc.stageId === stage.id);
@@ -69,20 +66,27 @@ export function calibrateDigitalTwin(dataset) {
     stageDowntimeRisk[stage.id] = downtime;
   });
 
-  // 4. Puntuación de Confiabilidad Operativa del Gemelo (0 a 100%)
-  const totalDowntime = Object.values(stageDowntimeRisk).reduce((a, b) => a + b, 0);
-  const reliabilityScore = Math.max(50, Math.min(99, Math.round(100 - (workerInconsistencyStdDev * 1.2) - (totalDowntime * 0.5))));
+  const linkage = operations.length ? linkedOperationLogs / operations.length : 0;
+  const completionCoverage = loggedByActivity.size ? completedActivityObservations / loggedByActivity.size : 0;
+  const sampleScore = Math.min(1, completedActivityObservations / 20);
+  const reliabilityScore = Number((100 * ((0.45 * sampleScore) + (0.35 * linkage) + (0.20 * completionCoverage))).toFixed(1));
+  const warnings = [];
+  if (!operations.length) warnings.push("No hay partes de operación; se conservan los tiempos estándar.");
+  else if (!completedActivityObservations) warnings.push("No hay actividades cerradas con parte vinculado; no se ajustó el tiempo estándar.");
+  if (operations.length > linkedOperationLogs) warnings.push(`${operations.length - linkedOperationLogs} parte(s) no se vincularon a una actividad del DOP y no se usaron para calibrar.`);
 
   return {
     calibratedAt: new Date().toISOString(),
+    trainingMode: completedActivityObservations ? "calibrated" : "baseline_without_history",
     standardTimeBias,
     workerEfficiencyMap,
     workerInconsistencyStdDev,
     stageDowntimeRisk,
     reliabilityScore,
     sampleSizeOperations: operations.length,
-    sampleSizeProgress: progress.length,
-    sampleSizeIncidents: incidents.length
+    linkedOperationLogs,
+    completedActivityObservations,
+    warnings
   };
 }
 
@@ -99,6 +103,59 @@ function addDays(date, days) {
 function formatPeriod(start, end) {
   const formatter = new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "short" });
   return start.getTime() === end.getTime() ? formatter.format(start) : `${formatter.format(start)}–${formatter.format(end)}`;
+}
+
+function seededRandom(seed) {
+  let state = (Number(seed) >>> 0) || 1;
+  return () => {
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function normalSample(random) {
+  const first = Math.max(Number.EPSILON, random());
+  const second = Math.max(Number.EPSILON, random());
+  return Math.sqrt(-2 * Math.log(first)) * Math.cos(2 * Math.PI * second);
+}
+
+function percentile(values, fraction) {
+  if (!values.length) return 0;
+  const ordered = [...values].sort((a, b) => a - b);
+  const position = (ordered.length - 1) * fraction;
+  const lower = Math.floor(position);
+  const upper = Math.min(lower + 1, ordered.length - 1);
+  return ordered[lower] + ((ordered[upper] - ordered[lower]) * (position - lower));
+}
+
+function monteCarloIntervals(dataset, params) {
+  if (params.workerInconsistencyMode !== "stochastic") return null;
+  const runs = Math.max(50, Math.min(1000, Number(params.monteCarloRuns ?? 250)));
+  const seed = Math.max(0, Number(params.randomSeed ?? 42));
+  const random = seededRandom(seed);
+  const workers = (dataset.personnel ?? []).filter((item) => item.active !== false && !["inactive", "absent", "leave"].includes(item.status));
+  const absenceProbability = Math.max(0, Math.min(0.5, Number(params.absenteeismRate ?? 0) / 100));
+  const sigma = Math.max(0, Number(params.inconsistencyStdDev ?? 0) / 100);
+  const values = { throughput: [], pmp: [], lead: [] };
+  for (let index = 0; index < runs; index += 1) {
+    const attendance = workers.length ? workers.filter(() => random() >= absenceProbability).length / workers.length : 1 - absenceProbability;
+    const performance = Math.max(0.45, Math.min(1.55, 1 + (normalSample(random) * sigma)));
+    const laborAvailability = Math.max(5, Math.min(150, Number(params.laborAvailability) * attendance * performance));
+    const sample = calculateScenario(dataset, { ...params, laborAvailability, workerInconsistencyMode: "flat", absenteeismRate: 0 });
+    values.throughput.push(sample.throughput);
+    values.pmp.push(sample.pmpCompliance);
+    values.lead.push(sample.estimatedLeadDays);
+  }
+  return {
+    confidenceLevel: 95, runs, seed,
+    pmpLower: Number(percentile(values.pmp, 0.025).toFixed(1)),
+    pmpUpper: Number(percentile(values.pmp, 0.975).toFixed(1)),
+    leadLower: Number(percentile(values.lead, 0.025).toFixed(1)),
+    leadUpper: Number(percentile(values.lead, 0.975).toFixed(1)),
+    throughputLower: Number(percentile(values.throughput, 0.025).toFixed(1)),
+    throughputUpper: Number(percentile(values.throughput, 0.975).toFixed(1)),
+    method: "Muestreo de rendimiento normal truncado y ausentismo Bernoulli por trabajador disponible."
+  };
 }
 
 function pendingStages(order, product) {
@@ -379,21 +436,31 @@ export function runDigitalTwin(dataset, params = {}) {
     orderComplexityMap: params.orderComplexityMap ?? {},
     orderWorkerAssignments: params.orderWorkerAssignments ?? {},
     orderPriorityOverrides: { ...(params.orderPriorityOverrides ?? {}), ...selectedPriorities },
-    workerInconsistencyMode: params.workerInconsistencyMode ?? "stochastic",
+    workerInconsistencyMode: params.workerInconsistencyMode ?? "flat",
     absenteeismRate: Number(params.absenteeismRate ?? 5),
     inconsistencyStdDev: Number(params.inconsistencyStdDev ?? calibration.workerInconsistencyStdDev),
+    monteCarloRuns: Number(params.monteCarloRuns ?? 250),
+    randomSeed: Number(params.randomSeed ?? 42),
     calibrationData: calibration
   };
 
-  const baseline = calculateScenario(dataset, { ...normalized, laborAvailability: 100, shiftsPerDay: 1, demandPercent: 100, materialAdjustments: {}, priorityCecos: [], expediteCeco: "", orderPriorityOverrides: {} });
-  const scenario = calculateScenario(dataset, normalized);
+  const activeShifts = Math.max(1, Math.min(3, (dataset.shifts ?? []).filter((shift) => shift.active !== false).length || 1));
+  const baseline = calculateScenario(dataset, { ...normalized, laborAvailability: 100, shiftsPerDay: activeShifts, demandPercent: 100, materialAdjustments: {}, priorityCecos: [], expediteCeco: "", orderPriorityOverrides: {}, orderComplexityMap: {}, orderWorkerAssignments: {}, workerInconsistencyMode: "flat", inconsistencyStdDev: 0, absenteeismRate: 0 });
+  const expectedScenario = normalized.workerInconsistencyMode === "stochastic"
+    ? { ...normalized, laborAvailability: normalized.laborAvailability * (1 - (normalized.absenteeismRate / 100)) }
+    : normalized;
+  const scenario = calculateScenario(dataset, expectedScenario);
+  const confidenceIntervals = monteCarloIntervals(dataset, normalized);
 
   const notifications = buildNotifications(dataset, scenario);
   const changes = [
     `Horizonte: ${normalized.horizonDays} días.`,
-    `Personal disponible: ${normalized.laborAvailability}%; ${normalized.shiftsPerDay} turno(s).`,
+    normalized.workerInconsistencyMode === "stochastic"
+      ? `Personal: ausentismo esperado ${normalized.absenteeismRate}% y variación de rendimiento σ=${normalized.inconsistencyStdDev}%; ${normalized.shiftsPerDay} turno(s).`
+      : `Personal disponible: ${normalized.laborAvailability}%; ${normalized.shiftsPerDay} turno(s).`,
     `Demanda considerada: ${normalized.demandPercent}% de las órdenes abiertas.`,
     "Las proyecciones usan el inventario, los CECO abiertos, el BOM, reservas, recursos e incidencias recibidos desde Supabase al ejecutar.",
+    `La base usa el estado operativo registrado y ${activeShifts} turno(s) activo(s), sin ajustes hipotéticos.`,
     Object.keys(normalized.orderComplexityMap).length > 0
       ? `Ajuste de complejidad aplicado a ${Object.keys(normalized.orderComplexityMap).length} orden(es) CECO.`
       : "Complejidad estándar (100%) en todas las órdenes.",
@@ -411,7 +478,15 @@ export function runDigitalTwin(dataset, params = {}) {
     baseline,
     scenario,
     changes,
-    notifications
+    notifications,
+    confidenceIntervals,
+    execution: {
+      engine: "javascript",
+      label: "Motor JavaScript local",
+      fallback: false,
+      model: confidenceIntervals ? "Monte Carlo" : "Determinista",
+      runs: confidenceIntervals?.runs ?? 1
+    }
   };
 }
 

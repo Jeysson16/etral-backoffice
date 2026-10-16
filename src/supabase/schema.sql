@@ -149,6 +149,7 @@ create table if not exists work_shifts (
   start_time time not null,
   end_time time not null,
   break_minutes int not null default 0 check (break_minutes between 0 and 240),
+  days_per_week smallint not null default 1 check (days_per_week between 1 and 7),
   active boolean not null default true
 );
 
@@ -164,6 +165,12 @@ create table if not exists personnel (
   weekly_hours numeric not null default 48 check (weekly_hours between 0 and 84),
   active boolean not null default true,
   created_at timestamptz not null default now()
+);
+
+create table if not exists personnel_work_shifts (
+  personnel_id text not null references personnel(id) on update cascade on delete cascade,
+  shift_id text not null references work_shifts(id) on update cascade on delete restrict,
+  primary key (personnel_id, shift_id)
 );
 
 create table if not exists equipment (
@@ -297,6 +304,7 @@ create index if not exists idx_operation_logs_activity on operation_logs(ceco, a
 create index if not exists idx_warehouse_exits_activity on warehouse_exits(ceco, activity_id);
 create index if not exists idx_inventory_movements_activity on inventory_movements(ceco, activity_id);
 create index if not exists idx_personnel_shift on personnel(shift_id, status) where active;
+create index if not exists idx_personnel_work_shifts_shift on personnel_work_shifts(shift_id, personnel_id);
 create index if not exists idx_equipment_stage on equipment(stage_id, status);
 create index if not exists idx_assignments_person_date on resource_assignments(personnel_id, assigned_date);
 create index if not exists idx_assignments_ceco on resource_assignments(ceco, status);

@@ -93,11 +93,11 @@ insert into ceco_orders (id,ceco,customer,body_type_id,progress,line,status,stag
 ('order-260184','260184','Minerales SAC','body-mixed-rail',31,'Línea 3','orange','stage-cut','En proceso',5,'2026-07-25')
 on conflict (id) do update set progress=excluded.progress,status=excluded.status,stage_id=excluded.stage_id,plant_state=excluded.plant_state,due_date=excluded.due_date;
 
-insert into work_shifts (id,code,name,start_time,end_time,break_minutes,active) values
-('shift-mon-thu','T1','Lunes a jueves','08:00','17:20',60,true),
-('shift-friday','T2','Viernes','08:00','18:00',60,true),
-('shift-saturday','T3','Sábado','08:00','13:00',0,true)
-on conflict (id) do update set code=excluded.code,name=excluded.name,start_time=excluded.start_time,end_time=excluded.end_time,break_minutes=excluded.break_minutes,active=excluded.active;
+insert into work_shifts (id,code,name,start_time,end_time,break_minutes,days_per_week,active) values
+('shift-mon-thu','T1','Lunes a jueves','08:00','17:20',60,4,true),
+('shift-friday','T2','Viernes','08:00','18:00',60,1,true),
+('shift-saturday','T3','Sábado','08:00','13:00',0,1,true)
+on conflict (id) do update set code=excluded.code,name=excluded.name,start_time=excluded.start_time,end_time=excluded.end_time,break_minutes=excluded.break_minutes,days_per_week=excluded.days_per_week,active=excluded.active;
 
 insert into personnel (id,employee_code,name,role,specialty,shift_id,status,efficiency,weekly_hours,active) values
 ('person-001','ETR-001','Luis Medina','Soldador','Soldadura estructural','shift-mon-thu','available',96,47.33,true),
@@ -107,6 +107,14 @@ insert into personnel (id,employee_code,name,role,specialty,shift_id,status,effi
 ('person-005','ETR-005','Jorge Díaz','Inspector','Control de calidad','shift-friday','available',97,47.33,true),
 ('person-006','ETR-006','Claudia Soto','Inspectora','Liberación de producto','shift-mon-thu','absent',95,47.33,true)
 on conflict (id) do update set employee_code=excluded.employee_code,name=excluded.name,role=excluded.role,specialty=excluded.specialty,shift_id=excluded.shift_id,status=excluded.status,efficiency=excluded.efficiency,weekly_hours=excluded.weekly_hours,active=excluded.active;
+
+insert into personnel_work_shifts(personnel_id, shift_id)
+select person.id, shift.id
+from personnel person
+cross join work_shifts shift
+where person.id in ('person-001','person-002','person-003','person-004','person-005','person-006')
+  and shift.id in ('shift-mon-thu','shift-friday','shift-saturday')
+on conflict do nothing;
 
 insert into equipment (id,code,name,stage_id,status,capacity_hours,maintenance_due) values
 ('equipment-cut-01','EQ-COR-01','Cizalla hidráulica','stage-cut','operational',40,'2026-08-05'),

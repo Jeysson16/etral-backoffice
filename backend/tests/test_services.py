@@ -36,11 +36,27 @@ class TwinServiceTests(unittest.TestCase):
         self.assertTrue(result["stage_capacity"][0]["bottleneck"])
 
     def test_comparison_uses_frontend_contract(self):
-        result = simulate_comparison(SimulationInput(snapshot=snapshot(), labor_availability=50, demand_percent=120))
+        result = simulate_comparison(SimulationInput(snapshot=snapshot(), labor_availability=50, demand_percent=120, worker_inconsistency_mode="flat"))
         self.assertIn("baseline", result)
         self.assertIn("scenario", result)
         self.assertIn("stageCapacity", result["scenario"])
         self.assertGreater(result["scenario"]["stageCapacity"][0]["demandHours"], result["baseline"]["stageCapacity"][0]["demandHours"])
+        self.assertEqual(result["scenario"]["pmpSummary"]["onTime"], 0)
+        self.assertEqual(result["execution"]["engine"], "python")
+
+    def test_monte_carlo_returns_reproducible_confidence_intervals(self):
+        input_data = SimulationInput(snapshot=snapshot(), worker_inconsistency_mode="stochastic", monte_carlo_runs=50, random_seed=123)
+        first = simulate_comparison(input_data)
+        second = simulate_comparison(input_data)
+        self.assertEqual(first["confidenceIntervals"], second["confidenceIntervals"])
+        self.assertEqual(first["confidenceIntervals"]["runs"], 50)
+        self.assertLessEqual(first["confidenceIntervals"]["leadLower"], first["confidenceIntervals"]["leadUpper"])
+
+    def test_baseline_discards_scenario_specific_order_assumptions(self):
+        normal = simulate_comparison(SimulationInput(snapshot=snapshot(), worker_inconsistency_mode="flat"))
+        complex_order = simulate_comparison(SimulationInput(snapshot=snapshot(), worker_inconsistency_mode="flat", order_complexity_map={"260180": Decimal("2")}))
+        self.assertEqual(normal["baseline"]["stageCapacity"], complex_order["baseline"]["stageCapacity"])
+        self.assertGreater(complex_order["scenario"]["stageCapacity"][0]["demandHours"], normal["scenario"]["stageCapacity"][0]["demandHours"])
 
     def test_operational_resources_reduce_real_capacity(self):
         constrained_snapshot = snapshot().model_copy(update={

@@ -18,7 +18,7 @@ export const supabaseRepository = {
     // esta migración siguen siendo compatibles porque estas tablas son
     // opcionales hasta que existan en el proyecto remoto.
     const optionalTables = [
-      "customers", "order_material_reservations", "work_shifts", "personnel",
+      "customers", "order_material_reservations", "work_shifts", "personnel", "personnel_work_shifts",
       "equipment", "work_calendar", "resource_assignments", "operational_incidents"
     ];
     const tables = [...requiredTables, ...optionalTables];
@@ -48,7 +48,7 @@ export const supabaseRepository = {
       productFamilies: rows.product_families,
       productionLines: rows.production_lines,
       shifts: rows.work_shifts.map(mapShift),
-      personnel: (rows.personnel ?? []).map(mapPerson),
+      personnel: (rows.personnel ?? []).map((row) => mapPerson(row, rows.personnel_work_shifts ?? [])),
       equipment: (rows.equipment ?? []).map(mapEquipment),
       workCalendar: (rows.work_calendar ?? []).map(mapCalendarDay),
       assignments: (rows.resource_assignments ?? []).map(mapAssignment),
@@ -453,22 +453,22 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async createShift(payload) {
-    const { error } = await supabase.from("work_shifts").insert({ id: `shift-${Date.now()}`, code: payload.code, name: payload.name, start_time: payload.startTime, end_time: payload.endTime, break_minutes: Number(payload.breakMinutes), active: true });
+    const { error } = await supabase.from("work_shifts").insert({ id: `shift-${Date.now()}`, code: payload.code, name: payload.name, start_time: payload.startTime, end_time: payload.endTime, break_minutes: Number(payload.breakMinutes), days_per_week: Number(payload.daysPerWeek), active: true });
     if (error) throw error;
     return this.getDataset();
   },
   async updateShift(id, payload) {
-    const { error } = await supabase.from("work_shifts").update({ code: payload.code, name: payload.name, start_time: payload.startTime, end_time: payload.endTime, break_minutes: Number(payload.breakMinutes) }).eq("id", id);
+    const { error } = await supabase.from("work_shifts").update({ code: payload.code, name: payload.name, start_time: payload.startTime, end_time: payload.endTime, break_minutes: Number(payload.breakMinutes), days_per_week: Number(payload.daysPerWeek) }).eq("id", id);
     if (error) throw error;
     return this.getDataset();
   },
   async createPersonnel(payload) {
-    const { error } = await supabase.from("personnel").insert({ id: `person-${Date.now()}`, employee_code: payload.employeeCode, name: payload.name, role: payload.role, specialty: payload.specialty, shift_id: payload.shiftId || null, status: payload.status, efficiency: Number(payload.efficiency), weekly_hours: Number(payload.weeklyHours), active: true });
+    const { error } = await supabase.rpc("save_personnel_with_shifts", { p_id: "", p_employee_code: payload.employeeCode, p_name: payload.name, p_role: payload.role, p_specialty: payload.specialty || null, p_shift_ids: payload.shiftIds, p_status: payload.status, p_efficiency: Number(payload.efficiency) });
     if (error) throw error;
     return this.getDataset();
   },
   async updatePersonnel(id, payload) {
-    const { error } = await supabase.from("personnel").update({ employee_code: payload.employeeCode, name: payload.name, role: payload.role, specialty: payload.specialty || null, shift_id: payload.shiftId || null, status: payload.status, efficiency: Number(payload.efficiency), weekly_hours: Number(payload.weeklyHours) }).eq("id", id);
+    const { error } = await supabase.rpc("save_personnel_with_shifts", { p_id: id, p_employee_code: payload.employeeCode, p_name: payload.name, p_role: payload.role, p_specialty: payload.specialty || null, p_shift_ids: payload.shiftIds, p_status: payload.status, p_efficiency: Number(payload.efficiency) });
     if (error) throw error;
     return this.getDataset();
   },
@@ -577,8 +577,8 @@ function mapMovement(row) {
   return { id: row.id, type: row.type, code: row.code, ceco: row.ceco || "", stageId: row.stage_id, activityId: row.activity_id, quantity: Number(row.quantity), timestamp: String(row.timestamp).replace("T", " ").slice(0, 16), note: row.note };
 }
 
-function mapShift(row) { return { id: row.id, code: row.code, name: row.name, startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), breakMinutes: Number(row.break_minutes), active: row.active }; }
-function mapPerson(row) { return { id: row.id, employeeCode: row.employee_code, name: row.name, role: row.role, specialty: row.specialty, shiftId: row.shift_id, status: row.status, efficiency: Number(row.efficiency), weeklyHours: Number(row.weekly_hours), active: row.active }; }
+function mapShift(row) { return { id: row.id, code: row.code, name: row.name, startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), breakMinutes: Number(row.break_minutes), daysPerWeek: Number(row.days_per_week || 1), active: row.active }; }
+function mapPerson(row, personnelShifts = []) { const shiftIds = personnelShifts.filter((item) => item.personnel_id === row.id).map((item) => item.shift_id); return { id: row.id, employeeCode: row.employee_code, name: row.name, role: row.role, specialty: row.specialty, shiftId: shiftIds[0] || row.shift_id, shiftIds: shiftIds.length ? shiftIds : row.shift_id ? [row.shift_id] : [], status: row.status, efficiency: Number(row.efficiency), weeklyHours: Number(row.weekly_hours), active: row.active }; }
 function mapEquipment(row) { return { id: row.id, code: row.code, name: row.name, stageId: row.stage_id, status: row.status, capacityHours: Number(row.capacity_hours), maintenanceDue: row.maintenance_due }; }
 function mapCalendarDay(row) { return { id: row.id, date: row.calendar_date, dayType: row.day_type, availableHours: Number(row.available_hours), note: row.note }; }
 function mapAssignment(row) { return { id: row.id, personnelId: row.personnel_id, ceco: row.ceco, activityId: row.activity_id, assignedDate: row.assigned_date, plannedHours: Number(row.planned_hours), status: row.status }; }

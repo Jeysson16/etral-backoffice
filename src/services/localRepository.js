@@ -3,6 +3,7 @@ import { calculateCecoProgress } from "../lib/mrp.js";
 import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/correlatives.js";
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 import { orderProductRoute } from "../lib/productRoutes.js";
+import { personnelWeeklyHours } from "../lib/workShifts.js";
 
 const STORAGE_KEY = "etral.production.dataset.v5";
 
@@ -24,6 +25,11 @@ function load() {
     stageActivities: stored.stageActivities || structuredClone(initialDataset.stageActivities),
     stageInventory: stored.stageInventory || structuredClone(initialDataset.stageInventory)
   };
+  dataset.shifts = (dataset.shifts ?? []).map((shift) => ({ ...shift, daysPerWeek: Number(shift.daysPerWeek || 1) }));
+  dataset.personnel = (dataset.personnel ?? []).map((person) => {
+    const shiftIds = person.shiftIds?.length ? person.shiftIds : person.shiftId ? [person.shiftId] : [];
+    return { ...person, shiftIds, shiftId: shiftIds[0] || null, weeklyHours: personnelWeeklyHours(dataset.shifts, shiftIds) };
+  });
   dataset.bodyTypes = dataset.bodyTypes.map((product) => ({
     ...product,
     route: orderProductRoute(dataset.flowStages, product.route)
@@ -537,26 +543,33 @@ export const localRepository = {
   },
   async createShift(payload) {
     const dataset = load();
-    dataset.shifts.unshift({ id: `shift-${Date.now()}`, ...payload, breakMinutes: Number(payload.breakMinutes), active: true });
+    dataset.shifts.unshift({ id: `shift-${Date.now()}`, ...payload, breakMinutes: Number(payload.breakMinutes), daysPerWeek: Number(payload.daysPerWeek), active: true });
     save(dataset); return dataset;
   },
   async updateShift(id, payload) {
     const dataset = load();
     const row = dataset.shifts.find((item) => item.id === id);
     if (!row) throw new Error("Turno no encontrado.");
-    Object.assign(row, payload, { breakMinutes: Number(payload.breakMinutes) });
+    Object.assign(row, payload, { breakMinutes: Number(payload.breakMinutes), daysPerWeek: Number(payload.daysPerWeek) });
+    dataset.personnel.forEach((person) => { person.weeklyHours = personnelWeeklyHours(dataset.shifts, person.shiftIds || []); });
     save(dataset); return dataset;
   },
   async createPersonnel(payload) {
     const dataset = load();
-    dataset.personnel.unshift({ id: `person-${Date.now()}`, ...payload, efficiency: Number(payload.efficiency), weeklyHours: Number(payload.weeklyHours), active: true });
+    const normalizedName = String(payload.name).trim().toLocaleLowerCase("es");
+    if (dataset.personnel.some((item) => String(item.name).trim().toLocaleLowerCase("es") === normalizedName)) throw new Error("Ya existe un trabajador con ese nombre. Edítalo para cambiar o agregar turnos.");
+    const shiftIds = [...new Set(payload.shiftIds || [])];
+    dataset.personnel.unshift({ id: `person-${Date.now()}`, ...payload, shiftIds, shiftId: shiftIds[0] || null, efficiency: Number(payload.efficiency), weeklyHours: personnelWeeklyHours(dataset.shifts, shiftIds), active: true });
     save(dataset); return dataset;
   },
   async updatePersonnel(id, payload) {
     const dataset = load();
     const row = dataset.personnel.find((item) => item.id === id);
     if (!row) throw new Error("Trabajador no encontrado.");
-    Object.assign(row, payload, { efficiency: Number(payload.efficiency), weeklyHours: Number(payload.weeklyHours) });
+    const normalizedName = String(payload.name).trim().toLocaleLowerCase("es");
+    if (dataset.personnel.some((item) => item.id !== id && String(item.name).trim().toLocaleLowerCase("es") === normalizedName)) throw new Error("Ya existe otro trabajador con ese nombre.");
+    const shiftIds = [...new Set(payload.shiftIds || [])];
+    Object.assign(row, payload, { shiftIds, shiftId: shiftIds[0] || null, efficiency: Number(payload.efficiency), weeklyHours: personnelWeeklyHours(dataset.shifts, shiftIds) });
     save(dataset); return dataset;
   },
   async createEquipment(payload) {
