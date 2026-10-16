@@ -1113,11 +1113,6 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
       </section>}
       {!isRunning && !result && <section className="panel"><EmptyState text={`Ejecuta el escenario para calcularlo con ${twinEngineLabel.toLowerCase()}.`} /></section>}
       {!isRunning && result && <>
-        <section className={`simulation-execution ${result.execution?.fallback ? "fallback" : "verified"}`}>
-          <div><span>Motor ejecutado</span><strong>{result.execution?.label ?? "Motor no identificado"}</strong></div>
-          <div><span>Modelo</span><strong>{result.execution?.model ?? "Determinista"}{result.execution?.runs > 1 ? ` · ${result.execution.runs} corridas` : ""}</strong></div>
-          {result.execution?.fallback && <p>La API Python no respondió. Esta corrida fue calculada con el respaldo local. {result.execution.reason}</p>}
-        </section>
         <section className="comparison-grid">
           {comparisons.map(([label, base, scenario, unit]) => {
             const baseNum = typeof base === "number" ? base : parseFloat(base);

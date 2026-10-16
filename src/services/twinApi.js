@@ -4,7 +4,9 @@ import { supabase } from "../supabase/client.js";
 const configuredApiUrl = import.meta.env.VITE_TWIN_API_URL;
 const baseUrl = (configuredApiUrl || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "")).replace(/\/$/, "");
 const twinEngine = import.meta.env.VITE_TWIN_ENGINE || "browser";
-const API_TIMEOUT_MS = 20_000;
+// Monte Carlo on the free App Service can take longer than an ordinary request.
+// Keep the browser patient before using the local continuity calculation.
+const API_TIMEOUT_MS = 90_000;
 
 function positiveNumberOrNull(value) {
   const numeric = Number(value);
