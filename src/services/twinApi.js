@@ -11,6 +11,39 @@ function positiveNumberOrNull(value) {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
+function pmpSummaryFromSchedule(scenario) {
+  const schedule = scenario?.cecoSchedule ?? [];
+  if (!schedule.length) return null;
+  const evaluable = schedule.filter((row) => row.dueDate);
+  const onTime = evaluable.filter((row) => row.endDate && row.endDate <= row.dueDate).length;
+  return {
+    evaluable: evaluable.length,
+    onTime,
+    withoutDueDate: schedule.length - evaluable.length
+  };
+}
+
+function normalizePythonResult(result) {
+  const pmpSummary = result?.scenario?.pmpSummary ?? pmpSummaryFromSchedule(result?.scenario);
+  const scenario = pmpSummary && !result?.scenario?.pmpSummary
+    ? { ...result.scenario, pmpSummary, pmpCompliance: pmpSummary.evaluable ? Math.round((pmpSummary.onTime / pmpSummary.evaluable) * 100) : 100 }
+    : result.scenario;
+
+  // Older API deployments returned the calculation but not its execution metadata.
+  // Keep their results interpretable while the server catches up with the current contract.
+  return {
+    ...result,
+    scenario,
+    execution: result.execution ?? {
+      engine: "python",
+      label: "Motor Python avanzado",
+      fallback: false,
+      model: result.confidenceIntervals ? "Monte Carlo" : "Determinista",
+      runs: result.confidenceIntervals?.runs ?? 1
+    }
+  };
+}
+
 export function getTwinEngine() {
   return twinEngine;
 }
@@ -82,7 +115,7 @@ export async function runTwinSimulation(dataset, draft) {
       throw new Error(body.detail || "No fue posible ejecutar el gemelo digital.");
     }
     const payload = await response.json();
-    return payload.result;
+    return normalizePythonResult(payload.result);
   } catch (error) {
     console.warn("La API Python no respondió; se usa el motor JS de respaldo.", error);
     const fallback = runDigitalTwin(dataset, simulationDraft);
