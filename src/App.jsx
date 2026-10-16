@@ -1143,7 +1143,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
             <article><span>Cumplimiento PMP</span><strong>{result.confidenceIntervals.pmpLower}%–{result.confidenceIntervals.pmpUpper}%</strong></article>
             <article><span>Lead time</span><strong>{result.confidenceIntervals.leadLower}–{result.confidenceIntervals.leadUpper} días</strong></article>
           </div>
-          <p>{result.confidenceIntervals.method}</p>
+          <p>Variación de rendimiento y ausentismo aplicada a cada trabajador disponible.</p>
         </section>}
 
         <SimulationAlerts notifications={result.notifications} />
