@@ -902,15 +902,36 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
   }
 
   function togglePriorityCeco(ceco) {
-    setDraft((current) => ({
-      ...current,
-      priorityCecos: (current.priorityCecos ?? []).includes(ceco)
-        ? current.priorityCecos.filter((item) => item !== ceco)
-        : [...(current.priorityCecos ?? []), ceco],
-      orderPriorityOverrides: (current.priorityCecos ?? []).includes(ceco)
-        ? Object.fromEntries(Object.entries(current.orderPriorityOverrides ?? {}).filter(([item]) => item !== ceco))
-        : { ...(current.orderPriorityOverrides ?? {}), [ceco]: Number(dataset.orders.find((item) => item.ceco === ceco)?.priority ?? 1) }
-    }));
+    setDraft((current) => {
+      const selected = current.priorityCecos ?? [];
+      const overrides = current.orderPriorityOverrides ?? {};
+      if (selected.includes(ceco)) {
+        return {
+          ...current,
+          priorityCecos: selected.filter((item) => item !== ceco),
+          orderPriorityOverrides: Object.fromEntries(Object.entries(overrides).filter(([item]) => item !== ceco))
+        };
+      }
+
+      // 999 is the database's "not prioritized yet" sentinel, not an actual queue position.
+      // Give selected CECOs a usable, unique position from the outset.
+      const used = new Set(selected
+        .map((item) => Number(overrides[item]))
+        .filter((priority) => Number.isInteger(priority) && priority >= 1 && priority !== 999));
+      let nextPriority = 1;
+      while (used.has(nextPriority)) nextPriority += 1;
+
+      const storedPriority = Number(dataset.orders.find((item) => item.ceco === ceco)?.priority);
+      const initialPriority = Number.isInteger(storedPriority) && storedPriority >= 1 && storedPriority !== 999 && !used.has(storedPriority)
+        ? storedPriority
+        : nextPriority;
+
+      return {
+        ...current,
+        priorityCecos: [...selected, ceco],
+        orderPriorityOverrides: { ...overrides, [ceco]: initialPriority }
+      };
+    });
   }
 
   function updatePriorityCeco(ceco, priority) {
@@ -918,6 +939,41 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
       return { ...current, orderPriorityOverrides: { ...(current.orderPriorityOverrides ?? {}), [ceco]: priority === "" ? "" : Number(priority) } };
     });
   }
+
+  function orderSelectedCecosSequentially() {
+    setDraft((current) => ({
+      ...current,
+      orderPriorityOverrides: Object.fromEntries((current.priorityCecos ?? []).map((ceco, index) => [ceco, index + 1]))
+    }));
+  }
+
+  // Repairs selections created before the UI stopped exposing the database's
+  // "999 = no priority" sentinel as a real queue value.
+  useEffect(() => {
+    setDraft((current) => {
+      const selected = current.priorityCecos ?? [];
+      const overrides = current.orderPriorityOverrides ?? {};
+      const used = new Set();
+      let changed = false;
+      let candidate = 1;
+      const repaired = { ...overrides };
+
+      selected.forEach((ceco) => {
+        const priority = Number(repaired[ceco]);
+        if (Number.isInteger(priority) && priority >= 1 && priority !== 999 && !used.has(priority)) {
+          used.add(priority);
+          return;
+        }
+        while (used.has(candidate)) candidate += 1;
+        repaired[ceco] = candidate;
+        used.add(candidate);
+        candidate += 1;
+        changed = true;
+      });
+
+      return changed ? { ...current, orderPriorityOverrides: repaired } : current;
+    });
+  }, [dataset.orders]);
 
   const materialAdjustmentErrors = (draft.materialAdjustments ?? []).flatMap((adjustment) => {
     const material = dataset.inventory.find((item) => item.code === adjustment.materialCode);
@@ -1031,7 +1087,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           <div className="multi-picker" role="group" aria-label="CECO prioritarios en cola">
             {activeOrders.map((order) => <label key={order.ceco}><input type="checkbox" checked={(draft.priorityCecos ?? []).includes(order.ceco)} onChange={() => togglePriorityCeco(order.ceco)} /><span><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></span></label>)}
           </div>
-          <small>Seleccione varios CECO y asigne el orden exacto de cada uno. Se aceptan órdenes no consecutivos, por ejemplo 1, 12 y 3.</small>
+          <small>El orden 1 se programa primero, luego 2, 3 y así sucesivamente. Al seleccionar un CECO se asigna el siguiente orden libre; el 999 significa “sin prioridad” y no se usa como posición real.</small>
           {(draft.priorityCecos ?? []).length > 0 && <div className="scenario-selection-list priority-order-list">
             {draft.priorityCecos.map((ceco) => {
               const order = activeOrders.find((item) => item.ceco === ceco);
@@ -1042,7 +1098,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
             })}
           </div>}
           {priorityErrors.length > 0 && <small className="form-error">{priorityErrors.join(" ")}</small>}
-          {(draft.priorityCecos ?? []).length > 0 && <button type="button" className="text-button" disabled={priorityErrors.length > 0} onClick={() => onSavePriorities(priorityValues)}>Guardar prioridades reales</button>}
+          {(draft.priorityCecos ?? []).length > 0 && <div className="priority-actions"><button type="button" className="text-button" onClick={orderSelectedCecosSequentially}>Ordenar seleccionados 1 → {draft.priorityCecos.length}</button><button type="button" className="text-button" disabled={priorityErrors.length > 0} onClick={() => onSavePriorities(priorityValues)}>Guardar prioridades reales</button></div>}
         </div>
       </div>
 

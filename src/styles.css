@@ -279,6 +279,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .scenario-selection-list span small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; color: #7c8798; }
 .material-adjustment-list input { width: 76px !important; min-height: 34px !important; text-align: right; }
 .priority-order-list input { width: 72px !important; min-height: 34px !important; text-align: right; }
+.priority-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; }
 .scenario-review { display: grid; gap: 5px; padding: 9px; border: 1px solid #dfe5ec; border-radius: 9px; background: #f8fafc; }
 .scenario-review strong { font-size: 11px; color: #293243; }
 .scenario-review small { color: #607086; }

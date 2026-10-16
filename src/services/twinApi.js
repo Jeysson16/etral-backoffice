@@ -4,6 +4,7 @@ import { supabase } from "../supabase/client.js";
 const configuredApiUrl = import.meta.env.VITE_TWIN_API_URL;
 const baseUrl = (configuredApiUrl || (import.meta.env.DEV ? "http://127.0.0.1:8000" : "")).replace(/\/$/, "");
 const twinEngine = import.meta.env.VITE_TWIN_ENGINE || "browser";
+const API_TIMEOUT_MS = 20_000;
 
 function positiveNumberOrNull(value) {
   const numeric = Number(value);
@@ -54,12 +55,15 @@ export async function runTwinSimulation(dataset, draft) {
   );
   const priority_overrides = Object.fromEntries((simulationDraft.priorityCecos ?? []).map((ceco, index) => [ceco, Number(simulationDraft.orderPriorityOverrides?.[ceco] ?? index + 1)]));
   const { data: { session } = {} } = supabase ? await supabase.auth.getSession() : {};
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {
     const response = await fetch(`${baseUrl}/api/v1/simulations`, {
       method: "POST", headers: {
         "Content-Type": "application/json",
         ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
       },
+      signal: controller.signal,
       body: JSON.stringify({ name: "Simulación desde interfaz", input: {
         snapshot: snapshotFromDataset(dataset), horizon_days: Number(simulationDraft.horizonDays),
         labor_availability: Number(simulationDraft.laborAvailability), shifts_per_day: Number(simulationDraft.shiftsPerDay),
@@ -92,5 +96,7 @@ export async function runTwinSimulation(dataset, draft) {
         reason: error instanceof Error ? error.message : String(error)
       }
     };
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }
