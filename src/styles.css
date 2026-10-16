@@ -334,8 +334,8 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .resource-header > div > span { color: #2b7f68; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }.resource-header h2 { margin: 4px 0; font-size: 17px; color: #192f43; }.resource-header p { color: #7a8998; font-size: 12px; }
 .people-grid { padding: 18px 22px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .person-card { min-width: 0; overflow: hidden; padding: 16px; border: 1px solid #e3e9ee; border-radius: 11px; background: linear-gradient(180deg, #fff, #fafcfd); }
-.person-card > header { min-width: 0; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 12px; }.person-card > header > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: #e8f1f7; color: #2c5f83; font-size: 10px; font-weight: 800; }
-.person-card > header .resource-badge { max-width: 100%; justify-self: end; overflow: hidden; text-overflow: ellipsis; }
+.person-card > header { min-width: 0; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 12px; }.person-card .person-avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: #e8f1f7; color: #2c5f83; font-size: 10px; font-weight: 800; }
+.person-card > header .resource-badge { justify-self: end; }
 .person-card h3 { margin: 12px 0 3px; font-size: 14px; color: #1b3246; }.person-card > p { color: #758697; font-size: 12px; }.person-card dl { margin: 13px 0; display: grid; gap: 7px; }.person-card dl div { min-width: 0; display: flex; justify-content: space-between; gap: 10px; font-size: 11px; }.person-card dt { color: #8996a4; }.person-card dd { min-width: 0; overflow-wrap: anywhere; color: #344d63; text-align: right; font-weight: 600; }
 .person-card footer > div:first-child { display: flex; justify-content: space-between; color: #697c8e; font-size: 11px; }.person-card footer b { color: #1b7259; }.person-card footer small { display: block; margin-top: 5px; color: #9aa5af; font-size: 11px; }.mini-progress { height: 4px; margin-top: 5px; overflow: hidden; border-radius: 4px; background: #e9edf1; }.mini-progress i { display: block; height: 100%; background: linear-gradient(90deg, #39a77d, #63caa3); }
 .resource-badge { box-sizing: border-box; display: inline-flex; align-items: center; width: max-content; max-width: 100%; padding: 4px 8px; border-radius: 999px; color: #526577; background: #edf1f4; font-size: 11px; line-height: 1.2; font-style: normal; font-weight: 700; white-space: nowrap; }
@@ -807,7 +807,7 @@ pre { margin: 7px 0 0; background: #182233; color: #dbe4f0; padding: 11px; borde
 .page-actions > div:first-child span,
 .feed-orbit span,
 .resource-tabs button b,
-.person-card > header > span,
+.person-card .person-avatar,
 .calendar-grid time span,
 .simulation-note p,
 .comparison-grid article > span,
