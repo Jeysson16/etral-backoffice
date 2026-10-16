@@ -2,6 +2,7 @@ import { supabase } from "../supabase/client.js";
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 import { orderProductRoute } from "../lib/productRoutes.js";
 import { effectiveOrderStageId } from "../lib/mrp.js";
+import { toLocalDateTimeInput, toUtcTimestamp } from "../lib/dateTime.js";
 
 export function hasSupabaseConfig() {
   return Boolean(import.meta.env.VITE_SUPABASE_URL && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY));
@@ -113,7 +114,15 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async updateActivityProgress(ceco, activityId, patch) {
-    const { error } = await supabase.rpc("set_order_activity_progress", { p_ceco: ceco, p_activity_id: activityId, p_status: patch.status, p_progress: Number(patch.progress) });
+    const { error } = await supabase.rpc("set_order_activity_progress", {
+      p_ceco: ceco,
+      p_activity_id: activityId,
+      p_status: patch.status,
+      p_progress: Number(patch.progress),
+      p_started_at: patch.updateTimestamps ? toUtcTimestamp(patch.startedAt) : null,
+      p_finished_at: patch.updateTimestamps ? toUtcTimestamp(patch.finishedAt) : null,
+      p_update_timestamps: Boolean(patch.updateTimestamps)
+    });
     if (error) throw error;
     return this.getDataset();
   },
@@ -297,7 +306,12 @@ export const supabaseRepository = {
       const { error: updateError } = await supabase.from("inventory_items").update(patch).eq("code", payload.code);
       if (updateError) throw updateError;
     }
-    const { error } = await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: payload.type, code: payload.code, ceco: payload.ceco || "", quantity, note: payload.note });
+    const { error } = await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: payload.type, code: payload.code, ceco: payload.ceco || "", quantity, timestamp: toUtcTimestamp(payload.timestamp) || new Date().toISOString(), note: payload.note });
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async updateInventoryMovementTimestamp(id, timestamp) {
+    const { error } = await supabase.from("inventory_movements").update({ timestamp: toUtcTimestamp(timestamp) }).eq("id", id);
     if (error) throw error;
     return this.getDataset();
   },
@@ -312,7 +326,8 @@ export const supabaseRepository = {
       p_material_code: payload.code,
       p_quantity: Number(payload.quantity),
       p_movement_type: payload.type,
-      p_note: payload.note || null
+      p_note: payload.note || null,
+      p_timestamp: toUtcTimestamp(payload.timestamp)
     });
     if (error) throw error;
     return this.getDataset();
@@ -557,7 +572,7 @@ function mapStageInventory(row) {
 }
 
 function mapActivityProgress(row) {
-  return { id: row.id, ceco: row.ceco, activityId: row.activity_id, status: row.status, progress: Number(row.progress), startedAt: row.started_at ? String(row.started_at).replace("T", " ").slice(0, 16) : null, finishedAt: row.finished_at ? String(row.finished_at).replace("T", " ").slice(0, 16) : null, plannedStartDate: row.planned_start_date || null, plannedEndDate: row.planned_end_date || null };
+  return { id: row.id, ceco: row.ceco, activityId: row.activity_id, status: row.status, progress: Number(row.progress), startedAt: toLocalDateTimeInput(row.started_at) || null, finishedAt: toLocalDateTimeInput(row.finished_at) || null, plannedStartDate: row.planned_start_date || null, plannedEndDate: row.planned_end_date || null };
 }
 
 function mapOrder(row) {
@@ -584,7 +599,7 @@ function mapQuality(row) {
 }
 
 function mapMovement(row) {
-  return { id: row.id, type: row.type, code: row.code, ceco: row.ceco || "", stageId: row.stage_id, activityId: row.activity_id, quantity: Number(row.quantity), timestamp: String(row.timestamp).replace("T", " ").slice(0, 16), note: row.note };
+  return { id: row.id, type: row.type, code: row.code, ceco: row.ceco || "", stageId: row.stage_id, activityId: row.activity_id, quantity: Number(row.quantity), timestamp: toLocalDateTimeInput(row.timestamp).replace("T", " "), note: row.note };
 }
 
 function mapShift(row) { return { id: row.id, code: row.code, name: row.name, startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), breakMinutes: Number(row.break_minutes), daysPerWeek: Number(row.days_per_week || 1), active: row.active }; }

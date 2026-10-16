@@ -213,6 +213,10 @@ table.compact td { padding-top: 10px; padding-bottom: 10px; }
 .movement-type.ingreso { background: #e9f7ef; color: #08753e; }
 .movement-type.salida, .movement-type.consumo { background: #fff0e8; color: #b5480f; }
 .movement-type.reserva { background: #edf3ff; color: #315da9; }
+.movement-time-editor { display: flex; align-items: center; gap: 7px; min-width: 270px; }
+.movement-time-editor input { min-width: 170px; min-height: 34px !important; padding: 6px 8px !important; }
+.movement-time-editor .row-action { min-height: 34px; }
+.movement-time-editor .row-action:disabled { cursor: default; opacity: .45; }
 
 .twin-layout { display: grid; grid-template-columns: minmax(260px, 330px) minmax(0, 1fr); align-items: start; gap: 20px; }
 .scenario-panel { padding-bottom: 20px; position: sticky; top: 18px; }
@@ -619,6 +623,13 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .activity-control .start-activity { justify-self: stretch; color: #087451; background: #e5f6ed; }
 .activity-control input[type="checkbox"] { accent-color: #169457; }
 .activity-control b { color: #5d6878; font-size: 11px; text-align: right; }
+.activity-time-editor { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; gap: 8px; align-items: end; padding: 5px 0 8px 20px; }
+.activity-time-editor label { display: grid; gap: 4px; }
+.activity-time-editor label span { color: #6f7b89; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.activity-time-editor input { width: 100%; min-height: 34px; border: 1px solid #d8dee6; border-radius: 8px; padding: 5px 7px; color: #334155; background: #fff; font: inherit; font-size: 11px; }
+.activity-time-editor input:disabled { color: #9aa3af; background: #f4f6f8; }
+.activity-time-editor .row-action { min-height: 34px; white-space: nowrap; }
+.activity-time-editor .field-error { grid-column: 1 / -1; color: #b42318; font-size: 10px; }
 .drawer-materials { padding: 0 22px 20px; }
 .drawer-materials article { display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(100px, .7fr) 72px 60px; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #edf0f3; }
 .drawer-materials article > div { display: grid; gap: 3px; min-width: 0; }
@@ -956,6 +967,7 @@ pre,
   .drawer-materials article { grid-template-columns: 1fr auto; }
   .drawer-materials article > span { grid-column: 1; }
   .activity-control, .customer-fields, .quality-control { grid-template-columns: 1fr; }
+  .activity-time-editor { grid-column: 1; grid-template-columns: 1fr; padding-left: 0; }
   .customer-detail { grid-template-columns: 1fr; }
   .resource-feed-banner { grid-template-columns: auto 1fr; padding: 20px; }
   .resource-feed-banner aside { grid-column: 1 / -1; padding: 12px 0 0; border-left: 0; border-top: 1px solid rgba(255,255,255,.18); }

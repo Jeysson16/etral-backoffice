@@ -4,6 +4,7 @@ import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/cor
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 import { orderProductRoute } from "../lib/productRoutes.js";
 import { personnelWeeklyHours } from "../lib/workShifts.js";
+import { toLocalDateTimeInput } from "../lib/dateTime.js";
 
 const STORAGE_KEY = "etral.production.dataset.v5";
 
@@ -47,8 +48,8 @@ function addMovement(dataset, movement) {
   dataset.inventoryMovements = dataset.inventoryMovements || [];
   dataset.inventoryMovements.unshift({
     id: newInternalId("mov"),
-    timestamp: new Date().toISOString().slice(0, 16).replace("T", " "),
-    ...movement
+    ...movement,
+    timestamp: toLocalDateTimeInput(movement.timestamp || new Date().toISOString()).replace("T", " ")
   });
 }
 
@@ -126,7 +127,11 @@ function setActivityProgress(dataset, ceco, activityId, patch) {
   const progress = Math.max(0, Math.min(100, Number(patch.progress ?? current.progress)));
   const status = patch.status ?? (progress === 100 ? "completed" : progress > 0 ? "in_progress" : "pending");
   const now = new Date().toISOString().slice(0, 16).replace("T", " ");
-  const next = { ...current, ...patch, progress, status, startedAt: status === "pending" ? null : current.startedAt || now, finishedAt: status === "completed" ? current.finishedAt || now : null };
+  if (patch.updateTimestamps && !patch.startedAt) throw new Error("La fecha y hora de inicio son obligatorias");
+  if (patch.updateTimestamps && status === "completed" && !patch.finishedAt) throw new Error("La fecha y hora de fin son obligatorias para una actividad completada");
+  if (patch.updateTimestamps && patch.finishedAt && patch.finishedAt < patch.startedAt) throw new Error("La fecha y hora de fin no pueden ser anteriores al inicio");
+  const next = { ...current, ...patch, progress, status, startedAt: status === "pending" ? null : patch.updateTimestamps ? patch.startedAt : current.startedAt || now, finishedAt: status === "completed" ? patch.updateTimestamps ? patch.finishedAt : current.finishedAt || now : null };
+  delete next.updateTimestamps;
   if (index >= 0) dataset.activityProgress[index] = next; else dataset.activityProgress.push(next);
   const currentStageIndex = product.route.indexOf(order.stageId);
   const activityStageIndex = product.route.indexOf(activity.stageId);
@@ -367,6 +372,14 @@ export const localRepository = {
       return item;
     });
     addMovement(dataset, { ...payload, quantity });
+    save(dataset);
+    return dataset;
+  },
+  async updateInventoryMovementTimestamp(id, timestamp) {
+    const dataset = load();
+    const movement = (dataset.inventoryMovements ?? []).find((item) => item.id === id);
+    if (!movement) throw new Error("Movimiento de inventario no encontrado");
+    movement.timestamp = toLocalDateTimeInput(timestamp).replace("T", " ");
     save(dataset);
     return dataset;
   },
