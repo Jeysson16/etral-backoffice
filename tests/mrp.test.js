@@ -58,6 +58,15 @@ test("consolida el material requerido por fase de cada producto", () => {
   assert.equal(rows.reduce((sum, item) => sum + item.quantity, 0), expected);
 });
 
+test("mantiene separados los materiales de fases Excel distintas", () => {
+  const rows = materialRequirementsByStage("producto-1", [
+    { bodyTypeId: "producto-1", stageId: "stage-assembly", sourcePhaseCode: "4", materialCode: "MAT-01", quantity: 2 },
+    { bodyTypeId: "producto-1", stageId: "stage-assembly", sourcePhaseCode: "5", materialCode: "MAT-01", quantity: 3 }
+  ]);
+
+  assert.deepEqual(rows.map((item) => [item.sourcePhaseCode, item.quantity]), [["4", 2], ["5", 3]]);
+});
+
 test("gemelo digital muestra el efecto de menor disponibilidad de personal", () => {
   const result = runDigitalTwin(initialDataset, { laborAvailability: 45, horizonDays: 7, shiftsPerDay: 1 });
   const baselineAssembly = result.baseline.stageCapacity.find((stage) => stage.stageId === "stage-assembly");

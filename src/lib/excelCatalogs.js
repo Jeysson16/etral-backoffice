@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx-js-style";
+import XLSX from "xlsx-js-style";
 import { addExportTitle, styleInstructionSheet, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 
 const normalize = (value) => String(value ?? "")
@@ -11,7 +11,7 @@ const aliases = {
   marca: "brand", ubicacion: "location", stock_fisico: "physical", stock_inicial: "physical", stock_seguridad: "safety",
   factor_servicio: "serviceFactor", desviacion_demanda: "demandStdDev", plazo_reposicion_dias: "leadTimeDays",
   costo_unitario: "unitCost", moneda: "currency", familia: "family", unidad_salida: "outputUnit",
-  dias_objetivo: "targetDays", ruta_fases: "route", codigo_fase: "stageCode", longitud_mm: "lengthMm", cantidad: "quantity"
+  dias_objetivo: "targetDays", ruta_fases: "route", codigo_fase: "stageCode", codigo_fase_origen: "sourcePhaseCode", fase_origen: "sourcePhaseCode", longitud_mm: "lengthMm", cantidad: "quantity"
 };
 
 const bulkAliases = {
@@ -55,7 +55,7 @@ export async function parseCatalogWorkbook(file) {
   }));
   const bom = rowsFor(workbook, "BOM").filter((row) => text(row.productCode) || text(row.code)).map((row, index) => ({
     row: row.__row ?? index + 2, productCode: text(row.productCode) || text(row.code), materialCode: text(row.materialCode) || text(row.code), pieceCode: text(row.pieceCode),
-    description: text(row.description), stageCode: text(row.stageCode), lengthMm: numeric(row.lengthMm), quantity: numeric(row.quantity)
+    description: text(row.description), stageCode: text(row.stageCode), sourcePhaseCode: text(row.sourcePhaseCode), lengthMm: numeric(row.lengthMm), quantity: numeric(row.quantity)
   }));
   if (!materials.length && !products.length && !bom.length) throw new Error("No se encontraron registros. Usa las hojas Materiales, Productos y/o BOM de la plantilla.");
   return { materials, products, bom, mode: "pestañas" };
@@ -100,7 +100,7 @@ function parseBulkWorkbook(rows) {
     const key = `${productCode}::${pieceCode}`;
     if (bomByKey.has(key)) throw new Error(`Carga masiva fila ${line}: el código de pieza ${pieceCode} se repite para ${productCode}.`);
     bomByKey.set(key, {
-      row: line, productCode, materialCode, pieceCode, description, stageCode, lengthMm: numeric(row.lengthMm), quantity
+      row: line, productCode, materialCode, pieceCode, description, stageCode, sourcePhaseCode: text(row.sourcePhaseCode), lengthMm: numeric(row.lengthMm), quantity
     });
   });
 
@@ -119,7 +119,7 @@ export function downloadCatalogWorkbook(dataset, type = "all") {
   }
   if (type === "all" || type === "products") {
     const products = dataset.bodyTypes.map((item) => ({ "Código": item.code, "Nombre producto": item.name, "Familia": item.family, "Marca": dataset.catalogs.brands.find((brand) => brand.id === item.brandId)?.name ?? "", "Unidad salida": item.outputUnit, "Días objetivo": item.targetDays, "Ruta fases": item.route.map((id) => dataset.flowStages.find((stage) => stage.id === id)?.code ?? id).join(";") }));
-    const bom = dataset.bom.map((item) => ({ "Código producto": dataset.bodyTypes.find((product) => product.id === item.bodyTypeId)?.code ?? "", "Código material": item.materialCode, "Código pieza": item.pieceCode, "Descripción": item.description, "Código fase": dataset.flowStages.find((stage) => stage.id === item.stageId)?.code ?? item.stageId, "Longitud mm": item.lengthMm ?? 0, "Cantidad": item.quantity }));
+    const bom = dataset.bom.map((item) => ({ "Código producto": dataset.bodyTypes.find((product) => product.id === item.bodyTypeId)?.code ?? "", "Código material": item.materialCode, "Código pieza": item.pieceCode, "Descripción": item.description, "Código fase": dataset.flowStages.find((stage) => stage.id === item.stageId)?.code ?? item.stageId, "Código fase origen": item.sourcePhaseCode ?? "", "Longitud mm": item.lengthMm ?? 0, "Cantidad": item.quantity }));
     const productSheet = XLSX.utils.json_to_sheet(addExportTitle(products.length ? products : [productTemplateRow()], "PRODUCTOS", "Plantillas maestras y rutas de fabricación"));
     XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(productSheet, { headerRow: 3, titleRow: 0, numberFormats: { 5: "0" } }), "Productos");
     const bomSheet = XLSX.utils.json_to_sheet(addExportTitle(bom.length ? bom : [bomTemplateRow()], "LISTA DE MATERIALES (BOM)", "Material requerido por producto y fase"));
@@ -140,7 +140,7 @@ export function downloadBulkImportWorkbook(dataset) {
       "Código fase": stage?.code ?? "", "Código material": material?.code ?? piece.materialCode, "Descripción material": material?.description ?? piece.description,
       "Categoría material": material?.category ?? "Sin categoría", "Unidad material": material?.unit ?? "und", "Marca material": dataset.catalogs.brands.find((brand) => brand.id === material?.brandId)?.name ?? "",
       "Ubicación material": material?.location ?? "", "Stock físico": material?.physical ?? 0, "Stock seguridad": material?.safety ?? 0,
-      "Código pieza": piece.pieceCode ?? "", "Longitud mm": piece.lengthMm ?? 0, "Cantidad": piece.quantity
+      "Código pieza": piece.pieceCode ?? "", "Código fase origen": piece.sourcePhaseCode ?? "", "Longitud mm": piece.lengthMm ?? 0, "Cantidad": piece.quantity
     };
   });
   const bulkSheet = XLSX.utils.json_to_sheet(addExportTitle(rows.length ? rows : [bulkTemplateRow()], "CARGA MASIVA", "Una fila por material y fase del producto"));
@@ -161,5 +161,5 @@ export function downloadBulkImportWorkbook(dataset) {
 
 export const materialTemplateRow = () => ({ "Código": "Opcional: MAT-0001", "Descripción": "Plancha galvanizada 1.5 mm", "Categoría": "Planchas y perfiles", "Unidad": "und", "Marca": "", "Ubicación": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Factor servicio": 1.65, "Desviación demanda": "", "Plazo reposición días": "", "Costo unitario": 0, "Moneda": "PEN" });
 export const productTemplateRow = () => ({ "Código": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca": "ETRAL", "Unidad salida": "und", "Días objetivo": 15, "Ruta fases": "SUM;HAB;ARM;SOL;PIN;ACA" });
-export const bomTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Código material": "MAT-0001", "Código pieza": "BOM-001", "Descripción": "Plancha galvanizada 1.5 mm", "Código fase": "HAB", "Longitud mm": 0, "Cantidad": 2 });
-export const bulkTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca producto": "ETRAL", "Unidad salida": "und", "Días objetivo": 15, "Código fase": "HAB", "Código material": "MAT-0001", "Descripción material": "Plancha galvanizada 1.5 mm", "Categoría material": "Planchas y perfiles", "Unidad material": "und", "Marca material": "", "Ubicación material": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Código pieza": "", "Longitud mm": 0, "Cantidad": 2 });
+export const bomTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Código material": "MAT-0001", "Código pieza": "BOM-001", "Descripción": "Plancha galvanizada 1.5 mm", "Código fase": "HAB", "Código fase origen": "1", "Longitud mm": 0, "Cantidad": 2 });
+export const bulkTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca producto": "ETRAL", "Unidad salida": "und", "Días objetivo": 15, "Código fase": "HAB", "Código fase origen": "1", "Código material": "MAT-0001", "Descripción material": "Plancha galvanizada 1.5 mm", "Categoría material": "Planchas y perfiles", "Unidad material": "und", "Marca material": "", "Ubicación material": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Código pieza": "", "Longitud mm": 0, "Cantidad": 2 });

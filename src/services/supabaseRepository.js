@@ -233,7 +233,7 @@ export const supabaseRepository = {
       const stage = finalDataset.flowStages.find((item) => item.id === row.stageCode || item.code === row.stageCode);
       if (!product || !material || !stage || !row.pieceCode || Number(row.quantity) <= 0) throw new Error(`BOM fila ${row.row}: producto, material, fase, código de pieza y cantidad deben ser válidos.`);
       const existing = finalDataset.bom.find((item) => item.bodyTypeId === product.id && item.pieceCode === row.pieceCode);
-      const data = { body_type_id: product.id, stage_id: stage.id, material_code: material.code, piece_code: row.pieceCode, description: row.description || material.description, length_mm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
+      const data = { body_type_id: product.id, stage_id: stage.id, source_phase_code: row.sourcePhaseCode || null, material_code: material.code, piece_code: row.pieceCode, description: row.description || material.description, length_mm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
       bomRows.push({ id: existing?.id || `bom-import-${slug(product.code)}-${slug(row.pieceCode)}`, ...data });
     }
     if (bomRows.length) {
@@ -410,6 +410,7 @@ export const supabaseRepository = {
       id: `bom-${Date.now()}`,
       body_type_id: payload.bodyTypeId,
       stage_id: payload.stageId,
+      source_phase_code: payload.sourcePhaseCode || null,
       material_code: payload.materialCode,
       piece_code: payload.pieceCode,
       description: payload.description,
@@ -428,7 +429,7 @@ export const supabaseRepository = {
     payloads.forEach((payload, index) => {
       if (!payload.bodyTypeId || !payload.stageId || !payload.materialCode || Number(payload.quantity) <= 0) throw new Error("Cada asignación requiere producto, fase, material y una cantidad válida.");
       const existing = dataset.bom.find((item) => item.id === payload.id || (item.bodyTypeId === payload.bodyTypeId && item.stageId === payload.stageId && item.materialCode === payload.materialCode));
-      const data = { body_type_id: payload.bodyTypeId, stage_id: payload.stageId, material_code: payload.materialCode, piece_code: existing?.pieceCode || payload.pieceCode, description: payload.description, length_mm: Number(payload.lengthMm || 0), quantity: Number(payload.quantity) };
+      const data = { body_type_id: payload.bodyTypeId, stage_id: payload.stageId, source_phase_code: payload.sourcePhaseCode || existing?.sourcePhaseCode || null, material_code: payload.materialCode, piece_code: existing?.pieceCode || payload.pieceCode, description: payload.description, length_mm: Number(payload.lengthMm || 0), quantity: Number(payload.quantity) };
       if (existing) updates.push(supabase.from("bom_items").update(data).eq("id", existing.id));
       else inserts.push({ id: `bom-quick-${stamp}-${index}`, ...data });
     });
@@ -438,7 +439,7 @@ export const supabaseRepository = {
     return this.getDataset();
   },
   async updateBomItem(id, patch) {
-    const { error } = await supabase.from("bom_items").update({ material_code: patch.materialCode, piece_code: patch.pieceCode, description: patch.description, stage_id: patch.stageId, length_mm: Number(patch.lengthMm || 0), quantity: Number(patch.quantity) }).eq("id", id);
+    const { error } = await supabase.from("bom_items").update({ material_code: patch.materialCode, piece_code: patch.pieceCode, description: patch.description, stage_id: patch.stageId, source_phase_code: patch.sourcePhaseCode || null, length_mm: Number(patch.lengthMm || 0), quantity: Number(patch.quantity) }).eq("id", id);
     if (error) throw error;
     return this.getDataset();
   },
@@ -544,7 +545,7 @@ function mapInventory(row) {
 }
 
 function mapBom(row) {
-  return { id: row.id, bodyTypeId: row.body_type_id, stageId: row.stage_id, materialCode: row.material_code, pieceCode: row.piece_code, description: row.description, lengthMm: Number(row.length_mm), quantity: Number(row.quantity) };
+  return { id: row.id, bodyTypeId: row.body_type_id, stageId: row.stage_id, sourcePhaseCode: row.source_phase_code || "", materialCode: row.material_code, pieceCode: row.piece_code, description: row.description, lengthMm: Number(row.length_mm), quantity: Number(row.quantity) };
 }
 
 function mapActivity(row) {

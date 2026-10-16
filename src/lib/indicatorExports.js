@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx-js-style";
+import XLSX from "xlsx-js-style";
 import { buildIndicatorSeries } from "./productivity.js";
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 

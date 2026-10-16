@@ -109,8 +109,9 @@ export function calculateCecoProgress(order, bodyTypes, stageActivities, activit
 export function materialRequirementsByStage(productId, bom) {
   const grouped = new Map();
   bom.filter((item) => item.bodyTypeId === productId).forEach((piece) => {
-    const key = `${piece.stageId}::${piece.materialCode}`;
-    const current = grouped.get(key) ?? { stageId: piece.stageId, materialCode: piece.materialCode, quantity: 0, pieces: [] };
+    const sourcePhaseCode = String(piece.sourcePhaseCode || "").trim();
+    const key = `${sourcePhaseCode || piece.stageId}::${piece.materialCode}`;
+    const current = grouped.get(key) ?? { stageId: piece.stageId, sourcePhaseCode, materialCode: piece.materialCode, quantity: 0, pieces: [] };
     current.quantity += Number(piece.quantity ?? 0);
     current.pieces.push(piece);
     grouped.set(key, current);

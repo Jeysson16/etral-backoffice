@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import { addExportTitle, styleWorkbookSheet } from "../src/lib/excelWorkbookStyle.js";
 
 test("da título, encabezados y filtro a una exportación", () => {

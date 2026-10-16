@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 import { parseCatalogWorkbook } from "../src/lib/excelCatalogs.js";
 
 function workbookFile(sheets) {
@@ -12,7 +12,7 @@ function workbookFile(sheets) {
 test("interpreta una carga masiva por producto, fase y material", async () => {
   const file = workbookFile({
     "Carga masiva": [
-      { "Código producto": "FUR-01", "Nombre producto": "Furgón", Familia: "Furgones", "Código fase": "HAB", "Código material": "MAT-01", "Descripción material": "Plancha", "Unidad material": "und", Cantidad: 2 },
+      { "Código producto": "FUR-01", "Nombre producto": "Furgón", Familia: "Furgones", "Código fase": "HAB", "Código fase origen": "5", "Código material": "MAT-01", "Descripción material": "Plancha", "Unidad material": "und", Cantidad: 2 },
       { "Código producto": "FUR-01", "Nombre producto": "Furgón", Familia: "Furgones", "Código fase": "ARM", "Código material": "MAT-02", "Descripción material": "Perfil", "Unidad material": "m", "Código pieza": "PERFIL-01", Cantidad: 4 }
     ]
   });
@@ -24,6 +24,7 @@ test("interpreta una carga masiva por producto, fase y material", async () => {
   assert.deepEqual(result.products[0].route, ["HAB", "ARM"]);
   assert.equal(result.materials.length, 2);
   assert.equal(result.bom[0].pieceCode, "AUTO-FUR-01-HAB-MAT-01");
+  assert.equal(result.bom[0].sourcePhaseCode, "5");
   assert.equal(result.bom[1].pieceCode, "PERFIL-01");
 });
 

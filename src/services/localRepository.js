@@ -309,7 +309,7 @@ export const localRepository = {
       const stage = dataset.flowStages.find((item) => item.id === row.stageCode || item.code === row.stageCode);
       if (!product || !material || !stage || !row.pieceCode || Number(row.quantity) <= 0) throw new Error(`BOM fila ${row.row}: producto, material, fase, código de pieza y cantidad deben ser válidos.`);
       const existing = dataset.bom.find((item) => item.bodyTypeId === product.id && item.pieceCode === row.pieceCode);
-      const data = { bodyTypeId: product.id, stageId: stage.id, materialCode: material.code, pieceCode: row.pieceCode, description: row.description || material.description, lengthMm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
+      const data = { bodyTypeId: product.id, stageId: stage.id, sourcePhaseCode: row.sourcePhaseCode || "", materialCode: material.code, pieceCode: row.pieceCode, description: row.description || material.description, lengthMm: Number(row.lengthMm || 0), quantity: Number(row.quantity) };
       if (existing) Object.assign(existing, data); else dataset.bom.unshift({ id: `bom-import-${slug(product.code)}-${slug(row.pieceCode)}`, ...data });
     }
     const importedProductCodes = new Set((payload.bom || []).map((row) => row.productCode));

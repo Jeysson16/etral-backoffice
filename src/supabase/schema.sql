@@ -92,6 +92,7 @@ create table if not exists bom_items (
   id text primary key,
   body_type_id text not null references body_types(id) on delete cascade,
   stage_id text references flow_stages(id),
+  source_phase_code text,
   material_code text not null references inventory_items(code),
   piece_code text not null,
   description text not null,
