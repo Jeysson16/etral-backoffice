@@ -2,6 +2,20 @@ export function availableStock(item) {
   return Number(item.physical) - Number(item.committed);
 }
 
+export function effectiveOrderStageId(order, bodyTypes, stageActivities, activityProgress = []) {
+  const route = bodyTypes.find((item) => item.id === order?.bodyTypeId)?.route ?? [];
+  if (!route.length) return order?.stageId ?? null;
+
+  const firstIncomplete = route.find((stageId) => {
+    const activities = stageActivities.filter((item) => item.stageId === stageId && item.active !== false);
+    return activities.length > 0 && activities.some((activity) => (
+      activityProgress.find((item) => item.ceco === order.ceco && item.activityId === activity.id)?.status !== "completed"
+    ));
+  });
+
+  return firstIncomplete ?? route.at(-1);
+}
+
 export function calculateSafetyStock(item) {
   const z = Number(item.serviceFactor);
   const deviation = Number(item.demandStdDev);

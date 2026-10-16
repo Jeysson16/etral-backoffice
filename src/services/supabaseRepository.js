@@ -1,6 +1,7 @@
 import { supabase } from "../supabase/client.js";
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 import { orderProductRoute } from "../lib/productRoutes.js";
+import { effectiveOrderStageId } from "../lib/mrp.js";
 
 export function hasSupabaseConfig() {
   return Boolean(import.meta.env.VITE_SUPABASE_URL && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY));
@@ -28,16 +29,24 @@ export const supabaseRepository = {
     const optionalFailure = results.slice(requiredTables.length).find((result) => result.error && !["PGRST205", "42P01"].includes(result.error.code));
     if (optionalFailure) throw optionalFailure.error;
     const rows = Object.fromEntries(tables.map((table, index) => [table, results[index].error ? [] : results[index].data]));
+    const flowStages = rows.flow_stages.map(mapStage);
+    const stageActivities = rows.stage_activities.map(mapActivity);
+    const activityProgress = rows.ceco_activity_progress.map(mapActivityProgress);
+    const bodyTypes = rows.body_types.map((row) => mapBodyType(row, rows.product_routes));
+    const orders = rows.ceco_orders.map(mapOrder).map((order) => ({
+      ...order,
+      stageId: effectiveOrderStageId(order, bodyTypes, stageActivities, activityProgress)
+    }));
 
     return {
-      flowStages: rows.flow_stages.map(mapStage),
-      stageActivities: rows.stage_activities.map(mapActivity),
+      flowStages,
+      stageActivities,
       stageInventory: rows.stage_inventory.map(mapStageInventory),
-      activityProgress: rows.ceco_activity_progress.map(mapActivityProgress),
-      bodyTypes: rows.body_types.map((row) => mapBodyType(row, rows.product_routes)),
+      activityProgress,
+      bodyTypes,
       inventory: rows.inventory_items.map(mapInventory),
       bom: rows.bom_items.map(mapBom),
-      orders: rows.ceco_orders.map(mapOrder),
+      orders,
       customers: rows.customers.length ? rows.customers.map(mapCustomer) : legacyCustomers(rows.ceco_orders),
       orderMaterialReservations: rows.order_material_reservations.map(mapReservation),
       operations: rows.operation_logs.map(mapOperation),

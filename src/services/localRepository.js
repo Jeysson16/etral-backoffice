@@ -1,5 +1,5 @@
 import { initialDataset } from "../data/seed.js";
-import { calculateCecoProgress } from "../lib/mrp.js";
+import { calculateCecoProgress, effectiveOrderStageId } from "../lib/mrp.js";
 import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/correlatives.js";
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 import { orderProductRoute } from "../lib/productRoutes.js";
@@ -106,6 +106,7 @@ function recalculateOrder(dataset, ceco) {
   const shortage = dataset.orderMaterialReservations?.some((item) => item.ceco === ceco && item.reservedQuantity < item.requiredQuantity);
   const blocked = progresses.some((item) => item.status === "blocked");
   const completed = activities.length > 0 && progresses.every((item) => item.status === "completed");
+  order.stageId = effectiveOrderStageId(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress);
   order.status = shortage || blocked ? "red" : completed ? "green" : "orange";
   order.plantState = shortage ? "Bloqueado por material" : blocked ? "Actividad bloqueada" : completed ? "Completado" : "En proceso";
 }
