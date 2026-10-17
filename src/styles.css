@@ -773,6 +773,23 @@ pre { margin: 7px 0 0; background: #182233; color: #dbe4f0; padding: 11px; borde
 .drawer-related-actions .row-action { padding: 6px 8px; font-size: 10px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-info { background: #f2f6fa; color: #5d7185; border: 1px solid #d7e2ec; border-radius: 8px; padding: 11px; font-size: 9px; line-height: 1.5; }
+.activity-registration-summary { overflow: hidden; border: 1px solid #bfe1cf; border-radius: 9px; background: #f1faf5; }
+.activity-registration-summary > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; }
+.activity-registration-summary > header > div, .activity-registration-summary.empty > div { display: grid; gap: 2px; }
+.activity-registration-summary span { color: #5d7b6d; font-size: 9px; font-weight: 750; }
+.activity-registration-summary strong { color: #176441; font-size: 11px; }
+.activity-registration-summary > header > b { min-width: 28px; padding: 5px 8px; border-radius: 999px; color: #176441; background: #d9f1e4; font-size: 10px; text-align: center; }
+.activity-registration-list { max-height: 142px; overflow-y: auto; border-top: 1px solid #d7eadf; padding: 0 12px; background: rgba(255,255,255,.58); }
+.activity-registration-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #deece4; }
+.activity-registration-list article:last-child { border-bottom: 0; }
+.activity-registration-list article > div { display: grid; gap: 2px; min-width: 0; }
+.activity-registration-list article strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #344f42; font-size: 10px; }
+.activity-registration-list article small { color: #75887e; font-size: 9px; }
+.activity-registration-list article > b { color: #176441; font-size: 10px; white-space: nowrap; }
+.activity-registration-summary.empty { display: grid; gap: 5px; padding: 11px 12px; border-color: #d7e2ec; background: #f7f9fb; }
+.activity-registration-summary.empty span { color: #718194; }
+.activity-registration-summary.empty strong { color: #526477; }
+.activity-registration-summary.empty > small { color: #8290a0; font-size: 9px; line-height: 1.4; }
 .catalog-manager { border-top: 1px solid #dfe4e9; padding-top: 14px; }
 .catalog-toggle { border: 0; padding: 0; color: #c95a1c; background: transparent; font-size: 9px; font-weight: 800; cursor: pointer; }
 .catalog-panel { display: grid; gap: 9px; margin-top: 9px; padding: 10px; border: 1px solid #d8e1eb; border-radius: 8px; background: #f7f9fc; }
