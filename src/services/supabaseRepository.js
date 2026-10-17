@@ -408,6 +408,16 @@ export const supabaseRepository = {
     if (error) throw error;
     return this.getDataset();
   },
+  async updateOperation(id, payload) {
+    const { error } = await supabase.from("operation_logs").update({ date: payload.date, ceco: payload.ceco, worker: payload.worker, activity_id: payload.activityId, stage_id: payload.stageId, activity: payload.activity, total_hours: Number(payload.totalHours) }).eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async deleteOperation(id) {
+    const { error } = await supabase.from("operation_logs").delete().eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
   async createQualityCheck(payload) {
     const { error } = await supabase.from("quality_checks").insert({
       id: `qa-${Date.now()}`,
@@ -524,6 +534,11 @@ export const supabaseRepository = {
   },
   async updateAssignment(id, payload) {
     const { error } = await supabase.from("resource_assignments").update({ personnel_id: payload.personnelId, ceco: payload.ceco, activity_id: payload.activityId, assigned_date: payload.assignedDate, planned_hours: Number(payload.plannedHours), status: payload.status }).eq("id", id);
+    if (error) throw error;
+    return this.getDataset();
+  },
+  async deleteAssignment(id) {
+    const { error } = await supabase.from("resource_assignments").delete().eq("id", id);
     if (error) throw error;
     return this.getDataset();
   },

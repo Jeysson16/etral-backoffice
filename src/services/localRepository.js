@@ -516,6 +516,19 @@ export const localRepository = {
     save(dataset);
     return dataset;
   },
+  async updateOperation(id, payload) {
+    const dataset = load();
+    const row = dataset.operations.find((item) => item.id === id);
+    if (!row) throw new Error("Parte diario no encontrado.");
+    Object.assign(row, payload, { totalHours: Number(payload.totalHours) });
+    save(dataset); return dataset;
+  },
+  async deleteOperation(id) {
+    const dataset = load();
+    if (!dataset.operations.some((item) => item.id === id)) throw new Error("Parte diario no encontrado.");
+    dataset.operations = dataset.operations.filter((item) => item.id !== id);
+    save(dataset); return dataset;
+  },
   async createQualityCheck(payload) {
     const dataset = load();
     dataset.quality.unshift({ id: `qa-${Date.now()}`, ...payload });
@@ -621,6 +634,12 @@ export const localRepository = {
     const row = dataset.assignments.find((item) => item.id === id);
     if (!row) throw new Error("Asignación no encontrada.");
     Object.assign(row, payload, { plannedHours: Number(payload.plannedHours) });
+    save(dataset); return dataset;
+  },
+  async deleteAssignment(id) {
+    const dataset = load();
+    if (!dataset.assignments.some((item) => item.id === id)) throw new Error("Asignación no encontrada.");
+    dataset.assignments = dataset.assignments.filter((item) => item.id !== id);
     save(dataset); return dataset;
   },
   async createIncident(payload) {

@@ -590,13 +590,16 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .operational-record-grid header strong { color: #35495c; font-size: 11px; }
 .operational-record-grid header > b { color: #176441; font-size: 11px; white-space: nowrap; }
 .operational-record-grid > article > div { max-height: 188px; overflow-y: auto; padding: 0 12px; }
-.operational-record-grid p { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #e9edf0; }
-.operational-record-grid p:last-child { border-bottom: 0; }
-.operational-record-grid p > span { display: grid; gap: 2px; min-width: 0; }
-.operational-record-grid p strong, .operational-record-grid p small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.operational-record-grid p strong { color: #3d4e5f; font-size: 10px; }
-.operational-record-grid p small { color: #84909c; font-size: 9px; }
-.operational-record-grid p > b { color: #276147; font-size: 10px; white-space: nowrap; }
+.operational-record-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #e9edf0; }
+.operational-record-row:last-child { border-bottom: 0; }
+.operational-record-row > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.operational-record-row strong, .operational-record-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.operational-record-row strong { color: #3d4e5f; font-size: 10px; }
+.operational-record-row small { color: #84909c; font-size: 9px; }
+.operational-record-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap; }
+.operational-record-actions > b { color: #276147; font-size: 10px; white-space: nowrap; }
+.operational-record-actions button { border: 0; border-radius: 5px; padding: 4px 6px; color: #526174; background: #edf1f5; font-size: 9px; font-weight: 800; cursor: pointer; }
+.operational-record-actions button.danger { color: #b42318; background: #fff0ef; }
 .operational-record-empty { display: block; padding: 14px 0; color: #8793a0; font-size: 9px; line-height: 1.4; }
 .detail-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; overflow: hidden; border: 1px solid #dfe4e9; border-radius: 10px; background: #dfe4e9; }
 .detail-summary div { min-height: 73px; padding: 13px; display: grid; align-content: center; gap: 4px; background: white; }
