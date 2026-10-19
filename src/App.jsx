@@ -544,8 +544,8 @@ function AccessScreen({ loading = false }) {
   return <main className="access-screen"><section className="access-card"><div className="brand-mark"><span>ET</span></div><p className="eyebrow">Acceso protegido</p><h1>Gemelo digital ETRAL</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración de ETRAL el alta de tu cuenta.</small></>}</section></main>;
 }
 
-function PageActions({ children }) {
-  return <div className="page-actions">{children}</div>;
+function PageActions({ children, className = "" }) {
+  return <div className={`page-actions ${className}`.trim()}>{children}</div>;
 }
 
 function Button({ children, variant = "primary", ...props }) {
@@ -1355,6 +1355,24 @@ function SimulationAlerts({ notifications }) {
 function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrder, onProgress, onSchedule, onUpdateOrder, onDeleteOrder, onCreateQuality, onDeleteAssignment, onDeleteOperation }) {
   const [mode, setMode] = useState("kanban");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [filters, setFilters] = useState({ search: "", stageId: "", status: "active" });
+  const visibleOrders = dataset.orders.filter((order) => {
+    const matchesSearch = orderLabel(dataset, order).toLowerCase().includes(filters.search.trim().toLowerCase());
+    const matchesStage = !filters.stageId || order.stageId === filters.stageId;
+    const completed = Number(order.progress) >= 100;
+    const matchesStatus = filters.status === "all"
+      || (filters.status === "completed" && completed)
+      || (filters.status === "inactive" && order.active === false && !completed)
+      || (filters.status === "active" && order.active !== false && !completed);
+    return matchesSearch && matchesStage && matchesStatus;
+  });
+  const visibleCecos = new Set(visibleOrders.map((order) => order.ceco));
+  const visibleDataset = {
+    ...dataset,
+    orders: visibleOrders,
+    operations: dataset.operations.filter((item) => visibleCecos.has(item.ceco)),
+    quality: dataset.quality.filter((item) => visibleCecos.has(item.ceco))
+  };
   useEffect(() => {
     if (!selectedOrder) return;
     const refreshed = dataset.orders.find((item) => item.ceco === selectedOrder.ceco);
@@ -1370,11 +1388,10 @@ function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrd
     setSelectedOrder(null);
   }
   return <div className="stack-lg">
-    <PageActions><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "completed" ? "active" : ""} onClick={() => setMode("completed")}>✓ Terminados ({dataset.orders.filter((order) => Number(order.progress) >= 100).length})</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></PageActions>
-    {mode === "kanban" && <ProductKanban dataset={dataset} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
-    {mode === "gantt" && <ProductionGantt dataset={dataset} onSelect={setSelectedOrder} onSchedule={onSchedule} />}
-    {mode === "list" && <><ProductList dataset={dataset} onSelect={setSelectedOrder} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} /><ExecutionPanel dataset={dataset} openDrawer={openDrawer} /></>}
-    {mode === "completed" && <CompletedOrders dataset={dataset} onSelect={setSelectedOrder} />}
+    <PageActions className="orders-page-actions"><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><div className="orders-toolbar">{mode !== "customers" && <div className="orders-filters"><input type="search" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Buscar CECO, producto o cliente" aria-label="Buscar órdenes CECO" /><select value={filters.stageId} onChange={(event) => setFilters({ ...filters, stageId: event.target.value })} aria-label="Filtrar por fase"><option value="">Todas las fases</option>{byOrder(dataset).map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select><select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} aria-label="Filtrar por estado"><option value="active">En proceso</option><option value="completed">Terminados ({dataset.orders.filter((order) => Number(order.progress) >= 100).length})</option><option value="inactive">Inactivos</option><option value="all">Todos</option></select></div>}<Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></div></PageActions>
+    {mode === "kanban" && <ProductKanban dataset={visibleDataset} stageId={filters.stageId} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
+    {mode === "gantt" && <ProductionGantt dataset={visibleDataset} onSelect={setSelectedOrder} onSchedule={onSchedule} />}
+    {mode === "list" && <><ProductList dataset={visibleDataset} onSelect={setSelectedOrder} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} /><ExecutionPanel dataset={visibleDataset} openDrawer={openDrawer} /></>}
     {mode === "customers" && <CustomerCatalog dataset={dataset} openDrawer={openDrawer} />}
     <ProductFlowDrawer dataset={dataset} order={selectedOrder} activeDrawer={activeDrawer} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={updateOrder} onCreateQuality={onCreateQuality} onDeleteAssignment={onDeleteAssignment} onDeleteOperation={onDeleteOperation} />
   </div>;
@@ -1424,17 +1441,17 @@ function currentActivity(dataset, order) {
 }
 
 function ProductionGantt({ dataset, onSelect, onSchedule }) {
-  const activeOrders = newestOrders(dataset.orders.filter((order) => order.active !== false && Number(order.progress) < 100));
-  const [ceco, setCeco] = useState(activeOrders[0]?.ceco ?? dataset.orders[0]?.ceco ?? "");
+  const visibleOrders = newestOrders(dataset.orders);
+  const [ceco, setCeco] = useState(visibleOrders[0]?.ceco ?? "");
   const [editingRow, setEditingRow] = useState(null);
-  const order = dataset.orders.find((item) => item.ceco === ceco) ?? activeOrders[0] ?? dataset.orders[0];
+  const order = visibleOrders.find((item) => item.ceco === ceco) ?? visibleOrders[0];
   const product = productOf(dataset, order?.bodyTypeId);
 
   useEffect(() => {
-    if (!order && activeOrders[0]) setCeco(activeOrders[0].ceco);
-  }, [order, activeOrders]);
+    setEditingRow(null);
+  }, [order?.ceco]);
 
-  if (!order || !product) return <EmptyState text="Registra una orden CECO para visualizar su cronograma PMP." />;
+  if (!order || !product) return <EmptyState text="No hay órdenes CECO que coincidan con los filtros." />;
 
   const plannedStart = pmpStartOf(order, product);
   const plannedEnd = order.dueDate || addDays(plannedStart, Math.max(0, Number(product.targetDays || 1) - 1));
@@ -1506,7 +1523,7 @@ function ProductionGantt({ dataset, onSelect, onSchedule }) {
   const todayLeft = left(today);
 
   return <section className="panel gantt-panel">
-    <SectionHeader eyebrow="Plan maestro de producción" title="Cronograma Gantt por fase y actividad" detail="La programación nace en el inicio PMP; los partes y avances registrados muestran la ejecución real." action={<div className="gantt-actions"><select value={order.ceco} onChange={(event) => setCeco(event.target.value)} aria-label="Orden CECO para el cronograma">{(activeOrders.length ? activeOrders : dataset.orders).map((item) => <option key={item.ceco} value={item.ceco}>CECO {item.ceco} · {productOf(dataset, item.bodyTypeId)?.name}</option>)}</select><Button variant="secondary" onClick={() => onSelect(order)}>Abrir CECO</Button></div>} />
+    <SectionHeader eyebrow="Plan maestro de producción" title="Cronograma Gantt por fase y actividad" detail="La programación nace en el inicio PMP; los partes y avances registrados muestran la ejecución real." action={<div className="gantt-actions"><select value={order.ceco} onChange={(event) => setCeco(event.target.value)} aria-label="Orden CECO para el cronograma">{visibleOrders.map((item) => <option key={item.ceco} value={item.ceco}>CECO {item.ceco} · {productOf(dataset, item.bodyTypeId)?.name}</option>)}</select><Button variant="secondary" onClick={() => onSelect(order)}>Abrir CECO</Button></div>} />
     <div className="gantt-summary"><div><span>Inicio PMP</span><strong>{formatDate(plannedStart)}</strong><small>Base del plan de esta orden</small></div><div><span>Entrega comprometida</span><strong>{formatDate(plannedEnd)}</strong><small>{plannedDays} días programados</small></div><div><span>Avance real</span><strong>{order.progress}%</strong><small>{currentActivity(dataset, order)?.name ?? "Sin actividad en curso"}</small></div><div className={variance < 0 ? "at-risk" : "on-track"}><span>Desviación PMP</span><strong>{variance > 0 ? "+" : ""}{variance} pp</strong><small>Plan al día: {Math.round(plannedProgress)}%</small></div></div>
     <div className="gantt-legend"><span><i className="planned" /> Plan PMP</span><span><i className="actual" /> Ejecución real / avance</span><span><i className="today" /> Hoy</span><span>Usa ✎ para asignar fechas a cada fase o actividad.</span></div>
     {editingRow && <GanttScheduleEditor row={rows.find((item) => item.type === editingRow.type && item.id === editingRow.id)} onCancel={() => setEditingRow(null)} onSave={saveSchedule} />}
@@ -1523,7 +1540,7 @@ function GanttScheduleEditor({ row, onCancel, onSave }) {
   return <form className="gantt-schedule-editor" onSubmit={(event) => { event.preventDefault(); if (!invalid) onSave(row, start, end); }}><div><p className="eyebrow">Editar programación</p><strong>{row.type === "stage" ? "Fase" : "Actividad"}: {row.label}</strong><small>Si la fecha final se extiende, podrás elegir si se desplazan las actividades posteriores.</small></div><label>Inicio<input type="date" value={start} max={end || undefined} onChange={(event) => setStart(event.target.value)} required /></label><label>Fin<input type="date" value={end} min={start || undefined} onChange={(event) => setEnd(event.target.value)} required /></label><Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button><Button type="submit" disabled={invalid}>Guardar fechas</Button></form>;
 }
 
-function ProductKanban({ dataset, onSelect, onMoveOrder }) {
+function ProductKanban({ dataset, stageId, onSelect, onMoveOrder }) {
   const boardRef = useRef(null);
   const dragRef = useRef(null);
   function startScroll(event) {
@@ -1541,22 +1558,22 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
     boardRef.current?.classList.remove("is-dragging");
   }
   return <div ref={boardRef} className="product-kanban" aria-label="Órdenes por fase" onPointerDown={startScroll} onPointerMove={moveScroll} onPointerUp={stopScroll} onPointerCancel={stopScroll}>
-    {byOrder(dataset).map((stage) => {
-      const orders = newestOrders(dataset.orders.filter((order) => order.active !== false && order.stageId === stage.id && Number(order.progress) < 100));
+    {byOrder(dataset).filter((stage) => !stageId || stage.id === stageId).map((stage) => {
+      const orders = newestOrders(dataset.orders.filter((order) => order.stageId === stage.id));
       const activities = dataset.stageActivities.filter((item) => item.stageId === stage.id).sort((a, b) => a.sequence - b.sequence);
       return <section className="phase-column" style={{ "--phase-color": stage.color }} key={stage.id}>
         <header><div><span>{stage.shortName}</span><strong>{stage.name}</strong></div><b>{orders.length}</b><small>{stage.capacityHours} h/sem.</small></header>
-        <div className="phase-cards" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const ceco = event.dataTransfer.getData("text/ceco"); const order = dataset.orders.find((item) => item.ceco === ceco); if (order && productOf(dataset, order.bodyTypeId)?.route.includes(stage.id) && order.stageId !== stage.id) onMoveOrder(order, stage.id); }}>
+        <div className="phase-cards" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const ceco = event.dataTransfer.getData("text/ceco"); const order = dataset.orders.find((item) => item.ceco === ceco); if (order && order.active !== false && Number(order.progress) < 100 && productOf(dataset, order.bodyTypeId)?.route.includes(stage.id) && order.stageId !== stage.id) onMoveOrder(order, stage.id); }}>
           {orders.length === 0 && <div className="phase-empty">Sin órdenes en esta fase</div>}
-          {orders.map((order) => <button draggable className={`product-work-card ${order.status}`} key={order.ceco} onDragStart={(event) => event.dataTransfer.setData("text/ceco", order.ceco)} onClick={() => onSelect(order)}>
-            <div className="work-card-top"><span>CECO {order.ceco}</span><StatusPill status={order.status} /></div>
+          {orders.map((order) => <button draggable={order.active !== false && Number(order.progress) < 100} className={`product-work-card ${order.status}`} key={order.ceco} onDragStart={(event) => event.dataTransfer.setData("text/ceco", order.ceco)} onClick={() => onSelect(order)}>
+            <div className="work-card-top"><span>CECO {order.ceco}</span>{Number(order.progress) >= 100 ? <span className="status-pill green">Terminado</span> : order.active === false ? <span className="inactive-pill">Inactivo</span> : <StatusPill status={order.status} />}</div>
             <strong>{productOf(dataset, order.bodyTypeId)?.name}</strong><small>{order.customer}</small>
             <div className="mini-progress"><span style={{ width: `${order.progress}%` }} /><b>{order.progress}%</b></div>
             <div className="activity-preview">
               {activities.slice(0, 3).map((activity) => { const progress = activityProgressOf(dataset, order.ceco, activity.id); return <div className={progress.status} key={activity.id}><i>{progress.status === "completed" ? "✓" : progress.status === "blocked" ? "!" : ""}</i><span>{activity.name}</span></div>; })}
               {activities.length > 3 && <small>+ {activities.length - 3} actividades</small>}
             </div>
-            <div className="work-card-footer"><span>Actividad actual</span><b>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</b></div>
+            <div className="work-card-footer"><span>{Number(order.progress) >= 100 ? "Estado" : "Actividad actual"}</span><b>{Number(order.progress) >= 100 ? "Terminado" : currentActivity(dataset, order)?.name ?? "Sin actividad"}</b></div>
           </button>)}
         </div>
       </section>;
@@ -1564,31 +1581,25 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
   </div>;
 }
 
-function CompletedOrders({ dataset, onSelect }) {
-  const [search, setSearch] = useState("");
-  const completedOrders = newestOrders(dataset.orders.filter((order) =>
-    Number(order.progress) >= 100 && orderLabel(dataset, order).toLowerCase().includes(search.trim().toLowerCase())
-  ));
-  return <section className="panel">
-    <SectionHeader eyebrow="Historial de producción" title="CECO terminados" detail="Las órdenes con avance al 100 % se conservan aquí para consultar su ruta, actividades y registros." />
-    <div className="search-box catalog-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar CECO, producto o cliente" aria-label="Buscar CECO terminados" /></div>
-    {completedOrders.length === 0 ? <EmptyState text={search ? "No hay CECO terminados que coincidan con la búsqueda." : "Todavía no hay CECO terminados."} /> : <div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Última fase</th><th>Avance CECO</th><th>Entrega pactada</th><th>Estado</th><th></th></tr></thead><tbody>{completedOrders.map((order) => <tr key={order.ceco}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td>{stageOf(dataset, order.stageId)?.name ?? "Sin fase"}</td><td><strong>{order.progress}%</strong></td><td>{formatDate(order.dueDate)}</td><td><span className="status-pill green">Terminado</span></td><td><button className="row-action" onClick={() => onSelect(order)}>Ver detalle</button></td></tr>)}</tbody></table></div>}
-  </section>;
-}
-
 function ProductList({ dataset, onSelect, onUpdateOrder, onDeleteOrder }) {
-  const [search, setSearch] = useState("");
-  const [showInactive, setShowInactive] = useState(false);
   const [pendingDeletion, setPendingDeletion] = useState(null);
-  const visibleOrders = newestOrders(dataset.orders.filter((order) => {
-    const active = order.active !== false;
-    const matchesSearch = orderLabel(dataset, order).toLowerCase().includes(search.trim().toLowerCase());
-    return matchesSearch && (showInactive ? true : active && Number(order.progress) < 100);
-  }));
+  const visibleOrders = newestOrders(dataset.orders);
   function deactivate(order) {
-    if (window.confirm(`¿Desactivar el CECO ${order.ceco}? Dejará de mostrarse en Producción hasta que actives el filtro de inactivos.`)) onUpdateOrder(order.ceco, { active: false });
+    if (window.confirm(`¿Desactivar el CECO ${order.ceco}? Podrás encontrarlo con el filtro Inactivos.`)) onUpdateOrder(order.ceco, { active: false });
   }
-  return <><section className="panel"><SectionHeader eyebrow="Productos en planta" title={showInactive ? "Lista de CECO" : "Lista de CECO activos"} detail="Los CECO recién creados aparecen primero. Los inactivos no se muestran hasta activar el filtro." action={<label className="filter-check"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />Ver inactivos</label>} /><div className="search-box catalog-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar CECO, producto o cliente" /></div><div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Avance CECO</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{visibleOrders.map((order) => { const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId); const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length; const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress); return <tr key={order.ceco} className={order.active === false ? "inactive-row" : ""}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>Fase actual</small></td><td><strong>{execution.progress}%</strong><small>{execution.stages.filter((item) => item.progress === 100).length}/{execution.stages.length} fases completas</small></td><td>{formatDate(order.dueDate)}</td><td>{order.active === false ? <span className="inactive-pill">Inactivo</span> : <StatusPill status={order.status} />}</td><td><div className="row-actions"><button className="row-action" onClick={() => onSelect(order)}>Ver detalle</button>{order.active === false ? <button className="row-action" onClick={() => onUpdateOrder(order.ceco, { active: true })}>Activar</button> : <button className="row-action" onClick={() => deactivate(order)}>Desactivar</button>}<button className="row-action danger" onClick={() => setPendingDeletion(order)}>Eliminar</button></div></td></tr>; })}</tbody></table></div></section><ConfirmDialog open={Boolean(pendingDeletion)} title={`Eliminar CECO ${pendingDeletion?.ceco}`} description="Se eliminarán la orden y todos sus registros operativos vinculados. Esta acción no se puede deshacer." onClose={() => setPendingDeletion(null)} onConfirm={() => onDeleteOrder(pendingDeletion.ceco)}><strong>{productOf(dataset, pendingDeletion?.bodyTypeId)?.name}</strong><span>{pendingDeletion?.customer}</span></ConfirmDialog></>;
+  return <>
+    <section className="panel">
+      <SectionHeader eyebrow="Productos en planta" title={`Lista de CECO (${visibleOrders.length})`} detail="Busca y filtra las órdenes desde los controles junto a Nueva orden CECO." />
+      {visibleOrders.length === 0 ? <EmptyState text="No hay CECO que coincidan con los filtros." /> : <div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Fase</th><th>Actividad actual</th><th>Actividades</th><th>Avance CECO</th><th>Entrega</th><th>Estado</th><th></th></tr></thead><tbody>{visibleOrders.map((order) => {
+        const stageActivities = dataset.stageActivities.filter((item) => item.stageId === order.stageId);
+        const completed = stageActivities.filter((item) => activityProgressOf(dataset, order.ceco, item.id).status === "completed").length;
+        const execution = calculateCecoProgress(order, dataset.bodyTypes, dataset.stageActivities, dataset.activityProgress);
+        const finished = Number(order.progress) >= 100;
+        return <tr key={order.ceco} className={order.active === false ? "inactive-row" : ""}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td><span className="stage-tag"><i style={{ background: stageOf(dataset, order.stageId)?.color }} />{stageOf(dataset, order.stageId)?.name}</span></td><td>{finished ? "Terminado" : currentActivity(dataset, order)?.name ?? "Sin actividad"}</td><td><strong>{completed} / {stageActivities.length}</strong><small>Fase actual</small></td><td><strong>{execution.progress}%</strong><small>{execution.stages.filter((item) => item.progress === 100).length}/{execution.stages.length} fases completas</small></td><td>{formatDate(order.dueDate)}</td><td>{finished ? <span className="status-pill green">Terminado</span> : order.active === false ? <span className="inactive-pill">Inactivo</span> : <StatusPill status={order.status} />}</td><td><div className="row-actions"><button className="row-action" onClick={() => onSelect(order)}>Ver detalle</button>{order.active === false ? <button className="row-action" onClick={() => onUpdateOrder(order.ceco, { active: true })}>Activar</button> : !finished && <button className="row-action" onClick={() => deactivate(order)}>Desactivar</button>}<button className="row-action danger" onClick={() => setPendingDeletion(order)}>Eliminar</button></div></td></tr>;
+      })}</tbody></table></div>}
+    </section>
+    <ConfirmDialog open={Boolean(pendingDeletion)} title={`Eliminar CECO ${pendingDeletion?.ceco}`} description="Se eliminarán la orden y todos sus registros operativos vinculados. Esta acción no se puede deshacer." onClose={() => setPendingDeletion(null)} onConfirm={() => onDeleteOrder(pendingDeletion.ceco)}><strong>{productOf(dataset, pendingDeletion?.bodyTypeId)?.name}</strong><span>{pendingDeletion?.customer}</span></ConfirmDialog>
+  </>;
 }
 
 function ProductFlowDrawer({ dataset, order, activeDrawer, onClose, openDrawer, onProgress, onUpdateOrder, onCreateQuality, onDeleteAssignment, onDeleteOperation }) {
