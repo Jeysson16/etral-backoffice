@@ -1370,10 +1370,11 @@ function OrdersView({ dataset, activeDrawer, openDrawer, advanceOrder, onMoveOrd
     setSelectedOrder(null);
   }
   return <div className="stack-lg">
-    <PageActions><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></PageActions>
+    <PageActions><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "completed" ? "active" : ""} onClick={() => setMode("completed")}>✓ Terminados ({dataset.orders.filter((order) => Number(order.progress) >= 100).length})</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button></PageActions>
     {mode === "kanban" && <ProductKanban dataset={dataset} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
     {mode === "gantt" && <ProductionGantt dataset={dataset} onSelect={setSelectedOrder} onSchedule={onSchedule} />}
     {mode === "list" && <><ProductList dataset={dataset} onSelect={setSelectedOrder} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} /><ExecutionPanel dataset={dataset} openDrawer={openDrawer} /></>}
+    {mode === "completed" && <CompletedOrders dataset={dataset} onSelect={setSelectedOrder} />}
     {mode === "customers" && <CustomerCatalog dataset={dataset} openDrawer={openDrawer} />}
     <ProductFlowDrawer dataset={dataset} order={selectedOrder} activeDrawer={activeDrawer} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={updateOrder} onCreateQuality={onCreateQuality} onDeleteAssignment={onDeleteAssignment} onDeleteOperation={onDeleteOperation} />
   </div>;
@@ -1561,6 +1562,18 @@ function ProductKanban({ dataset, onSelect, onMoveOrder }) {
       </section>;
     })}
   </div>;
+}
+
+function CompletedOrders({ dataset, onSelect }) {
+  const [search, setSearch] = useState("");
+  const completedOrders = newestOrders(dataset.orders.filter((order) =>
+    Number(order.progress) >= 100 && orderLabel(dataset, order).toLowerCase().includes(search.trim().toLowerCase())
+  ));
+  return <section className="panel">
+    <SectionHeader eyebrow="Historial de producción" title="CECO terminados" detail="Las órdenes con avance al 100 % se conservan aquí para consultar su ruta, actividades y registros." />
+    <div className="search-box catalog-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar CECO, producto o cliente" aria-label="Buscar CECO terminados" /></div>
+    {completedOrders.length === 0 ? <EmptyState text={search ? "No hay CECO terminados que coincidan con la búsqueda." : "Todavía no hay CECO terminados."} /> : <div className="table-scroll"><table><thead><tr><th>CECO / producto</th><th>Cliente</th><th>Última fase</th><th>Avance CECO</th><th>Entrega pactada</th><th>Estado</th><th></th></tr></thead><tbody>{completedOrders.map((order) => <tr key={order.ceco}><td><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></td><td>{order.customer}<small>{order.line}</small></td><td>{stageOf(dataset, order.stageId)?.name ?? "Sin fase"}</td><td><strong>{order.progress}%</strong></td><td>{formatDate(order.dueDate)}</td><td><span className="status-pill green">Terminado</span></td><td><button className="row-action" onClick={() => onSelect(order)}>Ver detalle</button></td></tr>)}</tbody></table></div>}
+  </section>;
 }
 
 function ProductList({ dataset, onSelect, onUpdateOrder, onDeleteOrder }) {
