@@ -12,7 +12,6 @@ import { formatHours, personnelWeeklyHours, shiftWeeklyHours } from "./lib/workS
 import { toLocalDateTimeInput, validateActivityTimes } from "./lib/dateTime.js";
 import { supabase } from "./supabase/client.js";
 import ResourcesView from "./components/ResourcesView.jsx";
-import etralLogo from "../assets/etral-logo.png";
 
 
 const views = {
@@ -482,10 +481,6 @@ export default function App() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <button className="brand" onClick={() => { setView("overview"); setMenuOpen(false); }} aria-label="Ir al inicio">
-          <span className="brand-mark" aria-hidden="true">
-            <span>ET</span>
-            <img src={etralLogo} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />
-          </span>
           <span><strong>ETRAL</strong><small>Control de planta</small></span>
         </button>
         <nav aria-label="Navegación principal">
@@ -541,7 +536,7 @@ function AccessScreen({ loading = false }) {
     setSubmitting(false);
   }
 
-  return <main className="access-screen"><section className="access-card"><div className="brand-mark"><span>ET</span></div><p className="eyebrow">Acceso protegido</p><h1>Gemelo digital ETRAL</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración de ETRAL el alta de tu cuenta.</small></>}</section></main>;
+  return <main className="access-screen"><section className="access-card"><p className="eyebrow">Acceso protegido</p><h1>Gemelo digital ETRAL</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración de ETRAL el alta de tu cuenta.</small></>}</section></main>;
 }
 
 function PageActions({ children, className = "" }) {
