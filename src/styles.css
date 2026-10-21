@@ -1219,6 +1219,13 @@ pre,
 .tooltip-content div { margin-bottom: 4px; }
 .tooltip-content div:last-child { margin-bottom: 0; }
 
+.pmp-material-notices { display: grid; gap: 10px; margin: 18px 0; }
+.pmp-material-notices article { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 12px 15px; border: 1px solid #f2c7a9; border-radius: 12px; background: #fff8f3; }
+.pmp-material-notices article strong { color: #853b13; }
+.pmp-material-notices article span { flex: 1 1 240px; }
+.pmp-material-notices article b { color: #a23b19; }
+.safety-indicator-panel > p { margin: 0 0 18px; }
+
 .inventory-row-actions { display: flex; gap: 6px; }
 .inventory-order-links { min-width: 170px; display: grid; gap: 5px; }
 .inventory-order-links > span, .inventory-order-links details span { display: block; padding: 5px 7px; border-radius: 6px; background: #f6f8fb; }

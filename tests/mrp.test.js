@@ -17,6 +17,16 @@ test("MRP genera alertas cuando disponibilidad queda bajo seguridad", () => {
   assert.ok(mrp.alerts.some((alert) => alert.materialCode === "MAT-0042"));
 });
 
+test("gemelo ignora registros de calendario y equipos", () => {
+  const base = runDigitalTwin(initialDataset, { horizonDays: 14 });
+  const changed = structuredClone(initialDataset);
+  changed.workCalendar = [{ date: "2026-10-21", dayType: "shutdown", availableHours: 0 }];
+  changed.equipment = changed.equipment.map((item) => ({ ...item, status: "out_of_service", capacityHours: 0 }));
+  const result = runDigitalTwin(changed, { horizonDays: 14 });
+  assert.deepEqual(result.scenario.stageCapacity, base.scenario.stageCapacity);
+  assert.deepEqual(result.scenario.cecoSchedule, base.scenario.cecoSchedule);
+});
+
 test("mapa de calor clasifica stock disponible", () => {
   const heatmap = inventoryHeatmap(initialDataset.inventory, initialDataset.orders, initialDataset.bom);
   const paint = heatmap.find((item) => item.code === "MAT-0042");
@@ -127,11 +137,10 @@ test("simulador genera alertas auditables desde indicadores", () => {
   assert.ok(result.notifications.every((item) => item.situation && item.period && item.reason && item.recommendedAction));
 });
 
-test("personal, equipos e incidencias alimentan la capacidad real del gemelo", () => {
+test("personal e incidencias alimentan la capacidad real del gemelo", () => {
   const constrained = runDigitalTwin(initialDataset, { laborAvailability: 100, horizonDays: 14 });
   const unrestrictedDataset = structuredClone(initialDataset);
   unrestrictedDataset.personnel = unrestrictedDataset.personnel.map((item) => ({ ...item, status: "available", efficiency: 100 }));
-  unrestrictedDataset.equipment = unrestrictedDataset.equipment.map((item) => ({ ...item, status: "operational" }));
   unrestrictedDataset.incidents = unrestrictedDataset.incidents.map((item) => ({ ...item, status: "resolved" }));
   const unrestricted = runDigitalTwin(unrestrictedDataset, { laborAvailability: 100, horizonDays: 14 });
   const constrainedAssembly = constrained.scenario.stageCapacity.find((item) => item.stageId === "stage-assembly");

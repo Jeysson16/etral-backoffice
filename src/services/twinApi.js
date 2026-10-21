@@ -68,8 +68,6 @@ function snapshotFromDataset(dataset) {
     inventory_movements: (dataset.inventoryMovements ?? []).map((item) => ({ code: item.code, type: item.type, quantity: Number(item.quantity), timestamp: item.timestamp || null })),
     personnel: (dataset.personnel ?? []).map((item) => ({ id: item.id, status: item.status, efficiency: Number(item.efficiency), weekly_hours: Number(item.weeklyHours), shift_id: item.shiftId })),
     shifts: (dataset.shifts ?? []).map((item) => ({ id: item.id, start_time: item.startTime, end_time: item.endTime, break_minutes: Number(item.breakMinutes), active: item.active })),
-    equipment: (dataset.equipment ?? []).map((item) => ({ id: item.id, stage_id: item.stageId, status: item.status, capacity_hours: Number(item.capacityHours) })),
-    calendar: (dataset.workCalendar ?? []).map((item) => ({ date: item.date, day_type: item.dayType, available_hours: Number(item.availableHours) })),
     assignments: (dataset.assignments ?? []).map((item) => ({ personnel_id: item.personnelId, ceco: item.ceco, activity_id: item.activityId, planned_hours: Number(item.plannedHours), status: item.status })),
     incidents: (dataset.incidents ?? []).map((item) => ({ stage_id: item.stageId, downtime_hours: Number(item.downtimeHours), status: item.status, severity: item.severity })),
     stage_activities: (dataset.stageActivities ?? []).map((item) => ({ id: item.id, stage_id: item.stageId, standard_minutes: Number(item.standardMinutes), active: item.active !== false })),

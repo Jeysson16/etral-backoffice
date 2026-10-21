@@ -61,13 +61,24 @@ class TwinServiceTests(unittest.TestCase):
     def test_operational_resources_reduce_real_capacity(self):
         constrained_snapshot = snapshot().model_copy(update={
             "personnel": [PersonnelResource(id="p1", status="absent", efficiency=100, weekly_hours=48)],
-            "equipment": [EquipmentResource(id="e1", stage_id="paint", status="restricted", capacity_hours=8)],
             "incidents": [IncidentResource(stage_id="paint", downtime_hours=Decimal("2"), status="open", severity="high")],
         })
         constrained = simulate(SimulationInput(snapshot=constrained_snapshot))
         regular = simulate(SimulationInput(snapshot=snapshot()))
         self.assertLess(constrained["stage_capacity"][0]["available_hours"], regular["stage_capacity"][0]["available_hours"])
         self.assertEqual(constrained["stage_capacity"][0]["incident_hours"], 2)
+
+    def test_calendar_and_equipment_records_do_not_change_twin(self):
+        from app.schemas import CalendarResource
+
+        regular = simulate(SimulationInput(snapshot=snapshot()))
+        changed = snapshot().model_copy(update={
+            "equipment": [EquipmentResource(id="e1", stage_id="paint", status="out_of_service", capacity_hours=0)],
+            "calendar": [CalendarResource(date=date.today(), day_type="shutdown", available_hours=0)],
+        })
+        result = simulate(SimulationInput(snapshot=changed))
+        self.assertEqual(result["stage_capacity"], regular["stage_capacity"])
+        self.assertEqual(result["order_schedule"], regular["order_schedule"])
 
     def test_calibration_uses_only_closed_activities_linked_to_dop(self):
         trained = snapshot().model_copy(update={

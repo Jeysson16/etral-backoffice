@@ -16,11 +16,16 @@ export function effectiveOrderStageId(order, bodyTypes, stageActivities, activit
   return firstIncomplete ?? route.at(-1);
 }
 
+export function hasSafetyStockParameters(item) {
+  return [item.serviceFactor, item.demandStdDev, item.leadTimeDays].every((value) => value !== null && value !== undefined && value !== "")
+    && Number(item.serviceFactor) > 0 && Number(item.demandStdDev) >= 0 && Number(item.leadTimeDays) > 0;
+}
+
 export function calculateSafetyStock(item) {
   const z = Number(item.serviceFactor);
   const deviation = Number(item.demandStdDev);
   const leadTime = Number(item.leadTimeDays);
-  if (z > 0 && deviation >= 0 && leadTime > 0) {
+  if (hasSafetyStockParameters(item)) {
     return Math.ceil(z * deviation * Math.sqrt(leadTime));
   }
   return Number(item.safety ?? 0);

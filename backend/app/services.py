@@ -210,8 +210,7 @@ def _schedule_orders(
     """
     start = date.today()
     dates = [start + timedelta(days=offset) for offset in range(input_data.horizon_days)]
-    calendar = {item.date: item for item in snapshot.calendar}
-    weights = [max(Decimal(0), calendar[item].available_hours / Decimal(8)) if item in calendar else Decimal(1) for item in dates]
+    weights = [Decimal(1) for _ in dates]
     weight_total = sum(weights, Decimal(0))
     remaining: dict[str, list[Decimal]] = {}
     for row in stage_capacity:
@@ -328,10 +327,6 @@ def simulate(input_data: SimulationInput) -> dict:
         if active_personnel else 1
     )
     personnel_factor *= float(Decimal(1) - (input_data.absenteeism_rate / Decimal(100)))
-    calendar_factor = (
-        sum(_number(day.available_hours) for day in snapshot.calendar) / (len(snapshot.calendar) * 8)
-        if snapshot.calendar else 1
-    )
 
     hours_per_stage: dict[str, Decimal] = defaultdict(lambda: Decimal(0))
     order_loads: dict[str, list[dict]] = defaultdict(list)
@@ -361,19 +356,10 @@ def simulate(input_data: SimulationInput) -> dict:
     capacity = []
     for stage in sorted(snapshot.stages, key=lambda item: item.sequence):
         base_weekly_capacity = stage.capacity_hours
-        stage_equipment = [item for item in snapshot.equipment if item.stage_id == stage.id]
-        equipment_weights = {"operational": 1, "restricted": .7, "maintenance": .35, "out_of_service": 0}
-        raw_equipment_capacity = sum((item.capacity_hours for item in stage_equipment), Decimal(0))
-        effective_equipment_capacity = sum((item.capacity_hours * Decimal(str(equipment_weights.get(item.status, 1))) for item in stage_equipment), Decimal(0))
-        if stage_equipment:
-            # La capacidad efectiva ya incorpora el estado de cada equipo; no
-            # se multiplica de nuevo por el factor para evitar doble castigo.
-            base_weekly_capacity = min(base_weekly_capacity, effective_equipment_capacity)
-        equipment_factor = _number(effective_equipment_capacity / raw_equipment_capacity) if raw_equipment_capacity else 1.0
         available = base_weekly_capacity * Decimal(input_data.horizon_days) / Decimal(7)
         incident_hours = sum(_number(item.downtime_hours) for item in snapshot.incidents if item.stage_id == stage.id and item.status != "resolved")
         available *= input_data.labor_availability / Decimal(100) * input_data.shifts_per_day
-        available *= Decimal(str(personnel_factor * calendar_factor))
+        available *= Decimal(str(personnel_factor))
         available = max(Decimal(0), available - Decimal(str(incident_hours)))
         required = hours_per_stage[stage.id]
         utilization = Decimal(0) if not available else (required / available) * 100
@@ -381,7 +367,7 @@ def simulate(input_data: SimulationInput) -> dict:
             "stage_id": stage.id, "name": stage.name, "required_hours": float(required),
             "available_hours": round(float(available), 2), "utilization": round(float(utilization), 2),
             "bottleneck": utilization > 100, "personnel_factor": round(personnel_factor, 3),
-            "equipment_factor": round(equipment_factor, 3), "incident_hours": round(incident_hours, 2),
+            "incident_hours": round(incident_hours, 2),
             "base_weekly_capacity": float(base_weekly_capacity),
             "orders": order_loads[stage.id],
         })
@@ -568,7 +554,7 @@ def _present_scenario(raw: dict, snapshot: FactorySnapshot, horizon_days: int) -
             "stageId": item["stage_id"], "name": item["name"], "color": next(stage.color for stage in snapshot.stages if stage.id == item["stage_id"]),
             "demandHours": item["required_hours"], "availableHours": item["available_hours"],
             "utilization": item["utilization"], "overloadHours": round(max(0, item["required_hours"] - item["available_hours"]), 2),
-            "orders": item["orders"], "incidentHours": item["incident_hours"], "equipmentFactor": item["equipment_factor"],
+            "orders": item["orders"], "incidentHours": item["incident_hours"],
             "period": f"{date.today().isoformat()} al {(date.today() + timedelta(days=horizon_days - 1)).isoformat()}",
         } for item in raw["stage_capacity"]],
         "materials": materials,
@@ -670,7 +656,7 @@ def simulate_comparison(input_data: SimulationInput) -> dict:
                                   "title": f"Cuello de botella en {capacity['name']}" if capacity["utilization"] > 100 else f"{capacity['name']} cerca de su capacidad",
                                   "value": f"{capacity['utilization']}%", "situation": f"{capacity['overloadHours']} h de sobrecarga." if capacity["overloadHours"] else "La fase conserva menos de 15% de holgura.",
                                   "period": capacity["period"],
-                                  "reason": f"{capacity['demandHours']} h requeridas frente a {capacity['availableHours']} h disponibles" + (f"; {capacity['incidentHours']} h de incidencias abiertas reducen la capacidad" if capacity["incidentHours"] else "") + ("; el estado del equipo reduce la disponibilidad" if capacity.get("equipmentFactor", 1) < 1 else "") + ".",
+                                  "reason": f"{capacity['demandHours']} h requeridas frente a {capacity['availableHours']} h disponibles" + (f"; {capacity['incidentHours']} h de incidencias abiertas reducen la capacidad" if capacity["incidentHours"] else "") + ".",
                                   "recommendedAction": f"Reasignar o ampliar al menos {capacity['overloadHours']} h en {capacity['name']}, o desplazar los CECO de menor prioridad fuera del período." if capacity["overloadHours"] else f"Confirmar disponibilidad antes de liberar más trabajo a {capacity['name']}.",
                                   "calculation": f"{capacity['demandHours']} h / {capacity['availableHours']} h = {capacity['utilization']}%", "affected": affected})
     for row in scenario["cecoSchedule"]:

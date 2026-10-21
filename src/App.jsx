@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { initialDataset } from "./data/seed.js";
-import { calculateCecoProgress, evaluateMrp, inventoryHeatmap, materialRequirementsByStage } from "./lib/mrp.js";
+import { calculateCecoProgress, calculateSafetyStock, evaluateMrp, hasSafetyStockParameters, inventoryHeatmap, materialRequirementsByStage } from "./lib/mrp.js";
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { availableDateRange, calculateProductivityReport } from "./lib/productivity.js";
 import { exportIndicatorsWorkbook, exportPeriodRecords } from "./lib/indicatorExports.js";
@@ -821,6 +821,17 @@ function IndicatorsView({ dataset }) {
 
     <ProductivityDashboard report={report} />
 
+    <section className="panel safety-indicator-panel">
+      <SectionHeader eyebrow="Indicador de inventario" title="Cómo se calcula el stock de seguridad" detail="SS = redondear hacia arriba(Z × σd × √LT). Z es el factor de servicio, σd la desviación de demanda diaria y LT el plazo de reposición en días. Si falta un parámetro, se usa el mínimo manual." />
+      <p>Cobertura = materiales con disponible ≥ SS ÷ total de materiales × 100. Disponible = físico − comprometido.</p>
+      <div className="table-scroll"><table><thead><tr><th>Material</th><th>Z</th><th>σd</th><th>LT</th><th>SS aplicado</th><th>Origen</th><th>Disponible</th><th>Brecha</th></tr></thead><tbody>{(dataset.inventory ?? []).map((item) => {
+        const calculated = hasSafetyStockParameters(item);
+        const safety = calculateSafetyStock(item);
+        const available = Number(item.physical ?? 0) - Number(item.committed ?? 0);
+        return <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{calculated ? item.serviceFactor : "—"}</td><td>{calculated ? item.demandStdDev : "—"}</td><td>{calculated ? item.leadTimeDays : "—"}</td><td>{safety} {item.unit}</td><td>{calculated ? "Calculado" : "Mínimo manual"}</td><td>{available} {item.unit}</td><td><span className={`stock-label ${available >= safety ? "ok" : "warning"}`}>{available - safety} {item.unit}</span></td></tr>;
+      })}</tbody></table></div>
+    </section>
+
     <section className="indicator-dashboard-grid">
       <article className="panel period-chart">
         <SectionHeader eyebrow="Evolución" title={`Unidades producidas por ${grouping === "month" ? "mes" : "semana"}`} detail="Cada barra usa los registros contenidos en el rango seleccionado." />
@@ -1375,6 +1386,7 @@ function OrdersView({ dataset, onRunMrp, activeDrawer, openDrawer, advanceOrder,
     operations: dataset.operations.filter((item) => visibleCecos.has(item.ceco)),
     quality: dataset.quality.filter((item) => visibleCecos.has(item.ceco))
   };
+  const pmpMaterialAlertCount = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory).alerts.length, [dataset]);
   useEffect(() => {
     if (!selectedOrder) return;
     const refreshed = dataset.orders.find((item) => item.ceco === selectedOrder.ceco);
@@ -1390,14 +1402,33 @@ function OrdersView({ dataset, onRunMrp, activeDrawer, openDrawer, advanceOrder,
     setSelectedOrder(null);
   }
   return <div className="stack-lg">
-    <PageActions className="orders-page-actions"><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "calendar" ? "active" : ""} onClick={() => setMode("calendar")}>▦ Calendario PMP</button><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><div className="orders-toolbar">{mode !== "customers" && mode !== "calendar" && <div className="orders-filters"><input type="search" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Buscar CECO, producto o cliente" aria-label="Buscar órdenes CECO" /><select value={filters.stageId} onChange={(event) => setFilters({ ...filters, stageId: event.target.value })} aria-label="Filtrar por fase"><option value="">Todas las fases</option>{byOrder(dataset).map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select><select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} aria-label="Filtrar por estado"><option value="active">En proceso</option><option value="completed">Terminados ({dataset.orders.filter((order) => Number(order.progress) >= 100).length})</option><option value="inactive">Inactivos</option><option value="all">Todos</option></select></div>}{mode !== "calendar" && <Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button>}</div></PageActions>
+    <PageActions className="orders-page-actions"><div className="view-switch" aria-label="Modo de visualización de órdenes"><button className={mode === "calendar" ? "active" : ""} onClick={() => setMode("calendar")}>▦ Calendario PMP</button><button className={mode === "kanban" ? "active" : ""} onClick={() => setMode("kanban")}>▦ Kanban</button><button className={mode === "gantt" ? "active" : ""} onClick={() => setMode("gantt")}>▤ Cronograma PMP</button><button className={mode === "pmp-materials" ? "active" : ""} onClick={() => setMode("pmp-materials")}>Materiales PMP{pmpMaterialAlertCount > 0 ? ` · ${pmpMaterialAlertCount}` : ""}</button><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}>☷ Lista</button><button className={mode === "customers" ? "active" : ""} onClick={() => setMode("customers")}>◎ Clientes</button></div><div className="orders-toolbar">{mode !== "customers" && mode !== "calendar" && <div className="orders-filters"><input type="search" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Buscar CECO, producto o cliente" aria-label="Buscar órdenes CECO" /><select value={filters.stageId} onChange={(event) => setFilters({ ...filters, stageId: event.target.value })} aria-label="Filtrar por fase"><option value="">Todas las fases</option>{byOrder(dataset).map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select><select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} aria-label="Filtrar por estado"><option value="active">En proceso</option><option value="completed">Terminados ({dataset.orders.filter((order) => Number(order.progress) >= 100).length})</option><option value="inactive">Inactivos</option><option value="all">Todos</option></select></div>}{mode !== "calendar" && <Button onClick={() => openDrawer({ type: "order" })}>+ Nueva orden CECO</Button>}</div></PageActions>
     {mode === "calendar" && <ProductionPlanView dataset={dataset} onRunMrp={onRunMrp} />}
     {mode === "kanban" && <ProductKanban dataset={visibleDataset} stageId={filters.stageId} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
     {mode === "gantt" && <ProductionGantt dataset={visibleDataset} onSelect={setSelectedOrder} onSchedule={onSchedule} />}
+    {mode === "pmp-materials" && <PmpMaterialsView dataset={dataset} onSelect={setSelectedOrder} />}
     {mode === "list" && <><ProductList dataset={visibleDataset} onSelect={setSelectedOrder} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} /><ExecutionPanel dataset={visibleDataset} openDrawer={openDrawer} /></>}
     {mode === "customers" && <CustomerCatalog dataset={dataset} openDrawer={openDrawer} />}
     <ProductFlowDrawer dataset={dataset} order={selectedOrder} activeDrawer={activeDrawer} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={updateOrder} onCreateQuality={onCreateQuality} onDeleteAssignment={onDeleteAssignment} onDeleteOperation={onDeleteOperation} />
   </div>;
+}
+
+function PmpMaterialsView({ dataset, onSelect }) {
+  const { explosions } = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory), [dataset]);
+  const alerts = explosions.filter((row) => !row.canRelease);
+  return <section className="panel pmp-materials-panel">
+    <SectionHeader eyebrow="Plan maestro de producción" title="Materiales necesarios por CECO" detail="Reserva según prioridad. Tras cada consumo, el saldo debe conservar el stock de seguridad." action={<span className={`alert-count ${alerts.length ? "critical" : "ok"}`}>{alerts.length ? `${alerts.length} avisos` : "Materiales cubiertos"}</span>} />
+    {alerts.length > 0 && <div className="pmp-material-notices" role="status">{alerts.map((row, index) => {
+      const material = dataset.inventory.find((item) => item.code === row.materialCode);
+      return <article key={`${row.ceco}-${row.materialCode}-${index}`}><strong>CECO {row.ceco} · {row.materialCode}</strong><span>{material?.description ?? row.description}: requiere {row.required} {material?.unit ?? "und"}; saldo {row.stockAfter}, mínimo {row.safety}.</span><b>Reponer {Math.max(0, row.safety - row.stockAfter)} {material?.unit ?? "und"}</b></article>;
+    })}</div>}
+    <div className="table-scroll"><table><thead><tr><th>Prioridad / CECO</th><th>Producto</th><th>Material</th><th>Necesario</th><th>Saldo previo</th><th>Saldo final</th><th>Seguridad</th><th>Estado</th></tr></thead><tbody>{explosions.map((row, index) => {
+      const order = dataset.orders.find((item) => item.ceco === row.ceco);
+      const material = dataset.inventory.find((item) => item.code === row.materialCode);
+      return <tr key={`${row.ceco}-${row.materialCode}-${index}`}><td><button className="row-action" onClick={() => order && onSelect(order)}>#{order?.priority ?? "—"} · CECO {row.ceco}</button></td><td>{row.bodyTypeName}</td><td><strong>{row.materialCode}</strong><small>{material?.description ?? row.description}</small></td><td>{row.required} {material?.unit}</td><td>{row.stockBefore} {material?.unit}</td><td>{row.stockAfter} {material?.unit}</td><td>{row.safety} {material?.unit}</td><td><span className={`stock-label ${row.canRelease ? "ok" : row.shortage > 0 ? "danger" : "warning"}`}>{row.canRelease ? "Cubierto" : row.shortage > 0 ? "Quiebre" : "Bajo mínimo"}</span></td></tr>;
+    })}</tbody></table></div>
+    {explosions.length === 0 && <EmptyState text="No hay materiales BOM pendientes para los CECO abiertos." />}
+  </section>;
 }
 
 function ExcelActions({ onImport, onExport, onBulkTemplate, label }) {

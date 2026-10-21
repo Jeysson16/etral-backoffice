@@ -219,8 +219,6 @@ function calculateScenario(dataset, params) {
   }
 
   const laborFactor = Math.max(0.1, Number(params.laborAvailability ?? 100) / 100) * personnelFactor;
-  const calendarRows = dataset.workCalendar ?? [];
-  const calendarFactor = calendarRows.length ? calendarRows.reduce((sum, item) => sum + Number(item.availableHours), 0) / (calendarRows.length * 8) : 1;
   const shifts = Math.max(1, Number(params.shiftsPerDay ?? 1));
   const globalDemandFactor = Math.max(0.1, Number(params.demandPercent ?? 100) / 100);
 
@@ -253,16 +251,11 @@ function calculateScenario(dataset, params) {
     });
     const demandHours = orderLoads.reduce((sum, row) => sum + row.hours, 0);
 
-    const stageEquipment = (dataset.equipment ?? []).filter((item) => item.stageId === stage.id);
-    const equipmentFactor = stageEquipment.length
-      ? stageEquipment.reduce((sum, item) => sum + ({ operational: 1, restricted: 0.7, maintenance: 0.35, out_of_service: 0 }[item.status] ?? 1), 0) / stageEquipment.length
-      : 1;
-
     const incidentHours = (dataset.incidents ?? [])
       .filter((item) => item.stageId === stage.id && item.status !== "resolved")
       .reduce((sum, item) => sum + Number(item.downtimeHours), 0);
 
-    const availableHours = Math.max(0, Number(stage.capacityHours) * (horizonDays / 7) * laborFactor * calendarFactor * equipmentFactor * shifts - incidentHours);
+    const availableHours = Math.max(0, Number(stage.capacityHours) * (horizonDays / 7) * laborFactor * shifts - incidentHours);
     const utilization = availableHours === 0 ? 100 : Math.round((demandHours / availableHours) * 100);
 
     return {
@@ -274,7 +267,6 @@ function calculateScenario(dataset, params) {
       utilization,
       overloadHours: Number(Math.max(0, demandHours - availableHours).toFixed(1)),
       personnelFactor: Number(personnelFactor.toFixed(2)),
-      equipmentFactor: Number(equipmentFactor.toFixed(2)),
       incidentHours,
       orders: orderLoads,
       period: formatPeriod(startDate, periodEnd)
@@ -385,7 +377,7 @@ function buildNotifications(dataset, scenario) {
       value: `${stage.utilization}%`,
       situation: stage.overloadHours > 0 ? `Faltan ${stage.overloadHours} h para atender la carga planificada.` : "La fase conserva menos de 15% de holgura.",
       period: stage.period,
-      reason: `${stage.demandHours} h requeridas frente a ${stage.availableHours} h disponibles${stage.incidentHours ? `; ${stage.incidentHours} h de incidencias abiertas reducen la capacidad` : ""}${stage.equipmentFactor < 1 ? "; el estado del equipo reduce la disponibilidad" : ""}.`,
+      reason: `${stage.demandHours} h requeridas frente a ${stage.availableHours} h disponibles${stage.incidentHours ? `; ${stage.incidentHours} h de incidencias abiertas reducen la capacidad` : ""}.`,
       affected: stage.orders.map((row) => `CECO ${row.ceco} · ${row.product} (${row.hours} h)`),
       recommendedAction: stage.overloadHours > 0 ? `Reasignar o ampliar al menos ${stage.overloadHours} h en ${stage.name}, o desplazar los CECO de menor prioridad fuera de ${stage.period}.` : `Confirmar la disponibilidad antes de liberar más trabajo a ${stage.name}.`,
       calculation: `${stage.demandHours} h / ${stage.availableHours} h = ${stage.utilization}%`

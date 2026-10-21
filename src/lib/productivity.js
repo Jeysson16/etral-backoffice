@@ -1,3 +1,5 @@
+import { calculateSafetyStock } from "./mrp.js";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function dateOnly(value) {
@@ -95,8 +97,8 @@ function calculatePeriod(dataset, start, end) {
 
   const inventory = dataset.inventory ?? [];
   const safetyCovered = inventory.filter((item) => {
-    const available = Number(item.available ?? (Number(item.physical || 0) - Number(item.committed || 0)));
-    return available >= Number(item.safety || 0);
+    const available = Number(item.physical || 0) - Number(item.committed || 0);
+    return available >= calculateSafetyStock(item);
   }).length;
 
   const completedCecos = new Set(completed.map((item) => item.order.ceco));

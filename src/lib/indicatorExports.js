@@ -1,6 +1,7 @@
 import XLSX from "xlsx-js-style";
 import { buildIndicatorSeries } from "./productivity.js";
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
+import { calculateSafetyStock, hasSafetyStockParameters } from "./mrp.js";
 
 function inRange(value, start, end) {
   const date = String(value ?? "").slice(0, 10);
@@ -89,6 +90,18 @@ export function exportIndicatorsWorkbook(dataset, report, range, grouping = "mon
     ["fecha", "tipo", "material", "ceco", "cantidad", "nota"],
     ...(dataset.inventoryMovements ?? []).filter((item) => inRange(item.timestamp, range.start, range.end)).map((item) => [item.timestamp, item.type, item.code, item.ceco ?? "", Number(item.quantity ?? 0), item.note ?? ""])
   ], { numberFormats: { 4: "#,##0.00" } });
+  appendSheet(workbook, "Stock seguridad", [
+    ["material", "descripción", "unidad", "factor_servicio_Z", "desviación_demanda_σd", "plazo_reposición_días_LT", "stock_seguridad", "origen", "stock_físico", "comprometido", "disponible", "brecha_vs_seguridad", "cobertura", "ecuación"],
+    ...(dataset.inventory ?? []).map((item) => {
+      const z = Number(item.serviceFactor);
+      const deviation = Number(item.demandStdDev);
+      const leadTime = Number(item.leadTimeDays);
+      const calculated = hasSafetyStockParameters(item);
+      const safety = calculateSafetyStock(item);
+      const available = Number(item.physical ?? 0) - Number(item.committed ?? 0);
+      return [item.code, item.description, item.unit, calculated ? z : null, calculated ? deviation : null, calculated ? leadTime : null, safety, calculated ? "Calculado" : "Mínimo manual", Number(item.physical ?? 0), Number(item.committed ?? 0), available, available - safety, available >= safety ? "Cubierto" : "Bajo mínimo", calculated ? "REDONDEAR.MAS(Z × σd × RAIZ(LT); 0)" : "Mínimo registrado en inventario"];
+    })
+  ], { numberFormats: { 3: "0.00", 4: "0.00", 5: "0.00", 6: "#,##0.00", 8: "#,##0.00", 9: "#,##0.00", 10: "#,##0.00", 11: "#,##0.00" } });
   appendSheet(workbook, "Diccionario SPSS", [
     ["variable", "etiqueta", "tipo", "nivel", "valores / criterio"],
     ...definitions.map(([variable, label, _unit, equation, _role, level]) => [variable, label, "Numérico", level, equation]),
@@ -132,13 +145,11 @@ export function exportPeriodRecords(dataset, range) {
   exportTable("Controles de calidad", dataset.quality, "date");
   exportTable("Clientes", dataset.customers);
   exportTable("Personal", dataset.personnel);
-  exportTable("Equipos", dataset.equipment);
   exportTable("Tipos de carrocería", dataset.bodyTypes);
   exportTable("Fases de flujo", dataset.flowStages);
   exportTable("Actividades", dataset.stageActivities);
   exportTable("Reservas de material", dataset.orderMaterialReservations);
   exportTable("Turnos", dataset.shifts);
-  exportTable("Calendario", dataset.workCalendar, "date");
   exportTable("Asignaciones", dataset.assignments, "date");
   exportTable("Incidencias", dataset.incidents, "date");
 

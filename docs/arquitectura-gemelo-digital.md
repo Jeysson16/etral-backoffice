@@ -100,7 +100,7 @@ sequenceDiagram
 
 ### DTO / Schema
 
-Los modelos Pydantic validan materiales, órdenes, recursos, equipos, calendario e incidencias antes de ejecutar una simulación.
+Los modelos Pydantic validan materiales, órdenes, recursos e incidencias antes de ejecutar una simulación. Los registros históricos de equipos y calendario pueden seguir presentes en el snapshot, pero no intervienen en la capacidad ni en la programación del gemelo.
 
 ### Snapshot
 
