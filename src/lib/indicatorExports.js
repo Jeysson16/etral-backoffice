@@ -16,12 +16,12 @@ function titleRow(title, range) {
 }
 
 function appendSheet(workbook, name, rows, { preserveLayout = false, headerRow, numberFormats = {} } = {}) {
-  const content = preserveLayout ? rows : addExportTitle(rows, name.toUpperCase(), "Exportado desde ETRAL");
+  const content = preserveLayout ? rows : addExportTitle(rows, name.toUpperCase(), "Exportado desde control de planta");
   const resolvedHeaderRow = headerRow ?? (preserveLayout ? 3 : 3);
   const sheet = XLSX.utils.aoa_to_sheet(content);
   XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(sheet, {
     title: content[0]?.[0] || name,
-    subtitle: content[1]?.[0] || "Exportado desde ETRAL",
+    subtitle: content[1]?.[0] || "Exportado desde control de planta",
     headerRow: resolvedHeaderRow,
     titleRow: 0,
     numberFormats
@@ -53,7 +53,7 @@ export function exportIndicatorsWorkbook(dataset, report, range, grouping = "mon
   ];
   const metricMap = new Map(metricValues.map((row) => [row[0], row]));
   appendSheet(workbook, "Resumen", [
-    ...titleRow("INDICADORES PRODUCTIVOS ETRAL", range),
+    ...titleRow("INDICADORES PRODUCTIVOS", range),
     ["Variable SPSS", "Indicador", "Actual", "Periodo anterior", "Unidad", "Ecuación", "Rol", "Nivel de medición"],
     ...definitions.map(([variable, label, unit, equation, role, level]) => {
       const values = metricMap.get(variable);
@@ -96,7 +96,7 @@ export function exportIndicatorsWorkbook(dataset, report, range, grouping = "mon
     ["horas_hombre", "Horas reportadas en parte diario", "Numérico", "Escala", "≥ 0"],
     ["avance_pct", "Avance de actividad u orden", "Numérico", "Escala", "0 a 100"]
   ]);
-  downloadWorkbook(workbook, `ETRAL_indicadores_${range.start}_${range.end}.xlsx`);
+  downloadWorkbook(workbook, `indicadores_${range.start}_${range.end}.xlsx`);
 }
 
 export function exportPeriodRecords(dataset, range) {
@@ -142,5 +142,5 @@ export function exportPeriodRecords(dataset, range) {
   exportTable("Asignaciones", dataset.assignments, "date");
   exportTable("Incidencias", dataset.incidents, "date");
 
-  downloadWorkbook(workbook, `ETRAL_registros_${range.start}_${range.end}.xlsx`);
+  downloadWorkbook(workbook, `registros_${range.start}_${range.end}.xlsx`);
 }

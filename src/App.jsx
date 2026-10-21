@@ -481,7 +481,7 @@ export default function App() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <button className="brand" onClick={() => { setView("overview"); setMenuOpen(false); }} aria-label="Ir al inicio">
-          <span><strong>ETRAL</strong><small>Control de planta</small></span>
+          <span><strong>Control de planta</strong><small>Gemelo digital</small></span>
         </button>
         <nav aria-label="Navegación principal">
           {Object.entries(views).map(([key, item]) => (
@@ -500,7 +500,7 @@ export default function App() {
         <header className="topbar">
           <button className="menu-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Abrir menú">☰</button>
           <div><p className="breadcrumb">Operaciones / {page.label}</p><h1>{page.label}</h1><p>{page.subtitle}</p></div>
-          <div className="topbar-context"><span>Actualizado ahora</span><strong>Planta ETRAL</strong>{supabase && <button className="text-button" onClick={() => supabase.auth.signOut()}>Cerrar sesión</button>}</div>
+          <div className="topbar-context"><span>Actualizado ahora</span><strong>Planta</strong>{supabase && <button className="text-button" onClick={() => supabase.auth.signOut()}>Cerrar sesión</button>}</div>
         </header>
         {error && <div className="message error"><strong>No se pudo sincronizar.</strong> {error}</div>}
         {notice && <div className="toast">✓ {notice}</div>}
@@ -536,7 +536,7 @@ function AccessScreen({ loading = false }) {
     setSubmitting(false);
   }
 
-  return <main className="access-screen"><section className="access-card"><p className="eyebrow">Acceso protegido</p><h1>Gemelo digital ETRAL</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración de ETRAL el alta de tu cuenta.</small></>}</section></main>;
+  return <main className="access-screen"><section className="access-card"><p className="eyebrow">Acceso protegido</p><h1>Gemelo digital</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración el alta de tu cuenta.</small></>}</section></main>;
 }
 
 function PageActions({ children, className = "" }) {

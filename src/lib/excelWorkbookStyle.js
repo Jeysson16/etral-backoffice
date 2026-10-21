@@ -84,6 +84,6 @@ export function styleInstructionSheet(sheet) {
   return sheet;
 }
 
-export function addExportTitle(rows, title, subtitle = "Exportado desde ETRAL") {
+export function addExportTitle(rows, title, subtitle = "Exportado desde control de planta") {
   return [[title], [subtitle], [], ...rows];
 }

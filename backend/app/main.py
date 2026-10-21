@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .schemas import CecoCodeRequest, FactorySnapshot, SimulationRun
 from .services import evaluate_mrp, generate_ceco, simulate_comparison
 
-app = FastAPI(title="ETRAL Digital Twin API", version="0.1.0")
+app = FastAPI(title="Digital Twin API", version="0.1.0")
 allowed_origins = os.getenv("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,

@@ -48,7 +48,7 @@ export default function ResourcesView({ dataset, openDrawer, setView }) {
 
   return <div className="stack-lg resources-page">
     <section className="resource-feed-banner">
-      <div className="feed-orbit"><span>ETRAL</span><i /><i /><i /></div>
+      <div className="feed-orbit"><span>PLANTA</span><i /><i /><i /></div>
       <div><span>Alimentación operativa</span><h2>Recursos conectados al gemelo digital</h2><p>La capacidad base se construye con disponibilidad de personal, turnos, equipos, calendario, asignaciones e incidencias.</p></div>
       <aside><strong>{metrics.productiveHours} h</strong><small>capacidad laboral efectiva / semana</small></aside>
     </section>

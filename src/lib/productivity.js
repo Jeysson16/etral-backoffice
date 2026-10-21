@@ -229,7 +229,7 @@ export function buildExcelReport(report) {
     ["Productividad multifactorial", current.multifactorProductivity, previous.multifactorProductivity, "ratio", "Valor de salida / factores de producción" ]
   ];
   const summaryRows = [
-    [excelCell("REPORTE DE INDICADORES PRODUCTIVOS ETRAL", "String", "Title")],
+    [excelCell("REPORTE DE INDICADORES PRODUCTIVOS", "String", "Title")],
     [excelCell("Periodo"), excelCell(`${current.start} a ${current.end}`)],
     [excelCell("Indicador", "String", "Header"), excelCell("Periodo actual", "String", "Header"), excelCell("Periodo anterior", "String", "Header"), excelCell("Unidad", "String", "Header"), excelCell("Fórmula / criterio", "String", "Header")],
     ...metrics.map(([name, value, prior, unit, formula]) => [excelCell(name), excelCell(value ?? "Sin datos", value == null ? "String" : "Number"), excelCell(prior ?? "Sin datos", prior == null ? "String" : "Number"), excelCell(unit), excelCell(formula)])

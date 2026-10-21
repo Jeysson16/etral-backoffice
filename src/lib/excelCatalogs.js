@@ -114,7 +114,7 @@ export function downloadCatalogWorkbook(dataset, type = "all") {
       "Código": item.code, "Descripción": item.description, "Categoría": item.category, "Unidad": item.unit, "Marca": dataset.catalogs.brands.find((brand) => brand.id === item.brandId)?.name ?? "",
       "Ubicación": item.location ?? "", "Stock físico": item.physical, "Stock seguridad": item.safety, "Factor servicio": item.serviceFactor ?? "", "Desviación demanda": item.demandStdDev ?? "", "Plazo reposición días": item.leadTimeDays ?? "", "Costo unitario": item.unitCost ?? "", "Moneda": item.currency ?? "PEN"
     }));
-    const sheet = XLSX.utils.json_to_sheet(addExportTitle(rows.length ? rows : [materialTemplateRow()], "MATERIALES", "Maestro de inventario ETRAL"));
+    const sheet = XLSX.utils.json_to_sheet(addExportTitle(rows.length ? rows : [materialTemplateRow()], "MATERIALES", "Maestro de inventario"));
     XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(sheet, { headerRow: 3, titleRow: 0, numberFormats: { 6: "#,##0.00", 7: "#,##0.00", 8: "0.00", 9: "#,##0.00", 10: "0", 11: "S/ #,##0.00" } }), "Materiales");
   }
   if (type === "all" || type === "products") {
@@ -125,7 +125,7 @@ export function downloadCatalogWorkbook(dataset, type = "all") {
     const bomSheet = XLSX.utils.json_to_sheet(addExportTitle(bom.length ? bom : [bomTemplateRow()], "LISTA DE MATERIALES (BOM)", "Material requerido por producto y fase"));
     XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(bomSheet, { headerRow: 3, titleRow: 0, numberFormats: { 5: "#,##0.00", 6: "#,##0.00" } }), "BOM");
   }
-  XLSX.writeFile(workbook, `etral-${type === "materials" ? "materiales" : type === "products" ? "productos" : "catalogos"}-exportados.xlsx`);
+  XLSX.writeFile(workbook, `control-${type === "materials" ? "materiales" : type === "products" ? "productos" : "catalogos"}-exportados.xlsx`);
 }
 
 export function downloadBulkImportWorkbook(dataset) {
@@ -156,10 +156,10 @@ export function downloadBulkImportWorkbook(dataset) {
     ["No cambies los encabezados de la hoja Carga masiva."]
   ]);
   XLSX.utils.book_append_sheet(workbook, styleInstructionSheet(instructionsSheet), "Instrucciones");
-  XLSX.writeFile(workbook, "etral-carga-masiva-productos-materiales.xlsx");
+  XLSX.writeFile(workbook, "carga-masiva-productos-materiales.xlsx");
 }
 
 export const materialTemplateRow = () => ({ "Código": "Opcional: MAT-0001", "Descripción": "Plancha galvanizada 1.5 mm", "Categoría": "Planchas y perfiles", "Unidad": "und", "Marca": "", "Ubicación": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Factor servicio": 1.65, "Desviación demanda": "", "Plazo reposición días": "", "Costo unitario": 0, "Moneda": "PEN" });
-export const productTemplateRow = () => ({ "Código": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca": "ETRAL", "Unidad salida": "und", "Días objetivo": 15, "Ruta fases": "SUM;HAB;ARM;SOL;PIN;ACA" });
+export const productTemplateRow = () => ({ "Código": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca": "", "Unidad salida": "und", "Días objetivo": 15, "Ruta fases": "SUM;HAB;ARM;SOL;PIN;ACA" });
 export const bomTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Código material": "MAT-0001", "Código pieza": "BOM-001", "Descripción": "Plancha galvanizada 1.5 mm", "Código fase": "HAB", "Código fase origen": "1", "Longitud mm": 0, "Cantidad": 2 });
-export const bulkTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca producto": "ETRAL", "Unidad salida": "und", "Días objetivo": 15, "Código fase": "HAB", "Código fase origen": "1", "Código material": "MAT-0001", "Descripción material": "Plancha galvanizada 1.5 mm", "Categoría material": "Planchas y perfiles", "Unidad material": "und", "Marca material": "", "Ubicación material": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Código pieza": "", "Longitud mm": 0, "Cantidad": 2 });
+export const bulkTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca producto": "", "Unidad salida": "und", "Días objetivo": 15, "Código fase": "HAB", "Código fase origen": "1", "Código material": "MAT-0001", "Descripción material": "Plancha galvanizada 1.5 mm", "Categoría material": "Planchas y perfiles", "Unidad material": "und", "Marca material": "", "Ubicación material": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Código pieza": "", "Longitud mm": 0, "Cantidad": 2 });
