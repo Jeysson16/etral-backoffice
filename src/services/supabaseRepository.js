@@ -164,7 +164,10 @@ export const supabaseRepository = {
       location: payload.location,
       service_factor: nullableNumber(payload.serviceFactor),
       demand_std_dev: nullableNumber(payload.demandStdDev),
-      lead_time_days: nullableNumber(payload.leadTimeDays)
+      lead_time_days: nullableNumber(payload.leadTimeDays),
+      average_demand: nullableNumber(payload.averageDemand),
+      lead_time_std_dev: nullableNumber(payload.leadTimeStdDev),
+      service_level: nullableNumber(payload.serviceLevel)
     });
     if (error) throw error;
     await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: "ingreso", code, ceco: "", quantity: Number(payload.physical), note: "Alta inicial de insumo" });
@@ -204,7 +207,7 @@ export const supabaseRepository = {
       const physical = previous
         ? Number(previous.physical || 0) + Number(row.physical || 0)
         : Number(existing?.physical || 0) + Number(row.physical || 0);
-      const data = { category: category.name, category_id: category.id, description: row.description, physical, safety: Number(row.safety || 0), unit: unit.symbol, unit_id: unit.id, brand_id: brand?.id || null, location: row.location || null, service_factor: nullableNumber(row.serviceFactor), demand_std_dev: nullableNumber(row.demandStdDev), lead_time_days: nullableNumber(row.leadTimeDays), unit_cost: nullableNumber(row.unitCost), currency: row.currency || "PEN" };
+      const data = { category: category.name, category_id: category.id, description: row.description, physical, safety: Number(row.safety ?? existing?.safety ?? previous?.safety ?? 0), unit: unit.symbol, unit_id: unit.id, brand_id: brand?.id || null, location: row.location || null, service_factor: nullableNumber(row.serviceFactor ?? existing?.serviceFactor ?? previous?.service_factor), demand_std_dev: nullableNumber(row.demandStdDev ?? existing?.demandStdDev ?? previous?.demand_std_dev), lead_time_days: nullableNumber(row.leadTimeDays ?? existing?.leadTimeDays ?? previous?.lead_time_days), average_demand: nullableNumber(row.averageDemand ?? existing?.averageDemand ?? previous?.average_demand), lead_time_std_dev: nullableNumber(row.leadTimeStdDev ?? existing?.leadTimeStdDev ?? previous?.lead_time_std_dev), service_level: nullableNumber(row.serviceLevel ?? existing?.serviceLevel ?? previous?.service_level), unit_cost: nullableNumber(row.unitCost), currency: row.currency || "PEN" };
       materialRowsByCode.set(code, { id: existing?.id || previous?.id || `inv-${code}`, code, committed: Number(existing?.committed ?? previous?.committed ?? 0), ...data });
       for (const sourceCode of row.sourceCodes?.length ? row.sourceCodes : [row.code]) {
         importedCodes.set(sourceCode, code);
@@ -366,7 +369,10 @@ export const supabaseRepository = {
       safety: Number(patch.safety || 0),
       service_factor: nullableNumber(patch.serviceFactor),
       demand_std_dev: nullableNumber(patch.demandStdDev),
-      lead_time_days: nullableNumber(patch.leadTimeDays)
+      lead_time_days: nullableNumber(patch.leadTimeDays),
+      average_demand: nullableNumber(patch.averageDemand),
+      lead_time_std_dev: nullableNumber(patch.leadTimeStdDev),
+      service_level: nullableNumber(patch.serviceLevel)
     }).eq("code", code);
     if (error) throw error;
     return this.getDataset();
@@ -571,7 +577,7 @@ function mapBodyType(row, routes) {
 }
 
 function mapInventory(row) {
-  return { id: row.id, code: row.code, category: row.category, categoryId: row.category_id, brandId: row.brand_id, unitId: row.unit_id, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: Number(row.service_factor), demandStdDev: Number(row.demand_std_dev), leadTimeDays: Number(row.lead_time_days), unitCost: Number(row.unit_cost), currency: row.currency || "PEN", unit: row.unit, location: row.location };
+  return { id: row.id, code: row.code, category: row.category, categoryId: row.category_id, brandId: row.brand_id, unitId: row.unit_id, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: row.service_factor == null ? null : Number(row.service_factor), demandStdDev: row.demand_std_dev == null ? null : Number(row.demand_std_dev), leadTimeDays: row.lead_time_days == null ? null : Number(row.lead_time_days), averageDemand: row.average_demand == null ? null : Number(row.average_demand), leadTimeStdDev: row.lead_time_std_dev == null ? null : Number(row.lead_time_std_dev), serviceLevel: row.service_level == null ? null : Number(row.service_level), unitCost: Number(row.unit_cost), currency: row.currency || "PEN", unit: row.unit, location: row.location };
 }
 
 function mapBom(row) {

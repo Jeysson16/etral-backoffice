@@ -57,7 +57,8 @@ function snapshotFromDataset(dataset) {
     materials: dataset.inventory.map((item) => ({
       code: item.code, description: item.description, physical: Number(item.physical), committed: Number(item.committed || 0),
       safety: Number(item.safety || 0), service_factor: positiveNumberOrNull(item.serviceFactor), demand_std_dev: item.demandStdDev == null ? null : Number(item.demandStdDev),
-      lead_time_days: positiveNumberOrNull(item.leadTimeDays), unit: item.unit
+      lead_time_days: positiveNumberOrNull(item.leadTimeDays), average_demand: item.averageDemand == null ? null : Number(item.averageDemand),
+      lead_time_std_dev: item.leadTimeStdDev == null ? null : Number(item.leadTimeStdDev), service_level: item.serviceLevel == null ? null : Number(item.serviceLevel), unit: item.unit
     })),
     bom: dataset.bom.map((item) => ({ body_type_id: item.bodyTypeId, stage_id: item.stageId, material_code: item.materialCode, quantity: Number(item.quantity) })),
     orders: dataset.orders.map((item) => ({ ceco: item.ceco, body_type_id: item.bodyTypeId, stage_id: item.stageId, priority: Number(item.priority), progress: Number(item.progress), planned_start_date: item.plannedStartDate || null, due_date: item.dueDate || null })),

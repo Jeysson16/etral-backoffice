@@ -2,6 +2,7 @@ import XLSX from "xlsx-js-style";
 import { buildIndicatorSeries } from "./productivity.js";
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 import { calculateSafetyStock, hasSafetyStockParameters } from "./mrp.js";
+import { deriveMaterialDemand } from "./materialDemand.js";
 
 function inRange(value, start, end) {
   const date = String(value ?? "").slice(0, 10);
@@ -14,6 +15,21 @@ function downloadWorkbook(workbook, filename) {
 
 function titleRow(title, range) {
   return [[title], ["Periodo", `${range.start} a ${range.end}`], []];
+}
+
+function recordedNumber(value) {
+  return value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+}
+
+function daysBetween(start, end) {
+  if (!start || !end) return null;
+  const first = Date.parse(`${String(start).slice(0, 10)}T12:00:00Z`);
+  const last = Date.parse(`${String(end).slice(0, 10)}T12:00:00Z`);
+  return Number.isFinite(first) && Number.isFinite(last) ? Math.round((last - first) / 86400000) : null;
+}
+
+function thesisRows(title, range, headers, rows, numberFormats = {}) {
+  return { rows: [...titleRow(title, range), headers, ...rows], options: { preserveLayout: true, numberFormats } };
 }
 
 function appendSheet(workbook, name, rows, { preserveLayout = false, headerRow, numberFormats = {} } = {}) {
@@ -39,9 +55,10 @@ const definitions = [
   ["multifactor_productivity", "Productividad multifactorial", "ratio", "Valor de salida / (materiales + mano de obra + otros factores)", "Resultado", "Escala"]
 ];
 
-export function exportIndicatorsWorkbook(dataset, report, range, grouping = "month") {
+export function buildIndicatorsWorkbook(dataset, report, range, grouping = "month") {
   const workbook = XLSX.utils.book_new();
   const { current, previous } = report;
+  const demandByCode = deriveMaterialDemand(dataset, range);
   const series = buildIndicatorSeries(dataset, range.start, range.end, grouping);
   const metricValues = [
     ["pmp_compliance", current.pmpCompliance, previous.pmpCompliance],
@@ -70,6 +87,50 @@ export function exportIndicatorsWorkbook(dataset, report, range, grouping = "mon
     ...current.completedOrders.map((item) => item.ceco),
     ...(dataset.operations ?? []).filter((item) => inRange(item.date, range.start, range.end)).map((item) => item.ceco)
   ]);
+  const completedByCeco = new Map(current.completedOrders.map((item) => [item.ceco, item]));
+  const operations = dataset.operations ?? [];
+  const activityProgress = dataset.activityProgress ?? [];
+  const thesisPlan = thesisRows("FICHA DE RECOLECCIÓN Y CÁLCULO · PLAN MAESTRO, LEAD TIME Y AVANCE", range,
+    ["Mes", "CECO", "Descripción de carrocería", "Cliente", "Fecha pactada de entrega (A)", "Fecha real de entrega (B)", "Días de retraso (B − A)", "Und. producidas", "Und. planificadas", "CPP (%)", "Actividades ejecutadas", "Actividades programadas", "Nivel de avance (%)", "Observaciones"],
+    (dataset.orders ?? []).filter((item) => relevantCecos.has(item.ceco)).map((order) => {
+      const completed = completedByCeco.get(order.ceco);
+      const progress = activityProgress.filter((item) => item.ceco === order.ceco && (inRange(item.startedAt, range.start, range.end) || inRange(item.finishedAt, range.start, range.end)));
+      const executed = progress.filter((item) => item.status === "completed" || Number(item.progress) >= 100).length;
+      const product = (dataset.bodyTypes ?? []).find((item) => item.id === order.bodyTypeId);
+      const due = order.dueDate?.slice(0, 10) ?? "";
+      const actual = completed?.completionDate ?? "";
+      const planned = inRange(due, range.start, range.end) ? 1 : 0;
+      const produced = completed ? 1 : 0;
+      return [due ? due.slice(0, 7) : (actual ? actual.slice(0, 7) : ""), order.ceco, product?.name ?? "", order.customer ?? "", due, actual,
+        daysBetween(due, actual), produced, planned, planned ? produced / planned * 100 : null, executed, progress.length,
+        progress.length ? executed / progress.length * 100 : null, completed?.estimated ? "Fecha real inferida; verificar" : ""];
+    }), { 6: "0", 7: "0", 8: "0", 9: "0.00", 10: "0", 11: "0", 12: "0.00" });
+  appendSheet(workbook, "Ficha plan maestro", thesisPlan.rows, thesisPlan.options);
+  const thesisProductivity = thesisRows("FICHA DE RECOLECCIÓN Y CÁLCULO · PRODUCTIVIDAD", range,
+    ["Fecha", "CECO", "Descripción de carrocería", "Unidades producidas", "N.º de trabajadores", "Tiempo real (horas-hombre)", "Costo por hora-hombre", "Productividad mano de obra (und/HH)", "Costo materia prima", "Costo insumos", "Costo total materiales", "Productividad materiales (und/S/)", "Producto total S/", "Energía S/", "Capital S/", "Productividad multifactorial", "Observaciones"],
+    current.completedOrders.map((completed) => {
+      const order = (dataset.orders ?? []).find((item) => item.ceco === completed.ceco);
+      const product = (dataset.bodyTypes ?? []).find((item) => item.id === order?.bodyTypeId);
+      const logs = operations.filter((item) => item.ceco === completed.ceco && inRange(item.date, range.start, range.end));
+      const hours = logs.reduce((sum, item) => sum + Number(item.totalHours ?? 0), 0);
+      const workers = new Set(logs.map((item) => item.worker).filter(Boolean)).size;
+      const rates = logs.map((item) => recordedNumber(item.hourlyCost ?? item.laborCostPerHour));
+      const laborCost = logs.length && rates.every((item) => item !== null) ? logs.reduce((sum, item, index) => sum + Number(item.totalHours ?? 0) * rates[index], 0) : null;
+      const reservations = (dataset.orderMaterialReservations ?? []).filter((item) => item.ceco === completed.ceco && Number(item.consumedQuantity) > 0);
+      const costs = reservations.map((item) => recordedNumber((dataset.inventory ?? []).find((material) => material.code === item.materialCode)?.unitCost));
+      const materialCost = reservations.length && costs.every((item) => item !== null)
+        ? reservations.reduce((sum, item, index) => sum + Number(item.consumedQuantity) * costs[index], 0) : null;
+      const output = recordedNumber(order?.outputValue);
+      const energy = recordedNumber(order?.energyCost);
+      const capital = recordedNumber(order?.capitalCost);
+      const totalCost = materialCost !== null && laborCost !== null && energy !== null && capital !== null ? materialCost + laborCost + energy + capital : null;
+      return [completed.completionDate, completed.ceco, product?.name ?? "", 1, workers || null, hours || null,
+        laborCost !== null && hours > 0 ? laborCost / hours : null, hours > 0 ? 1 / hours : null,
+        null, null, materialCost, materialCost > 0 ? 1 / materialCost : null, output, energy, capital,
+        output !== null && totalCost > 0 ? output / totalCost : null,
+        [completed.estimated ? "Fecha de cierre inferida" : "", materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible"].filter(Boolean).join("; ")];
+    }), { 3: "0", 4: "0", 5: "0.00", 6: "0.00", 7: "0.000", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.0000", 12: "0.00", 13: "0.00", 14: "0.00", 15: "0.000" });
+  appendSheet(workbook, "Ficha productividad", thesisProductivity.rows, thesisProductivity.options);
   appendSheet(workbook, "Registros CECO", [
     ["ceco", "cliente", "producto", "linea", "estado", "avance_pct", "fecha_pactada", "fecha_inicio_plan", "fecha_final", "calidad_fecha_final"],
     ...dataset.orders.filter((item) => relevantCecos.has(item.ceco)).map((order) => {
@@ -90,18 +151,28 @@ export function exportIndicatorsWorkbook(dataset, report, range, grouping = "mon
     ["fecha", "tipo", "material", "ceco", "cantidad", "nota"],
     ...(dataset.inventoryMovements ?? []).filter((item) => inRange(item.timestamp, range.start, range.end)).map((item) => [item.timestamp, item.type, item.code, item.ceco ?? "", Number(item.quantity ?? 0), item.note ?? ""])
   ], { numberFormats: { 4: "#,##0.00" } });
-  appendSheet(workbook, "Stock seguridad", [
-    ["material", "descripción", "unidad", "factor_servicio_Z", "desviación_demanda_σd", "plazo_reposición_días_LT", "stock_seguridad", "origen", "stock_físico", "comprometido", "disponible", "brecha_vs_seguridad", "cobertura", "ecuación"],
-    ...(dataset.inventory ?? []).map((item) => {
-      const z = Number(item.serviceFactor);
-      const deviation = Number(item.demandStdDev);
-      const leadTime = Number(item.leadTimeDays);
-      const calculated = hasSafetyStockParameters(item);
+  const thesisStock = thesisRows("FICHA DE RECOLECCIÓN DE DATOS Y CÁLCULO · STOCK DE SEGURIDAD", range,
+    ["Fecha", "Material", "Unidad", "Demanda promedio (dp)", "Desviación estándar demanda (s1)", "Lead time proveedor (Lt) días", "Desv. est. lead time (s2)", "Nivel de servicio", "z", "SS según tesis", "SS operativo", "Observaciones", "Stock físico", "Comprometido", "Disponible", "Brecha vs. SS operativo"],
+    (dataset.inventory ?? []).map((item) => {
+      const estimatedDemand = demandByCode.get(item.code);
+      const deviation = recordedNumber(item.demandStdDev) ?? recordedNumber(estimatedDemand?.demandStdDev);
+      const leadTime = recordedNumber(item.leadTimeDays);
+      const averageDemand = recordedNumber(item.averageDemand) ?? recordedNumber(estimatedDemand?.averageDemand);
+      const leadTimeDeviation = recordedNumber(item.leadTimeStdDev);
       const safety = calculateSafetyStock(item);
       const available = Number(item.physical ?? 0) - Number(item.committed ?? 0);
-      return [item.code, item.description, item.unit, calculated ? z : null, calculated ? deviation : null, calculated ? leadTime : null, safety, calculated ? "Calculado" : "Mínimo manual", Number(item.physical ?? 0), Number(item.committed ?? 0), available, available - safety, available >= safety ? "Cubierto" : "Bajo mínimo", calculated ? "REDONDEAR.MAS(Z × σd × RAIZ(LT); 0)" : "Mínimo registrado en inventario"];
-    })
-  ], { numberFormats: { 3: "0.00", 4: "0.00", 5: "0.00", 6: "#,##0.00", 8: "#,##0.00", 9: "#,##0.00", 10: "#,##0.00", 11: "#,##0.00" } });
+      const estimatedInput = { ...item, averageDemand, demandStdDev: deviation };
+      const thesisSafety = hasSafetyStockParameters(estimatedInput) ? calculateSafetyStock(estimatedInput) : null;
+      const missing = [["dp", averageDemand], ["s1", deviation], ["Lt", leadTime], ["s2", leadTimeDeviation], ["z", recordedNumber(item.serviceFactor)]]
+        .filter(([, value]) => value === null).map(([label]) => label);
+      const provenance = estimatedDemand && (recordedNumber(item.averageDemand) === null || recordedNumber(item.demandStdDev) === null)
+        ? `dp/s1 estimados desde ${estimatedDemand.source} en ${estimatedDemand.days} días; ` : "";
+      return [range.end, `${item.code} · ${item.description}`, item.unit, averageDemand, deviation, leadTime, leadTimeDeviation,
+        recordedNumber(item.serviceLevel), recordedNumber(item.serviceFactor), thesisSafety, safety,
+        missing.length ? `${provenance}Corte de inventario; SS de tesis no calculable: falta ${missing.join(", ")}. Se conserva el mínimo previo registrado.` : `${provenance}Corte de inventario; SS = REDONDEAR.MAS(z × RAIZ(s1² × Lt + s2² × dp²); 0)`,
+        Number(item.physical ?? 0), Number(item.committed ?? 0), available, available - safety];
+    }), { 3: "0.00", 4: "0.00", 5: "0.00", 6: "0.00", 7: "0.00%", 8: "0.00", 9: "#,##0", 10: "#,##0", 12: "#,##0.00", 13: "#,##0.00", 14: "#,##0.00", 15: "#,##0.00" });
+  appendSheet(workbook, "Stock seguridad", thesisStock.rows, thesisStock.options);
   appendSheet(workbook, "Diccionario SPSS", [
     ["variable", "etiqueta", "tipo", "nivel", "valores / criterio"],
     ...definitions.map(([variable, label, _unit, equation, _role, level]) => [variable, label, "Numérico", level, equation]),
@@ -109,7 +180,11 @@ export function exportIndicatorsWorkbook(dataset, report, range, grouping = "mon
     ["horas_hombre", "Horas reportadas en parte diario", "Numérico", "Escala", "≥ 0"],
     ["avance_pct", "Avance de actividad u orden", "Numérico", "Escala", "0 a 100"]
   ]);
-  downloadWorkbook(workbook, `indicadores_${range.start}_${range.end}.xlsx`);
+  return workbook;
+}
+
+export function exportIndicatorsWorkbook(dataset, report, range, grouping = "month") {
+  downloadWorkbook(buildIndicatorsWorkbook(dataset, report, range, grouping), `indicadores_${range.start}_${range.end}.xlsx`);
 }
 
 export function exportPeriodRecords(dataset, range) {

@@ -36,10 +36,13 @@ test("mapa de calor clasifica stock disponible", () => {
   assert.equal(paint.tone, "warning");
 });
 
-test("stock de seguridad usa Z por desviación de demanda y raíz del lead time", () => {
+test("stock de seguridad usa los cinco parámetros de la tesis y conserva mínimos anteriores", () => {
   const paint = initialDataset.inventory.find((item) => item.code === "MAT-0042");
-  assert.equal(calculateSafetyStock(paint), Math.ceil(paint.serviceFactor * paint.demandStdDev * Math.sqrt(paint.leadTimeDays)));
   assert.equal(calculateSafetyStock(paint), 15);
+  assert.equal(calculateSafetyStock({ ...paint, averageDemand: 3, leadTimeStdDev: 1 }),
+    Math.ceil(paint.serviceFactor * Math.sqrt(paint.demandStdDev ** 2 * paint.leadTimeDays + 3 ** 2)));
+  assert.equal(calculateSafetyStock({ ...paint, averageDemand: 3, leadTimeStdDev: 0 }),
+    Math.ceil(paint.serviceFactor * paint.demandStdDev * Math.sqrt(paint.leadTimeDays)));
 });
 
 test("requerimiento abierto se calcula desde órdenes activas y BOM", () => {

@@ -79,6 +79,9 @@ create table if not exists inventory_items (
   service_factor numeric,
   demand_std_dev numeric,
   lead_time_days numeric,
+  average_demand numeric,
+  lead_time_std_dev numeric,
+  service_level numeric,
   unit_cost numeric,
   currency text not null default 'PEN',
   unit text not null default 'und',
@@ -282,6 +285,9 @@ alter table inventory_items add column if not exists location text;
 alter table inventory_items add column if not exists service_factor numeric;
 alter table inventory_items add column if not exists demand_std_dev numeric;
 alter table inventory_items add column if not exists lead_time_days numeric;
+alter table inventory_items add column if not exists average_demand numeric;
+alter table inventory_items add column if not exists lead_time_std_dev numeric;
+alter table inventory_items add column if not exists service_level numeric;
 alter table inventory_items add column if not exists unit_cost numeric;
 alter table inventory_items add column if not exists currency text not null default 'PEN';
 alter table inventory_items add column if not exists category_id text references material_categories(id);
@@ -378,6 +384,24 @@ begin
     execute format('create policy authenticated_access on %I for all to authenticated using (true) with check (true)', table_name);
   end loop;
 end $$;
+
+create or replace function public.calculate_inventory_safety()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if new.service_factor > 0 and new.demand_std_dev >= 0 and new.lead_time_days > 0
+     and new.average_demand >= 0 and new.lead_time_std_dev >= 0 then
+    new.safety := ceil(new.service_factor * sqrt(
+      power(new.demand_std_dev, 2) * new.lead_time_days
+      + power(new.lead_time_std_dev, 2) * power(new.average_demand, 2)
+    ));
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists trg_calculate_inventory_safety on public.inventory_items;
+create trigger trg_calculate_inventory_safety
+before insert or update of service_factor, demand_std_dev, lead_time_days, average_demand, lead_time_std_dev
+on public.inventory_items for each row execute function public.calculate_inventory_safety();
 
 
 drop policy if exists simulation_read on simulation_runs;

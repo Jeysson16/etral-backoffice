@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.schemas import ActivityProgress, BomItem, EquipmentResource, FactorySnapshot, IncidentResource, Material, OperationLog, PersonnelResource, ProductionOrder, SimulationInput, Stage, StageActivity
-from app.services import _historical_validation, calibrate_digital_twin, evaluate_mrp, generate_ceco, simulate, simulate_comparison
+from app.services import _historical_validation, calibrate_digital_twin, evaluate_mrp, generate_ceco, safety_stock, simulate, simulate_comparison
 
 
 def snapshot() -> FactorySnapshot:
@@ -20,6 +20,14 @@ def snapshot() -> FactorySnapshot:
 
 
 class TwinServiceTests(unittest.TestCase):
+    def test_safety_stock_uses_thesis_parameters(self):
+        material = Material(code="MAT-1", description="Plancha", physical=20, safety=5,
+                            service_factor=Decimal("1.65"), demand_std_dev=Decimal("2"),
+                            lead_time_days=Decimal("4"), average_demand=Decimal("3"),
+                            lead_time_std_dev=Decimal("1"), service_level=Decimal("0.95"))
+        self.assertEqual(safety_stock(material), Decimal("9"))
+        self.assertEqual(safety_stock(material.model_copy(update={"lead_time_std_dev": None})), Decimal("5"))
+
     def test_generates_six_digit_ceco(self):
         self.assertEqual(generate_ceco(2026, 180), "260181")
 

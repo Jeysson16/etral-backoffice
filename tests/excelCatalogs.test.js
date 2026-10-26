@@ -38,3 +38,24 @@ test("mantiene el código de material de la pestaña BOM tradicional", async () 
   assert.equal(result.bom[0].productCode, "FUR-01");
   assert.equal(result.bom[0].materialCode, "MAT-01");
 });
+
+test("importa todos los parámetros de stock de seguridad de la tesis", async () => {
+  const file = workbookFile({ Materiales: [{
+    "Código": "MAT-01", "Descripción": "Plancha", "Unidad": "und",
+    "Demanda promedio dp": 3, "Desviación demanda s1": 2,
+    "Plazo reposición días": 4, "Desviación lead time s2": 1,
+    "Nivel servicio": 0.95, "Factor z": 1.65
+  }] });
+  const { materials } = await parseCatalogWorkbook(file);
+  assert.equal(materials[0].averageDemand, 3);
+  assert.equal(materials[0].demandStdDev, 2);
+  assert.equal(materials[0].leadTimeDays, 4);
+  assert.equal(materials[0].leadTimeStdDev, 1);
+  assert.equal(materials[0].serviceLevel, 0.95);
+  assert.equal(materials[0].serviceFactor, 1.65);
+});
+
+test("rechaza parámetros parciales de stock en la importación", async () => {
+  const file = workbookFile({ Materiales: [{ "Código": "MAT-01", "Descripción": "Plancha", "Factor z": 1.65 }] });
+  await assert.rejects(parseCatalogWorkbook(file), /completa dp, s1, Lt, s2/);
+});

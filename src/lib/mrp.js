@@ -17,8 +17,10 @@ export function effectiveOrderStageId(order, bodyTypes, stageActivities, activit
 }
 
 export function hasSafetyStockParameters(item) {
-  return [item.serviceFactor, item.demandStdDev, item.leadTimeDays].every((value) => value !== null && value !== undefined && value !== "")
-    && Number(item.serviceFactor) > 0 && Number(item.demandStdDev) >= 0 && Number(item.leadTimeDays) > 0;
+  return [item.serviceFactor, item.demandStdDev, item.leadTimeDays, item.averageDemand, item.leadTimeStdDev]
+    .every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
+    && Number(item.serviceFactor) > 0 && Number(item.demandStdDev) >= 0 && Number(item.leadTimeDays) > 0
+    && Number(item.averageDemand) >= 0 && Number(item.leadTimeStdDev) >= 0;
 }
 
 export function calculateSafetyStock(item) {
@@ -26,7 +28,7 @@ export function calculateSafetyStock(item) {
   const deviation = Number(item.demandStdDev);
   const leadTime = Number(item.leadTimeDays);
   if (hasSafetyStockParameters(item)) {
-    return Math.ceil(z * deviation * Math.sqrt(leadTime));
+    return Math.ceil(z * Math.sqrt(deviation ** 2 * leadTime + Number(item.leadTimeStdDev) ** 2 * Number(item.averageDemand) ** 2));
   }
   return Number(item.safety ?? 0);
 }

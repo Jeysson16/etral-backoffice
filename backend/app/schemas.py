@@ -16,6 +16,9 @@ class Material(BaseModel):
     service_factor: Decimal | None = Field(default=None, ge=0)
     demand_std_dev: Decimal | None = Field(default=None, ge=0)
     lead_time_days: Decimal | None = Field(default=None, ge=0)
+    average_demand: Decimal | None = Field(default=None, ge=0)
+    lead_time_std_dev: Decimal | None = Field(default=None, ge=0)
+    service_level: Decimal | None = Field(default=None, ge=0, le=1)
     unit: str = "und"
 
 

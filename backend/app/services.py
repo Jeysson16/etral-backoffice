@@ -27,13 +27,18 @@ def _percentile(values: list[float], percentile: float) -> float:
 
 
 def safety_stock(material: Material) -> Decimal:
-    """SS = Z × desviación de demanda × raíz cuadrada del lead time."""
+    """SS = z × raíz(s1² × Lt + s2² × dp²), según la tesis."""
     if (
         material.service_factor is not None and material.service_factor > 0
         and material.demand_std_dev is not None
         and material.lead_time_days is not None and material.lead_time_days > 0
+        and material.average_demand is not None
+        and material.lead_time_std_dev is not None
     ):
-        calculated = _number(material.service_factor) * _number(material.demand_std_dev) * sqrt(_number(material.lead_time_days))
+        calculated = _number(material.service_factor) * sqrt(
+            _number(material.demand_std_dev) ** 2 * _number(material.lead_time_days)
+            + _number(material.lead_time_std_dev) ** 2 * _number(material.average_demand) ** 2
+        )
         return Decimal(str(calculated)).to_integral_value(rounding=ROUND_CEILING)
     return material.safety
 

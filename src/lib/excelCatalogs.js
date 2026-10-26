@@ -9,7 +9,8 @@ const aliases = {
   codigo: "code", codigo_material: "materialCode", codigo_producto: "productCode", codigo_pieza: "pieceCode",
   descripcion: "description", nombre_producto: "name", producto: "name", categoria: "category", unidad: "unit",
   marca: "brand", ubicacion: "location", stock_fisico: "physical", stock_inicial: "physical", stock_seguridad: "safety",
-  factor_servicio: "serviceFactor", desviacion_demanda: "demandStdDev", plazo_reposicion_dias: "leadTimeDays",
+  factor_servicio: "serviceFactor", factor_z: "serviceFactor", desviacion_demanda: "demandStdDev", desviacion_demanda_s1: "demandStdDev", plazo_reposicion_dias: "leadTimeDays",
+  demanda_promedio_dp: "averageDemand", desviacion_lead_time_s2: "leadTimeStdDev", nivel_servicio: "serviceLevel",
   costo_unitario: "unitCost", moneda: "currency", familia: "family", unidad_salida: "outputUnit",
   dias_objetivo: "targetDays", ruta_fases: "route", codigo_fase: "stageCode", codigo_fase_origen: "sourcePhaseCode", fase_origen: "sourcePhaseCode", longitud_mm: "lengthMm", cantidad: "quantity"
 };
@@ -39,16 +40,32 @@ function numeric(value, defaultValue = 0) {
   return Number.isFinite(parsed) ? parsed : defaultValue;
 }
 
+function requireCompleteSafetyParameters(materials) {
+  for (const material of materials) {
+    const fields = ["averageDemand", "demandStdDev", "leadTimeDays", "leadTimeStdDev", "serviceLevel", "serviceFactor"];
+    const provided = fields.filter((key) => material[key] !== null);
+    if (provided.length && provided.length < fields.length) {
+      throw new Error(`Material fila ${material.row}: completa dp, s1, Lt, s2, nivel de servicio y z para calcular el stock de seguridad.`);
+    }
+    if (provided.length && (material.averageDemand < 0 || material.demandStdDev < 0 || material.leadTimeDays <= 0 || material.leadTimeStdDev < 0
+      || material.serviceLevel <= 0 || material.serviceLevel >= 1 || material.serviceFactor <= 0)) {
+      throw new Error(`Material fila ${material.row}: dp, s1 y s2 deben ser no negativos; Lt y z positivos; nivel de servicio entre 0 y 1.`);
+    }
+  }
+  return materials;
+}
+
 export async function parseCatalogWorkbook(file) {
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const bulk = rowsFor(workbook, "Carga masiva", bulkAliases);
   if (bulk.length) return parseBulkWorkbook(bulk);
-  const materials = rowsFor(workbook, "Materiales").filter((row) => text(row.description)).map((row, index) => ({
+  const materials = requireCompleteSafetyParameters(rowsFor(workbook, "Materiales").filter((row) => text(row.description)).map((row, index) => ({
     row: row.__row ?? index + 2, code: text(row.code) || text(row.materialCode), description: text(row.description), category: text(row.category) || "Sin categoría",
     unit: text(row.unit) || "und", brand: text(row.brand), location: text(row.location), physical: numeric(row.physical),
     safety: numeric(row.safety), serviceFactor: numeric(row.serviceFactor, null), demandStdDev: numeric(row.demandStdDev, null),
-    leadTimeDays: numeric(row.leadTimeDays, null), unitCost: numeric(row.unitCost, null), currency: text(row.currency) || "PEN"
-  }));
+    leadTimeDays: numeric(row.leadTimeDays, null), averageDemand: numeric(row.averageDemand, null), leadTimeStdDev: numeric(row.leadTimeStdDev, null),
+    serviceLevel: numeric(row.serviceLevel, null), unitCost: numeric(row.unitCost, null), currency: text(row.currency) || "PEN"
+  })));
   const products = rowsFor(workbook, "Productos").filter((row) => text(row.code) || text(row.name)).map((row, index) => ({
     row: row.__row ?? index + 2, code: text(row.code), name: text(row.name), family: text(row.family), brand: text(row.brand),
     outputUnit: text(row.outputUnit) || "und", targetDays: numeric(row.targetDays, 1), route: text(row.route).split(";").map(text).filter(Boolean)
@@ -90,6 +107,7 @@ function parseBulkWorkbook(rows) {
       row: line, code: materialCode, description, category: text(row.category) || "Sin categoría", unit: text(row.unit) || "und",
       brand: text(row.brand), location: text(row.location), physical: numeric(row.physical), safety: numeric(row.safety),
       serviceFactor: numeric(row.serviceFactor, null), demandStdDev: numeric(row.demandStdDev, null), leadTimeDays: numeric(row.leadTimeDays, null),
+      averageDemand: numeric(row.averageDemand, null), leadTimeStdDev: numeric(row.leadTimeStdDev, null), serviceLevel: numeric(row.serviceLevel, null),
       unitCost: numeric(row.unitCost, null), currency: text(row.currency) || "PEN"
     };
     materialsByKey.set(materialCode, material);
@@ -104,7 +122,7 @@ function parseBulkWorkbook(rows) {
     });
   });
 
-  return { materials: [...materialsByKey.values()], products: [...productsByCode.values()], bom: [...bomByKey.values()], mode: "carga masiva" };
+  return { materials: requireCompleteSafetyParameters([...materialsByKey.values()]), products: [...productsByCode.values()], bom: [...bomByKey.values()], mode: "carga masiva" };
 }
 
 export function downloadCatalogWorkbook(dataset, type = "all") {
@@ -112,10 +130,10 @@ export function downloadCatalogWorkbook(dataset, type = "all") {
   if (type === "all" || type === "materials") {
     const rows = dataset.inventory.map((item) => ({
       "Código": item.code, "Descripción": item.description, "Categoría": item.category, "Unidad": item.unit, "Marca": dataset.catalogs.brands.find((brand) => brand.id === item.brandId)?.name ?? "",
-      "Ubicación": item.location ?? "", "Stock físico": item.physical, "Stock seguridad": item.safety, "Factor servicio": item.serviceFactor ?? "", "Desviación demanda": item.demandStdDev ?? "", "Plazo reposición días": item.leadTimeDays ?? "", "Costo unitario": item.unitCost ?? "", "Moneda": item.currency ?? "PEN"
+      "Ubicación": item.location ?? "", "Stock físico": item.physical, "Stock seguridad": item.safety, "Demanda promedio dp": item.averageDemand ?? "", "Desviación demanda s1": item.demandStdDev ?? "", "Plazo reposición días": item.leadTimeDays ?? "", "Desviación lead time s2": item.leadTimeStdDev ?? "", "Nivel servicio": item.serviceLevel ?? "", "Factor z": item.serviceFactor ?? "", "Costo unitario": item.unitCost ?? "", "Moneda": item.currency ?? "PEN"
     }));
     const sheet = XLSX.utils.json_to_sheet(addExportTitle(rows.length ? rows : [materialTemplateRow()], "MATERIALES", "Maestro de inventario"));
-    XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(sheet, { headerRow: 3, titleRow: 0, numberFormats: { 6: "#,##0.00", 7: "#,##0.00", 8: "0.00", 9: "#,##0.00", 10: "0", 11: "S/ #,##0.00" } }), "Materiales");
+    XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(sheet, { headerRow: 3, titleRow: 0, numberFormats: { 6: "#,##0.00", 7: "#,##0.00", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.00", 12: "0.00%", 13: "0.000", 14: "S/ #,##0.00" } }), "Materiales");
   }
   if (type === "all" || type === "products") {
     const products = dataset.bodyTypes.map((item) => ({ "Código": item.code, "Nombre producto": item.name, "Familia": item.family, "Marca": dataset.catalogs.brands.find((brand) => brand.id === item.brandId)?.name ?? "", "Unidad salida": item.outputUnit, "Días objetivo": item.targetDays, "Ruta fases": item.route.map((id) => dataset.flowStages.find((stage) => stage.id === id)?.code ?? id).join(";") }));
@@ -159,7 +177,7 @@ export function downloadBulkImportWorkbook(dataset) {
   XLSX.writeFile(workbook, "carga-masiva-productos-materiales.xlsx");
 }
 
-export const materialTemplateRow = () => ({ "Código": "Opcional: MAT-0001", "Descripción": "Plancha galvanizada 1.5 mm", "Categoría": "Planchas y perfiles", "Unidad": "und", "Marca": "", "Ubicación": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Factor servicio": 1.65, "Desviación demanda": "", "Plazo reposición días": "", "Costo unitario": 0, "Moneda": "PEN" });
+export const materialTemplateRow = () => ({ "Código": "Opcional: MAT-0001", "Descripción": "Plancha galvanizada 1.5 mm", "Categoría": "Planchas y perfiles", "Unidad": "und", "Marca": "", "Ubicación": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Demanda promedio dp": "", "Desviación demanda s1": "", "Plazo reposición días": "", "Desviación lead time s2": "", "Nivel servicio": "", "Factor z": "", "Costo unitario": 0, "Moneda": "PEN" });
 export const productTemplateRow = () => ({ "Código": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca": "", "Unidad salida": "und", "Días objetivo": 15, "Ruta fases": "SUM;HAB;ARM;SOL;PIN;ACA" });
 export const bomTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Código material": "MAT-0001", "Código pieza": "BOM-001", "Descripción": "Plancha galvanizada 1.5 mm", "Código fase": "HAB", "Código fase origen": "1", "Longitud mm": 0, "Cantidad": 2 });
-export const bulkTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca producto": "", "Unidad salida": "und", "Días objetivo": 15, "Código fase": "HAB", "Código fase origen": "1", "Código material": "MAT-0001", "Descripción material": "Plancha galvanizada 1.5 mm", "Categoría material": "Planchas y perfiles", "Unidad material": "und", "Marca material": "", "Ubicación material": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Código pieza": "", "Longitud mm": 0, "Cantidad": 2 });
+export const bulkTemplateRow = () => ({ "Código producto": "PROD-EJ-01", "Nombre producto": "Furgón ejemplo", "Familia": "Furgones", "Marca producto": "", "Unidad salida": "und", "Días objetivo": 15, "Código fase": "HAB", "Código fase origen": "1", "Código material": "MAT-0001", "Descripción material": "Plancha galvanizada 1.5 mm", "Categoría material": "Planchas y perfiles", "Unidad material": "und", "Marca material": "", "Ubicación material": "ALM-A01", "Stock físico": 10, "Stock seguridad": 2, "Demanda promedio dp": "", "Desviación demanda s1": "", "Plazo reposición días": "", "Desviación lead time s2": "", "Nivel servicio": "", "Factor z": "", "Código pieza": "", "Longitud mm": 0, "Cantidad": 2 });

@@ -1,5 +1,5 @@
 import { initialDataset } from "../data/seed.js";
-import { calculateCecoProgress, effectiveOrderStageId } from "../lib/mrp.js";
+import { calculateCecoProgress, calculateSafetyStock, effectiveOrderStageId } from "../lib/mrp.js";
 import { nextCecoCode, nextInventoryCode, nextWarehouseTicket } from "../lib/correlatives.js";
 import { consolidateImportedMaterials, findMatchingMaterial } from "../lib/materialImport.js";
 import { orderProductRoute } from "../lib/productRoutes.js";
@@ -267,7 +267,7 @@ export const localRepository = {
   async createInventory(payload) {
     const dataset = load();
     const code = nextInventoryCode(dataset.inventory, payload.category || "MAT");
-    const safety = payload.serviceFactor && payload.demandStdDev && payload.leadTimeDays ? Math.ceil(Number(payload.serviceFactor) * Number(payload.demandStdDev) * Math.sqrt(Number(payload.leadTimeDays))) : Number(payload.safety || 0);
+    const safety = calculateSafetyStock(payload);
     dataset.inventory.unshift({ id: `inv-${code}`, code, committed: 0, ...payload, safety });
     save(dataset);
     return dataset;
@@ -291,7 +291,8 @@ export const localRepository = {
       const brand = ensureCatalog("brands", row.brand);
       const existing = findMatchingMaterial(dataset.inventory, row);
       const code = existing?.code || row.code || nextInventoryCode(dataset.inventory, row.category || "MAT");
-      const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety || 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor, demandStdDev: row.demandStdDev, leadTimeDays: row.leadTimeDays, unitCost: row.unitCost, currency: row.currency || "PEN" };
+      const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety ?? existing?.safety ?? 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor ?? existing?.serviceFactor, demandStdDev: row.demandStdDev ?? existing?.demandStdDev, leadTimeDays: row.leadTimeDays ?? existing?.leadTimeDays, averageDemand: row.averageDemand ?? existing?.averageDemand, leadTimeStdDev: row.leadTimeStdDev ?? existing?.leadTimeStdDev, serviceLevel: row.serviceLevel ?? existing?.serviceLevel, unitCost: row.unitCost, currency: row.currency || "PEN" };
+      material.safety = calculateSafetyStock(material);
       if (existing) Object.assign(existing, material); else dataset.inventory.unshift(material);
       for (const sourceCode of row.sourceCodes?.length ? row.sourceCodes : [row.code]) {
         importedCodes.set(sourceCode, code);
@@ -450,7 +451,7 @@ export const localRepository = {
   },
   async updateInventory(code, patch) {
     const dataset = load();
-    const calculatedSafety = patch.serviceFactor && patch.demandStdDev && patch.leadTimeDays ? Math.ceil(Number(patch.serviceFactor) * Number(patch.demandStdDev) * Math.sqrt(Number(patch.leadTimeDays))) : Number(patch.safety || 0);
+    const calculatedSafety = calculateSafetyStock(patch);
     dataset.inventory = dataset.inventory.map((item) => (item.code === code ? { ...item, ...patch, safety: calculatedSafety } : item));
     save(dataset);
     return dataset;
