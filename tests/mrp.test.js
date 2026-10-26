@@ -95,6 +95,14 @@ test("ajuste simulado de stock cambia la proyección del material elegido", () =
   assert.equal(scenario.projected - baseline.projected, 40);
 });
 
+test("simulador aplica el SS calculado incluso si el mínimo almacenado está desactualizado", () => {
+  const dataset = structuredClone(initialDataset);
+  const material = dataset.inventory.find((item) => item.code === "MAT-0042");
+  Object.assign(material, { safety: 1, serviceFactor: 2, demandStdDev: 3, leadTimeDays: 4, averageDemand: 2, leadTimeStdDev: 1 });
+  const result = runDigitalTwin(dataset, { horizonDays: 14 });
+  assert.equal(result.scenario.materials.find((item) => item.code === material.code).safety, 13);
+});
+
 test("simulación aplica un arreglo de ajustes de material", () => {
   const adjustments = [
     { materialCode: "MAT-0042", stockAdjustment: 40 },

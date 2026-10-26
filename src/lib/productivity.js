@@ -28,6 +28,27 @@ function round(value, digits = 2) {
   return Math.round(value * factor) / factor;
 }
 
+export function materialConsumptionCost(dataset, ceco, start, end) {
+  const reservations = (dataset.orderMaterialReservations ?? []).filter((row) => row.ceco === ceco && Number(row.consumedQuantity) > 0);
+  const movements = (dataset.inventoryMovements ?? []).filter((row) => row.ceco === ceco && row.type === "salida" && inRange(row.timestamp, start, end));
+  const warehouse = (dataset.warehouse ?? []).filter((row) => row.ceco === ceco && inRange(row.timestamp ?? row.date, start, end));
+  const rows = reservations.length
+    ? reservations.map((row) => ({ code: row.materialCode, quantity: row.consumedQuantity }))
+    : movements.length
+      ? movements.map((row) => ({ code: row.code, quantity: row.quantity }))
+      : warehouse.map((row) => ({ code: row.materialCode, quantity: row.quantity }));
+  if (!rows.length) return { cost: null, source: "Sin consumo documentado" };
+  const inventory = new Map((dataset.inventory ?? []).map((item) => [item.code, item]));
+  const costs = rows.map((row) => inventory.get(row.code)?.unitCost);
+  if (costs.some((value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)))) {
+    return { cost: null, source: "Falta costo unitario de materiales" };
+  }
+  return {
+    cost: rows.reduce((sum, row, index) => sum + Number(row.quantity) * Number(costs[index]), 0),
+    source: reservations.length ? "Reservas consumidas" : movements.length ? "Salidas por CECO" : "Salidas de almacén por CECO"
+  };
+}
+
 function latest(values) {
   return values.filter(Boolean).sort().at(-1) ?? null;
 }
@@ -89,10 +110,10 @@ function calculatePeriod(dataset, start, end) {
   const executedActivities = progressRows.filter((item) => item.status === "completed" || Number(item.progress) >= 100).length;
   const reportedHours = operations.reduce((sum, item) => sum + Number(item.totalHours || 0), 0);
 
-  const leadTimes = completed.map(({ order, date }) => {
-    const startDate = orderStart(dataset, order);
-    const days = startDate && date ? dayNumber(date) - dayNumber(startDate) : null;
-    return days != null && days >= 0 ? days : null;
+  const leadTimes = completed.map(({ order, date, estimated }) => {
+    if (estimated) return null;
+    const dueDate = dateOnly(order.dueDate);
+    return dueDate && date ? dayNumber(date) - dayNumber(dueDate) : null;
   }).filter((value) => value != null);
 
   const inventory = dataset.inventory ?? [];
@@ -102,25 +123,19 @@ function calculatePeriod(dataset, start, end) {
   }).length;
 
   const completedCecos = new Set(completed.map((item) => item.order.ceco));
-  const reservations = (dataset.orderMaterialReservations ?? []).filter((item) => completedCecos.has(item.ceco));
-  const materialCost = reservations.reduce((sum, item) => {
-    const material = inventory.find((candidate) => candidate.code === item.materialCode);
-    const unitCost = Number(material?.unitCost ?? material?.costPerUnit);
-    return Number.isFinite(unitCost) ? sum + Number(item.consumedQuantity || 0) * unitCost : sum;
-  }, 0);
-  const pricedMaterials = reservations.filter((item) => {
-    const material = inventory.find((candidate) => candidate.code === item.materialCode);
-    return Number.isFinite(Number(material?.unitCost ?? material?.costPerUnit));
-  }).length;
+  const costsByCeco = [...completedCecos].map((ceco) => materialConsumptionCost(dataset, ceco, start, end).cost);
+  const materialCost = costsByCeco.length && costsByCeco.every((cost) => cost !== null)
+    ? costsByCeco.reduce((sum, cost) => sum + cost, 0) : null;
 
-  const laborCost = operations.reduce((sum, item) => {
-    const hourlyCost = Number(item.hourlyCost ?? item.laborCostPerHour);
-    return Number.isFinite(hourlyCost) ? sum + Number(item.totalHours || 0) * hourlyCost : sum;
-  }, 0);
-  const costedOperations = operations.filter((item) => Number.isFinite(Number(item.hourlyCost ?? item.laborCostPerHour))).length;
-  const outputValue = completed.reduce((sum, item) => sum + Number(item.order.outputValue || 0), 0);
-  const valuedOrders = completed.filter((item) => Number(item.order.outputValue) > 0).length;
-  const otherCosts = completed.reduce((sum, item) => sum + Number(item.order.energyCost || 0) + Number(item.order.capitalCost || 0), 0);
+  const hourlyRates = operations.map((item) => item.hourlyCost ?? item.laborCostPerHour);
+  const laborCost = operations.length && hourlyRates.every((rate) => rate !== null && rate !== undefined && rate !== "" && Number.isFinite(Number(rate)))
+    ? operations.reduce((sum, item, index) => sum + Number(item.totalHours || 0) * Number(hourlyRates[index]), 0) : null;
+  const outputValues = completed.map((item) => item.order.outputValue);
+  const outputValue = completed.length && outputValues.every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
+    ? outputValues.reduce((sum, value) => sum + Number(value), 0) : null;
+  const factorCosts = completed.flatMap((item) => [item.order.energyCost, item.order.capitalCost]);
+  const otherCosts = completed.length && factorCosts.every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
+    ? factorCosts.reduce((sum, value) => sum + Number(value), 0) : null;
 
   return {
     start,
@@ -141,7 +156,7 @@ function calculatePeriod(dataset, start, end) {
     laborProductivity: reportedHours > 0 ? round(completed.length / reportedHours, 3) : null,
     materialProductivity: materialCost > 0 ? round(completed.length / materialCost, 4) : null,
     materialCost: round(materialCost, 2),
-    multifactorProductivity: (materialCost + laborCost + otherCosts) > 0
+    multifactorProductivity: materialCost !== null && laborCost !== null && otherCosts !== null && outputValue !== null && (materialCost + laborCost + otherCosts) > 0
       ? round(outputValue / (materialCost + laborCost + otherCosts), 3)
       : null,
     outputValue: round(outputValue, 2),
@@ -224,7 +239,7 @@ export function buildExcelReport(report) {
   const metrics = [
     ["Cumplimiento PMP", current.pmpCompliance, previous.pmpCompliance, "%", "Unidades producidas / unidades planificadas x 100"],
     ["Nivel de avance", current.progressRate, previous.progressRate, "%", "Actividades ejecutadas / actividades programadas x 100"],
-    ["Lead time", current.averageLeadTime, previous.averageLeadTime, "días", "Fecha de entrega - fecha de pedido"],
+    ["Retraso promedio de entrega", current.averageLeadTime, previous.averageLeadTime, "días", "Fecha real de entrega - fecha pactada"],
     ["Cobertura de stock de seguridad", current.safetyCoverage, previous.safetyCoverage, "%", "Materiales con disponible mayor o igual al SS"],
     ["Productividad de mano de obra", current.laborProductivity, previous.laborProductivity, "unidades/HH", "Unidades producidas / horas-hombre"],
     ["Productividad de materiales", current.materialProductivity, previous.materialProductivity, "unidades/S/", "Unidades producidas / costo de materiales e insumos"],

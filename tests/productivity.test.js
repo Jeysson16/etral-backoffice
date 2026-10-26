@@ -4,7 +4,7 @@ import { availableDateRange, buildExcelReport, calculateProductivityReport } fro
 
 const dataset = {
   orders: [
-    { ceco: "1", customer: "A", progress: 100, dueDate: "2026-01-10", orderDate: "2026-01-01", actualDeliveryDate: "2026-01-09", outputValue: 1000 },
+    { ceco: "1", customer: "A", progress: 100, dueDate: "2026-01-10", orderDate: "2026-01-01", actualDeliveryDate: "2026-01-09", outputValue: 1000, energyCost: 0, capitalCost: 0 },
     { ceco: "2", customer: "B", progress: 50, dueDate: "2026-01-20", orderDate: "2026-01-05" }
   ],
   operations: [{ ceco: "1", date: "2026-01-09", totalHours: 10, hourlyCost: 10, worker: "Ana", activity: "Entrega" }],
@@ -22,7 +22,7 @@ test("calcula los indicadores definidos por la tesis", () => {
   const { current } = calculateProductivityReport(dataset, "2026-01-01", "2026-01-31");
   assert.equal(current.pmpCompliance, 50);
   assert.equal(current.progressRate, 50);
-  assert.equal(current.averageLeadTime, 8);
+  assert.equal(current.averageLeadTime, -1);
   assert.equal(current.safetyCoverage, 100);
   assert.equal(current.laborProductivity, 0.1);
   assert.equal(current.materialProductivity, 0.01);
@@ -36,6 +36,25 @@ test("cobertura usa el stock de seguridad calculado y el mínimo manual cuando f
   ];
   const report = calculateProductivityReport({ ...dataset, inventory }, "2026-01-01", "2026-01-31");
   assert.equal(report.current.safetyCoverage, 0);
+});
+
+test("productividad de materiales usa salidas por CECO cuando aún no hay reservas consumidas", () => {
+  const withIssues = {
+    ...dataset,
+    orderMaterialReservations: [{ ceco: "1", materialCode: "M1", consumedQuantity: 0 }],
+    inventoryMovements: [{ ceco: "1", type: "salida", code: "M1", quantity: 5, timestamp: "2026-01-08" }]
+  };
+  const report = calculateProductivityReport(withIssues, "2026-01-01", "2026-01-31");
+  assert.equal(report.current.materialCost, 100);
+  assert.equal(report.current.materialProductivity, 0.01);
+  const missingPrice = calculateProductivityReport({ ...withIssues, inventory: [{ ...dataset.inventory[0], unitCost: null }] }, "2026-01-01", "2026-01-31");
+  assert.equal(missingPrice.current.materialProductivity, null);
+});
+
+test("productividad multifactorial queda pendiente si faltan costos de factores", () => {
+  const withoutEnergy = { ...dataset, orders: dataset.orders.map((order) => order.ceco === "1" ? { ...order, energyCost: null } : order) };
+  const report = calculateProductivityReport(withoutEnergy, "2026-01-01", "2026-01-31");
+  assert.equal(report.current.multifactorProductivity, null);
 });
 
 test("determina el rango disponible y genera un libro compatible con Excel", () => {

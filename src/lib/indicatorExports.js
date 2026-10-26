@@ -1,5 +1,5 @@
 import XLSX from "xlsx-js-style";
-import { buildIndicatorSeries } from "./productivity.js";
+import { buildIndicatorSeries, materialConsumptionCost } from "./productivity.js";
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 import { calculateSafetyStock, hasSafetyStockParameters } from "./mrp.js";
 import { deriveMaterialDemand } from "./materialDemand.js";
@@ -48,7 +48,7 @@ function appendSheet(workbook, name, rows, { preserveLayout = false, headerRow, 
 const definitions = [
   ["pmp_compliance", "Cumplimiento PMP", "%", "Unidades producidas / unidades planificadas × 100", "Resultado", "Escala"],
   ["progress_rate", "Nivel de avance", "%", "Actividades ejecutadas / actividades programadas × 100", "Resultado", "Escala"],
-  ["average_lead_time", "Lead time promedio", "días", "Fecha de entrega − fecha de pedido", "Resultado", "Escala"],
+  ["average_delivery_delay", "Retraso promedio de entrega", "días", "Fecha real de entrega − fecha pactada", "Resultado", "Escala"],
   ["safety_coverage", "Cobertura de stock de seguridad", "%", "Materiales con disponible ≥ stock de seguridad / total materiales × 100", "Resultado", "Escala"],
   ["labor_productivity", "Productividad mano de obra", "und/HH", "Unidades producidas / horas-hombre", "Resultado", "Escala"],
   ["material_productivity", "Productividad materiales", "und/S/", "Unidades producidas / costo de materiales", "Resultado", "Escala"],
@@ -63,7 +63,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
   const metricValues = [
     ["pmp_compliance", current.pmpCompliance, previous.pmpCompliance],
     ["progress_rate", current.progressRate, previous.progressRate],
-    ["average_lead_time", current.averageLeadTime, previous.averageLeadTime],
+    ["average_delivery_delay", current.averageLeadTime, previous.averageLeadTime],
     ["safety_coverage", current.safetyCoverage, previous.safetyCoverage],
     ["labor_productivity", current.laborProductivity, previous.laborProductivity],
     ["material_productivity", current.materialProductivity, previous.materialProductivity],
@@ -79,7 +79,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     })
   ], { preserveLayout: true, numberFormats: { 2: "0.00", 3: "0.00" } });
   appendSheet(workbook, "Serie temporal", [
-    ["periodo", "fecha_inicio", "fecha_fin", "unidades_planificadas", "unidades_producidas", "horas_reportadas", "pmp_compliance", "progress_rate", "average_lead_time", "safety_coverage", "labor_productivity", "material_productivity", "multifactor_productivity"],
+    ["periodo", "fecha_inicio", "fecha_fin", "unidades_planificadas", "unidades_producidas", "horas_reportadas", "pmp_compliance", "progress_rate", "average_delivery_delay", "safety_coverage", "labor_productivity", "material_productivity", "multifactor_productivity"],
     ...series.map((row) => [row.label, row.start, row.end, row.plannedUnits, row.producedUnits, row.reportedHours, row.pmpCompliance, row.progressRate, row.averageLeadTime, row.safetyCoverage, row.laborProductivity, row.materialProductivity, row.multifactorProductivity])
   ], { numberFormats: { 3: "#,##0", 4: "#,##0", 5: "#,##0.00", 6: "0.00", 7: "0.00", 8: "0.00", 9: "0.00", 10: "0.000", 11: "0.0000", 12: "0.000" } });
   const relevantCecos = new Set([
@@ -116,10 +116,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
       const workers = new Set(logs.map((item) => item.worker).filter(Boolean)).size;
       const rates = logs.map((item) => recordedNumber(item.hourlyCost ?? item.laborCostPerHour));
       const laborCost = logs.length && rates.every((item) => item !== null) ? logs.reduce((sum, item, index) => sum + Number(item.totalHours ?? 0) * rates[index], 0) : null;
-      const reservations = (dataset.orderMaterialReservations ?? []).filter((item) => item.ceco === completed.ceco && Number(item.consumedQuantity) > 0);
-      const costs = reservations.map((item) => recordedNumber((dataset.inventory ?? []).find((material) => material.code === item.materialCode)?.unitCost));
-      const materialCost = reservations.length && costs.every((item) => item !== null)
-        ? reservations.reduce((sum, item, index) => sum + Number(item.consumedQuantity) * costs[index], 0) : null;
+      const { cost: materialCost, source: materialSource } = materialConsumptionCost(dataset, completed.ceco, range.start, range.end);
       const output = recordedNumber(order?.outputValue);
       const energy = recordedNumber(order?.energyCost);
       const capital = recordedNumber(order?.capitalCost);
@@ -128,7 +125,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
         laborCost !== null && hours > 0 ? laborCost / hours : null, hours > 0 ? 1 / hours : null,
         null, null, materialCost, materialCost > 0 ? 1 / materialCost : null, output, energy, capital,
         output !== null && totalCost > 0 ? output / totalCost : null,
-        [completed.estimated ? "Fecha de cierre inferida" : "", materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible"].filter(Boolean).join("; ")];
+        [completed.estimated ? "Fecha de cierre inferida" : "", materialSource, materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible"].filter(Boolean).join("; ")];
     }), { 3: "0", 4: "0", 5: "0.00", 6: "0.00", 7: "0.000", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.0000", 12: "0.00", 13: "0.00", 14: "0.00", 15: "0.000" });
   appendSheet(workbook, "Ficha productividad", thesisProductivity.rows, thesisProductivity.options);
   appendSheet(workbook, "Registros CECO", [
@@ -214,7 +211,11 @@ export function exportPeriodRecords(dataset, range) {
   exportTable("Operaciones", dataset.operations, "date");
   exportTable("Avance actividades", dataset.activityProgress);
   exportTable("Movimientos materiales", dataset.inventoryMovements, "timestamp");
-  exportTable("Inventario", dataset.inventory);
+  exportTable("Inventario", (dataset.inventory ?? []).map((item) => ({
+    ...item,
+    safety: calculateSafetyStock(item),
+    safetySource: hasSafetyStockParameters(item) ? "Fórmula de tesis" : "Mínimo previo registrado"
+  })));
   exportTable("BOM", dataset.bom);
   exportTable("Salidas almacén", dataset.warehouse, "date");
   exportTable("Controles de calidad", dataset.quality, "date");

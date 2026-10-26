@@ -1,5 +1,6 @@
 import XLSX from "xlsx-js-style";
 import { addExportTitle, styleInstructionSheet, styleWorkbookSheet } from "./excelWorkbookStyle.js";
+import { calculateSafetyStock } from "./mrp.js";
 
 const normalize = (value) => String(value ?? "")
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -130,7 +131,7 @@ export function downloadCatalogWorkbook(dataset, type = "all") {
   if (type === "all" || type === "materials") {
     const rows = dataset.inventory.map((item) => ({
       "Código": item.code, "Descripción": item.description, "Categoría": item.category, "Unidad": item.unit, "Marca": dataset.catalogs.brands.find((brand) => brand.id === item.brandId)?.name ?? "",
-      "Ubicación": item.location ?? "", "Stock físico": item.physical, "Stock seguridad": item.safety, "Demanda promedio dp": item.averageDemand ?? "", "Desviación demanda s1": item.demandStdDev ?? "", "Plazo reposición días": item.leadTimeDays ?? "", "Desviación lead time s2": item.leadTimeStdDev ?? "", "Nivel servicio": item.serviceLevel ?? "", "Factor z": item.serviceFactor ?? "", "Costo unitario": item.unitCost ?? "", "Moneda": item.currency ?? "PEN"
+      "Ubicación": item.location ?? "", "Stock físico": item.physical, "Stock seguridad": calculateSafetyStock(item), "Demanda promedio dp": item.averageDemand ?? "", "Desviación demanda s1": item.demandStdDev ?? "", "Plazo reposición días": item.leadTimeDays ?? "", "Desviación lead time s2": item.leadTimeStdDev ?? "", "Nivel servicio": item.serviceLevel ?? "", "Factor z": item.serviceFactor ?? "", "Costo unitario": item.unitCost ?? "", "Moneda": item.currency ?? "PEN"
     }));
     const sheet = XLSX.utils.json_to_sheet(addExportTitle(rows.length ? rows : [materialTemplateRow()], "MATERIALES", "Maestro de inventario"));
     XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(sheet, { headerRow: 3, titleRow: 0, numberFormats: { 6: "#,##0.00", 7: "#,##0.00", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.00", 12: "0.00%", 13: "0.000", 14: "S/ #,##0.00" } }), "Materiales");
@@ -157,7 +158,7 @@ export function downloadBulkImportWorkbook(dataset) {
       "Marca producto": dataset.catalogs.brands.find((brand) => brand.id === product?.brandId)?.name ?? "", "Unidad salida": product?.outputUnit ?? "und", "Días objetivo": product?.targetDays ?? 1,
       "Código fase": stage?.code ?? "", "Código material": material?.code ?? piece.materialCode, "Descripción material": material?.description ?? piece.description,
       "Categoría material": material?.category ?? "Sin categoría", "Unidad material": material?.unit ?? "und", "Marca material": dataset.catalogs.brands.find((brand) => brand.id === material?.brandId)?.name ?? "",
-      "Ubicación material": material?.location ?? "", "Stock físico": material?.physical ?? 0, "Stock seguridad": material?.safety ?? 0,
+      "Ubicación material": material?.location ?? "", "Stock físico": material?.physical ?? 0, "Stock seguridad": material ? calculateSafetyStock(material) : 0,
       "Código pieza": piece.pieceCode ?? "", "Código fase origen": piece.sourcePhaseCode ?? "", "Longitud mm": piece.lengthMm ?? 0, "Cantidad": piece.quantity
     };
   });

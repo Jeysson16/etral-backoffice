@@ -1,4 +1,4 @@
-import { inventoryHeatmap } from "./mrp.js";
+import { calculateSafetyStock, inventoryHeatmap } from "./mrp.js";
 
 function daysUntil(date, now = new Date("2026-07-26T12:00:00")) {
   if (!date) return 999;
@@ -293,7 +293,7 @@ function calculateScenario(dataset, params) {
     });
   });
   const materials = scenarioInventory.map((item) => {
-    const safety = Number(item.safety ?? 0);
+    const safety = calculateSafetyStock(item);
     const needs = scheduledRequirements.filter((need) => need.materialCode === item.code).sort((a, b) => a.date.localeCompare(b.date));
     let balance = Number(item.physical);
     let firstRisk = null;
