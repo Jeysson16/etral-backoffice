@@ -116,6 +116,9 @@ create table if not exists ceco_orders (
   priority int not null default 999,
   planned_start_date date,
   due_date date,
+  sale_amount_pen numeric,
+  energy_cost numeric check (energy_cost >= 0),
+  capital_cost numeric check (capital_cost >= 0),
   created_at timestamptz not null default now(),
   active boolean not null default true
 );
@@ -166,6 +169,7 @@ create table if not exists personnel (
   shift_id text references work_shifts(id),
   status text not null check (status in ('available', 'assigned', 'absent', 'leave')),
   efficiency numeric not null default 100 check (efficiency between 1 and 150),
+  hourly_cost numeric check (hourly_cost >= 0),
   weekly_hours numeric not null default 48 check (weekly_hours between 0 and 84),
   active boolean not null default true,
   created_at timestamptz not null default now()

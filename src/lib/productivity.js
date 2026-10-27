@@ -18,6 +18,12 @@ function inRange(value, start, end) {
   return Boolean(date && date >= start && date <= end);
 }
 
+export function activityProgressDate(row) {
+  return row.status === "completed" || Number(row.progress) >= 100
+    ? row.finishedAt || row.startedAt
+    : row.startedAt || row.finishedAt;
+}
+
 function percent(numerator, denominator) {
   return denominator > 0 ? (numerator / denominator) * 100 : null;
 }
@@ -30,22 +36,32 @@ function round(value, digits = 2) {
 
 export function materialConsumptionCost(dataset, ceco, start, end) {
   const reservations = (dataset.orderMaterialReservations ?? []).filter((row) => row.ceco === ceco && Number(row.consumedQuantity) > 0);
-  const movements = (dataset.inventoryMovements ?? []).filter((row) => row.ceco === ceco && row.type === "salida" && inRange(row.timestamp, start, end));
+  const movements = (dataset.inventoryMovements ?? []).filter((row) => row.ceco === ceco && ["salida", "consumo"].includes(row.type) && inRange(row.timestamp, start, end));
   const warehouse = (dataset.warehouse ?? []).filter((row) => row.ceco === ceco && inRange(row.timestamp ?? row.date, start, end));
-  const rows = reservations.length
-    ? reservations.map((row) => ({ code: row.materialCode, quantity: row.consumedQuantity }))
-    : movements.length
-      ? movements.map((row) => ({ code: row.code, quantity: row.quantity }))
-      : warehouse.map((row) => ({ code: row.materialCode, quantity: row.quantity }));
-  if (!rows.length) return { cost: null, source: "Sin consumo documentado" };
+  const sources = [
+    ["Reservas consumidas", reservations.map((row) => ({ code: row.materialCode, quantity: row.consumedQuantity }))],
+    ["Salidas por CECO", movements.filter((row) => row.type === "salida").map((row) => ({ code: row.code, quantity: row.quantity }))],
+    ["Consumos por CECO", movements.filter((row) => row.type === "consumo").map((row) => ({ code: row.code, quantity: row.quantity }))],
+    ["Salidas de almacén por CECO", warehouse.map((row) => ({ code: row.materialCode, quantity: row.quantity }))]
+  ];
+  const selected = new Map();
+  for (const [source, entries] of sources) {
+    for (const row of entries) {
+      if (!row.code || selected.has(row.code)) continue;
+      selected.set(row.code, { source, rows: entries.filter((item) => item.code === row.code) });
+    }
+  }
+  const rows = [...selected.values()].flatMap((item) => item.rows);
+  if (!rows.length) return { cost: null, source: "Sin entrega ni consumo de material documentado por CECO", reason: "missing_consumption" };
   const inventory = new Map((dataset.inventory ?? []).map((item) => [item.code, item]));
   const costs = rows.map((row) => inventory.get(row.code)?.unitCost);
-  if (costs.some((value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)))) {
-    return { cost: null, source: "Falta costo unitario de materiales" };
+  if (costs.some((value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) || Number(value) <= 0)) {
+    return { cost: null, source: "Falta costo unitario de materiales consumidos", reason: "missing_unit_cost" };
   }
   return {
     cost: rows.reduce((sum, row, index) => sum + Number(row.quantity) * Number(costs[index]), 0),
-    source: reservations.length ? "Reservas consumidas" : movements.length ? "Salidas por CECO" : "Salidas de almacén por CECO"
+    source: [...new Set([...selected.values()].map((item) => item.source))].join(" + "),
+    reason: null
   };
 }
 
@@ -106,7 +122,7 @@ function calculatePeriod(dataset, start, end) {
   const completed = completions.filter((item) => inRange(item.date, start, end));
   const planned = orders.filter((order) => inRange(order.dueDate, start, end));
   const operations = (dataset.operations ?? []).filter((item) => inRange(item.date, start, end));
-  const progressRows = (dataset.activityProgress ?? []).filter((item) => inRange(item.startedAt || item.finishedAt, start, end));
+  const progressRows = (dataset.activityProgress ?? []).filter((item) => inRange(activityProgressDate(item), start, end));
   const executedActivities = progressRows.filter((item) => item.status === "completed" || Number(item.progress) >= 100).length;
   const reportedHours = operations.reduce((sum, item) => sum + Number(item.totalHours || 0), 0);
 
@@ -123,11 +139,15 @@ function calculatePeriod(dataset, start, end) {
   }).length;
 
   const completedCecos = new Set(completed.map((item) => item.order.ceco));
-  const costsByCeco = [...completedCecos].map((ceco) => materialConsumptionCost(dataset, ceco, start, end).cost);
-  const materialCost = costsByCeco.length && costsByCeco.every((cost) => cost !== null)
-    ? costsByCeco.reduce((sum, cost) => sum + cost, 0) : null;
+  const materialCostsByCeco = [...completedCecos].map((ceco) => materialConsumptionCost(dataset, ceco, start, end));
+  const materialCost = materialCostsByCeco.length && materialCostsByCeco.every((item) => item.cost !== null)
+    ? materialCostsByCeco.reduce((sum, item) => sum + item.cost, 0) : null;
+  const materialCostReason = !completedCecos.size ? "no_completed_ceco"
+    : materialCostsByCeco.some((item) => item.reason === "missing_consumption") ? "missing_consumption"
+      : materialCostsByCeco.some((item) => item.reason === "missing_unit_cost") ? "missing_unit_cost" : null;
 
-  const hourlyRates = operations.map((item) => item.hourlyCost ?? item.laborCostPerHour);
+  const personnelRates = new Map((dataset.personnel ?? []).map((person) => [person.name, person.hourlyCost]));
+  const hourlyRates = operations.map((item) => item.hourlyCost ?? item.laborCostPerHour ?? personnelRates.get(item.worker));
   const laborCost = operations.length && hourlyRates.every((rate) => rate !== null && rate !== undefined && rate !== "" && Number.isFinite(Number(rate)))
     ? operations.reduce((sum, item, index) => sum + Number(item.totalHours || 0) * Number(hourlyRates[index]), 0) : null;
   const outputValues = completed.map((item) => item.order.outputValue);
@@ -156,6 +176,10 @@ function calculatePeriod(dataset, start, end) {
     laborProductivity: reportedHours > 0 ? round(completed.length / reportedHours, 3) : null,
     materialProductivity: materialCost > 0 ? round(completed.length / materialCost, 4) : null,
     materialCost: round(materialCost, 2),
+    materialCostReason,
+    completedCecoCount: completedCecos.size,
+    laborCost: round(laborCost, 2),
+    otherCosts: round(otherCosts, 2),
     multifactorProductivity: materialCost !== null && laborCost !== null && otherCosts !== null && outputValue !== null && (materialCost + laborCost + otherCosts) > 0
       ? round(outputValue / (materialCost + laborCost + otherCosts), 3)
       : null,

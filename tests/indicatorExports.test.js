@@ -74,3 +74,15 @@ test("la ficha de productividad toma salidas por CECO sin duplicar reservas", ()
   assert.equal(rows[4][10], 20);
   assert.match(rows[4][16], /Salidas por CECO/);
 });
+
+test("la ficha y el microdato de avance usan el fin de una actividad terminada", () => {
+  const dataset = fixture();
+  dataset.activityProgress[0].startedAt = "2026-09-29";
+  dataset.activityProgress[0].finishedAt = "2026-10-21";
+  const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
+  const plan = XLSX.utils.sheet_to_json(workbook.Sheets["Ficha plan maestro"], { header: 1 });
+  const progress = XLSX.utils.sheet_to_json(workbook.Sheets["Avance actividades"], { header: 1 });
+  assert.equal(plan[4][10], 1);
+  assert.equal(progress.length, 5);
+  assert.equal(progress[4][5], "2026-10-21");
+});

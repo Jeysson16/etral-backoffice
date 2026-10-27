@@ -49,12 +49,65 @@ test("productividad de materiales usa salidas por CECO cuando aún no hay reserv
   assert.equal(report.current.materialProductivity, 0.01);
   const missingPrice = calculateProductivityReport({ ...withIssues, inventory: [{ ...dataset.inventory[0], unitCost: null }] }, "2026-01-01", "2026-01-31");
   assert.equal(missingPrice.current.materialProductivity, null);
+  assert.equal(missingPrice.current.materialCostReason, "missing_unit_cost");
+});
+
+test("el avance terminado cuenta en su fecha de fin aunque empezara antes", () => {
+  const withLateFinish = {
+    ...dataset,
+    activityProgress: [{ ceco: "1", startedAt: "2026-01-03", finishedAt: "2026-02-05", status: "completed", progress: 100 }]
+  };
+  const january = calculateProductivityReport(withLateFinish, "2026-01-01", "2026-01-31").current;
+  const february = calculateProductivityReport(withLateFinish, "2026-02-01", "2026-02-28").current;
+  assert.equal(january.executedActivities, 0);
+  assert.equal(february.executedActivities, 1);
+  assert.equal(february.progressRate, 100);
+});
+
+test("reservas y avance sin entrega ni consumo no inventan productividad de materiales", () => {
+  const withoutUse = {
+    ...dataset,
+    orderMaterialReservations: [{ ceco: "1", materialCode: "M1", requiredQuantity: 5, reservedQuantity: 5, consumedQuantity: 0 }],
+    inventoryMovements: [],
+    warehouse: []
+  };
+  const { current } = calculateProductivityReport(withoutUse, "2026-01-01", "2026-01-31");
+  assert.equal(current.progressRate, 50);
+  assert.equal(current.materialProductivity, null);
+  assert.equal(current.materialCostReason, "missing_consumption");
+});
+
+test("costo de materiales reúne fuentes por material sin duplicar salida y consumo", () => {
+  const withTwoMaterials = {
+    ...dataset,
+    inventory: [...dataset.inventory, { code: "M2", unitCost: 10 }],
+    orderMaterialReservations: [{ ceco: "1", materialCode: "M1", consumedQuantity: 3 }],
+    inventoryMovements: [
+      { ceco: "1", type: "salida", code: "M1", quantity: 3, timestamp: "2026-01-08" },
+      { ceco: "1", type: "consumo", code: "M1", quantity: 3, timestamp: "2026-01-08" },
+      { ceco: "1", type: "consumo", code: "M2", quantity: 4, timestamp: "2026-01-08" }
+    ]
+  };
+  const { current } = calculateProductivityReport(withTwoMaterials, "2026-01-01", "2026-01-31");
+  assert.equal(current.materialCost, 100);
+  assert.equal(current.materialProductivity, 0.01);
 });
 
 test("productividad multifactorial queda pendiente si faltan costos de factores", () => {
   const withoutEnergy = { ...dataset, orders: dataset.orders.map((order) => order.ceco === "1" ? { ...order, energyCost: null } : order) };
   const report = calculateProductivityReport(withoutEnergy, "2026-01-01", "2026-01-31");
   assert.equal(report.current.multifactorProductivity, null);
+});
+
+test("costo de mano de obra usa la tarifa del trabajador cuando el parte solo registra horas", () => {
+  const withPersonnelRate = {
+    ...dataset,
+    personnel: [{ name: "Ana", hourlyCost: 10 }],
+    operations: dataset.operations.map(({ hourlyCost, ...operation }) => operation)
+  };
+  const { current } = calculateProductivityReport(withPersonnelRate, "2026-01-01", "2026-01-31");
+  assert.equal(current.laborCost, 100);
+  assert.equal(current.multifactorProductivity, 5);
 });
 
 test("determina el rango disponible y genera un libro compatible con Excel", () => {

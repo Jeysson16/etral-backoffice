@@ -1,5 +1,5 @@
 import XLSX from "xlsx-js-style";
-import { buildIndicatorSeries, materialConsumptionCost } from "./productivity.js";
+import { activityProgressDate, buildIndicatorSeries, materialConsumptionCost } from "./productivity.js";
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 import { calculateSafetyStock, hasSafetyStockParameters } from "./mrp.js";
 import { deriveMaterialDemand } from "./materialDemand.js";
@@ -94,7 +94,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     ["Mes", "CECO", "Descripción de carrocería", "Cliente", "Fecha pactada de entrega (A)", "Fecha real de entrega (B)", "Días de retraso (B − A)", "Und. producidas", "Und. planificadas", "CPP (%)", "Actividades ejecutadas", "Actividades programadas", "Nivel de avance (%)", "Observaciones"],
     (dataset.orders ?? []).filter((item) => relevantCecos.has(item.ceco)).map((order) => {
       const completed = completedByCeco.get(order.ceco);
-      const progress = activityProgress.filter((item) => item.ceco === order.ceco && (inRange(item.startedAt, range.start, range.end) || inRange(item.finishedAt, range.start, range.end)));
+      const progress = activityProgress.filter((item) => item.ceco === order.ceco && inRange(activityProgressDate(item), range.start, range.end));
       const executed = progress.filter((item) => item.status === "completed" || Number(item.progress) >= 100).length;
       const product = (dataset.bodyTypes ?? []).find((item) => item.id === order.bodyTypeId);
       const due = order.dueDate?.slice(0, 10) ?? "";
@@ -142,7 +142,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
   ], { numberFormats: { 4: "#,##0.00" } });
   appendSheet(workbook, "Avance actividades", [
     ["ceco", "actividad", "estado", "avance_pct", "inicio", "fin"],
-    ...(dataset.activityProgress ?? []).filter((item) => inRange(item.startedAt ?? item.finishedAt, range.start, range.end)).map((item) => [item.ceco, dataset.stageActivities.find((activity) => activity.id === item.activityId)?.name ?? item.activityId, item.status, Number(item.progress ?? 0), item.startedAt ?? "", item.finishedAt ?? ""])
+    ...(dataset.activityProgress ?? []).filter((item) => inRange(activityProgressDate(item), range.start, range.end)).map((item) => [item.ceco, dataset.stageActivities.find((activity) => activity.id === item.activityId)?.name ?? item.activityId, item.status, Number(item.progress ?? 0), item.startedAt ?? "", item.finishedAt ?? ""])
   ], { numberFormats: { 3: "0.00" } });
   appendSheet(workbook, "Movimientos materiales", [
     ["fecha", "tipo", "material", "ceco", "cantidad", "nota"],

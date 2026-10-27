@@ -97,6 +97,9 @@ export const supabaseRepository = {
     if (Object.hasOwn(patch, "plannedStartDate")) values.planned_start_date = patch.plannedStartDate || null;
     if (Object.hasOwn(patch, "dueDate")) values.due_date = patch.dueDate || null;
     if (Object.hasOwn(patch, "active")) values.active = Boolean(patch.active);
+    if (Object.hasOwn(patch, "outputValue")) values.sale_amount_pen = nullableNumber(patch.outputValue);
+    if (Object.hasOwn(patch, "energyCost")) values.energy_cost = nullableNumber(patch.energyCost);
+    if (Object.hasOwn(patch, "capitalCost")) values.capital_cost = nullableNumber(patch.capitalCost);
     const { error } = await supabase.from("ceco_orders").update(values).eq("ceco", ceco);
     if (error) throw error;
     return this.getDataset();
@@ -167,7 +170,8 @@ export const supabaseRepository = {
       lead_time_days: nullableNumber(payload.leadTimeDays),
       average_demand: nullableNumber(payload.averageDemand),
       lead_time_std_dev: nullableNumber(payload.leadTimeStdDev),
-      service_level: nullableNumber(payload.serviceLevel)
+      service_level: nullableNumber(payload.serviceLevel),
+      unit_cost: nullableNumber(payload.unitCost)
     });
     if (error) throw error;
     await supabase.from("inventory_movements").insert({ id: `mov-${Date.now()}`, type: "ingreso", code, ceco: "", quantity: Number(payload.physical), note: "Alta inicial de insumo" });
@@ -372,7 +376,8 @@ export const supabaseRepository = {
       lead_time_days: nullableNumber(patch.leadTimeDays),
       average_demand: nullableNumber(patch.averageDemand),
       lead_time_std_dev: nullableNumber(patch.leadTimeStdDev),
-      service_level: nullableNumber(patch.serviceLevel)
+      service_level: nullableNumber(patch.serviceLevel),
+      unit_cost: nullableNumber(patch.unitCost)
     }).eq("code", code);
     if (error) throw error;
     return this.getDataset();
@@ -506,11 +511,15 @@ export const supabaseRepository = {
   async createPersonnel(payload) {
     const { error } = await supabase.rpc("save_personnel_with_shifts", { p_id: "", p_employee_code: payload.employeeCode, p_name: payload.name, p_role: payload.role, p_specialty: payload.specialty || null, p_shift_ids: payload.shiftIds, p_status: payload.status, p_efficiency: Number(payload.efficiency) });
     if (error) throw error;
+    const { error: costError } = await supabase.from("personnel").update({ hourly_cost: nullableNumber(payload.hourlyCost) }).eq("employee_code", payload.employeeCode);
+    if (costError) throw costError;
     return this.getDataset();
   },
   async updatePersonnel(id, payload) {
     const { error } = await supabase.rpc("save_personnel_with_shifts", { p_id: id, p_employee_code: payload.employeeCode, p_name: payload.name, p_role: payload.role, p_specialty: payload.specialty || null, p_shift_ids: payload.shiftIds, p_status: payload.status, p_efficiency: Number(payload.efficiency) });
     if (error) throw error;
+    const { error: costError } = await supabase.from("personnel").update({ hourly_cost: nullableNumber(payload.hourlyCost) }).eq("id", id);
+    if (costError) throw costError;
     return this.getDataset();
   },
   async createEquipment(payload) {
@@ -577,7 +586,7 @@ function mapBodyType(row, routes) {
 }
 
 function mapInventory(row) {
-  return { id: row.id, code: row.code, category: row.category, categoryId: row.category_id, brandId: row.brand_id, unitId: row.unit_id, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: row.service_factor == null ? null : Number(row.service_factor), demandStdDev: row.demand_std_dev == null ? null : Number(row.demand_std_dev), leadTimeDays: row.lead_time_days == null ? null : Number(row.lead_time_days), averageDemand: row.average_demand == null ? null : Number(row.average_demand), leadTimeStdDev: row.lead_time_std_dev == null ? null : Number(row.lead_time_std_dev), serviceLevel: row.service_level == null ? null : Number(row.service_level), unitCost: Number(row.unit_cost), currency: row.currency || "PEN", unit: row.unit, location: row.location };
+  return { id: row.id, code: row.code, category: row.category, categoryId: row.category_id, brandId: row.brand_id, unitId: row.unit_id, description: row.description, physical: Number(row.physical), committed: Number(row.committed), safety: Number(row.safety), serviceFactor: row.service_factor == null ? null : Number(row.service_factor), demandStdDev: row.demand_std_dev == null ? null : Number(row.demand_std_dev), leadTimeDays: row.lead_time_days == null ? null : Number(row.lead_time_days), averageDemand: row.average_demand == null ? null : Number(row.average_demand), leadTimeStdDev: row.lead_time_std_dev == null ? null : Number(row.lead_time_std_dev), serviceLevel: row.service_level == null ? null : Number(row.service_level), unitCost: nullableNumber(row.unit_cost), currency: row.currency || "PEN", unit: row.unit, location: row.location };
 }
 
 function mapBom(row) {
@@ -597,7 +606,7 @@ function mapActivityProgress(row) {
 }
 
 function mapOrder(row) {
-  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, createdAt: row.created_at || null, active: row.active !== false, outputValue: Number(row.output_value || 0), energyCost: Number(row.energy_cost || 0), capitalCost: Number(row.capital_cost || 0) };
+  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, createdAt: row.created_at || null, active: row.active !== false, outputValue: nullableNumber(row.sale_amount_pen), energyCost: nullableNumber(row.energy_cost), capitalCost: nullableNumber(row.capital_cost) };
 }
 
 function mapCustomer(row) { return { id: row.id, documentNumber: row.document_number, name: row.name, contactName: row.contact_name, phone: row.phone, email: row.email, active: row.active }; }
@@ -608,7 +617,7 @@ function legacyCustomers(orders) {
 }
 
 function mapOperation(row) {
-  return { id: row.id, date: row.date, ceco: row.ceco, worker: row.worker, activityId: row.activity_id, stageId: row.stage_id, activity: row.activity, totalHours: Number(row.total_hours), hourlyCost: Number(row.hourly_cost || 0) };
+  return { id: row.id, date: row.date, ceco: row.ceco, worker: row.worker, activityId: row.activity_id, stageId: row.stage_id, activity: row.activity, totalHours: Number(row.total_hours), hourlyCost: nullableNumber(row.hourly_cost) };
 }
 
 function mapWarehouse(row) {
@@ -624,7 +633,7 @@ function mapMovement(row) {
 }
 
 function mapShift(row) { return { id: row.id, code: row.code, name: row.name, startTime: String(row.start_time).slice(0, 5), endTime: String(row.end_time).slice(0, 5), breakMinutes: Number(row.break_minutes), daysPerWeek: Number(row.days_per_week || 1), active: row.active }; }
-function mapPerson(row, personnelShifts = []) { const shiftIds = personnelShifts.filter((item) => item.personnel_id === row.id).map((item) => item.shift_id); return { id: row.id, employeeCode: row.employee_code, name: row.name, role: row.role, specialty: row.specialty, shiftId: shiftIds[0] || row.shift_id, shiftIds: shiftIds.length ? shiftIds : row.shift_id ? [row.shift_id] : [], status: row.status, efficiency: Number(row.efficiency), weeklyHours: Number(row.weekly_hours), active: row.active }; }
+function mapPerson(row, personnelShifts = []) { const shiftIds = personnelShifts.filter((item) => item.personnel_id === row.id).map((item) => item.shift_id); return { id: row.id, employeeCode: row.employee_code, name: row.name, role: row.role, specialty: row.specialty, shiftId: shiftIds[0] || row.shift_id, shiftIds: shiftIds.length ? shiftIds : row.shift_id ? [row.shift_id] : [], status: row.status, efficiency: Number(row.efficiency), hourlyCost: nullableNumber(row.hourly_cost), weeklyHours: Number(row.weekly_hours), active: row.active }; }
 function mapEquipment(row) { return { id: row.id, code: row.code, name: row.name, stageId: row.stage_id, status: row.status, capacityHours: Number(row.capacity_hours), maintenanceDue: row.maintenance_due }; }
 function mapCalendarDay(row) { return { id: row.id, date: row.calendar_date, dayType: row.day_type, availableHours: Number(row.available_hours), note: row.note }; }
 function mapAssignment(row) { return { id: row.id, personnelId: row.personnel_id, ceco: row.ceco, activityId: row.activity_id, assignedDate: row.assigned_date, plannedHours: Number(row.planned_hours), status: row.status }; }
