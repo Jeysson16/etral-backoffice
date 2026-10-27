@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { availableDateRange, buildExcelReport, calculateProductivityReport } from "../src/lib/productivity.js";
+import { availableDateRange, buildExcelReport, calculateProductivityReport, materialConsumptionCost } from "../src/lib/productivity.js";
 
 const dataset = {
   orders: [
@@ -64,7 +64,7 @@ test("el avance terminado cuenta en su fecha de fin aunque empezara antes", () =
   assert.equal(february.progressRate, 100);
 });
 
-test("reservas y avance sin entrega ni consumo no inventan productividad de materiales", () => {
+test("el CECO terminado acredita materiales BOM de sus fases sin duplicar salidas", () => {
   const withoutUse = {
     ...dataset,
     orderMaterialReservations: [{ ceco: "1", materialCode: "M1", requiredQuantity: 5, reservedQuantity: 5, consumedQuantity: 0 }],
@@ -73,8 +73,28 @@ test("reservas y avance sin entrega ni consumo no inventan productividad de mate
   };
   const { current } = calculateProductivityReport(withoutUse, "2026-01-01", "2026-01-31");
   assert.equal(current.progressRate, 50);
-  assert.equal(current.materialProductivity, null);
-  assert.equal(current.materialCostReason, "missing_consumption");
+  assert.equal(current.materialProductivity, 0.01);
+  assert.equal(current.materialCost, 100);
+  assert.equal(current.hasEstimatedMaterialUsage, true);
+  const unpriced = calculateProductivityReport({ ...withoutUse, inventory: [{ ...dataset.inventory[0], unitCost: null }] }, "2026-01-01", "2026-01-31").current;
+  assert.equal(unpriced.materialCostReason, "missing_unit_cost");
+});
+
+test("una fase completada imputa solo sus materiales al CECO en curso", () => {
+  const inProgress = {
+    orders: [{ ceco: "3", progress: 50 }],
+    stageActivities: [{ id: "A1", stageId: "S1", active: true }, { id: "A2", stageId: "S2", active: true }],
+    activityProgress: [{ ceco: "3", activityId: "A1", status: "completed", progress: 100 }],
+    orderMaterialReservations: [
+      { ceco: "3", stageId: "S1", materialCode: "M1", requiredQuantity: 2 },
+      { ceco: "3", stageId: "S2", materialCode: "M2", requiredQuantity: 9 }
+    ],
+    inventory: [{ code: "M1", unitCost: 5 }, { code: "M2", unitCost: 5 }]
+  };
+  const result = materialConsumptionCost(inProgress, "3", "2026-01-01", "2026-01-31");
+  assert.equal(result.cost, 10);
+  assert.equal(result.estimatedQuantity, 2);
+  assert.match(result.source, /Avance de fase\/BOM/);
 });
 
 test("costo de materiales reúne fuentes por material sin duplicar salida y consumo", () => {

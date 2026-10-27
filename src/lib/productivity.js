@@ -51,16 +51,43 @@ export function materialConsumptionCost(dataset, ceco, start, end) {
       selected.set(row.code, { source, rows: entries.filter((item) => item.code === row.code) });
     }
   }
+  // Una fase cerrada acredita el requerimiento BOM de esa fase. Si además hay
+  // salidas explícitas, solo se estima la cantidad restante para no duplicarla.
+  const order = (dataset.orders ?? []).find((item) => item.ceco === ceco);
+  const completedActivities = new Set((dataset.activityProgress ?? [])
+    .filter((item) => item.ceco === ceco && (item.status === "completed" || Number(item.progress) >= 100))
+    .map((item) => item.activityId));
+  const stageCompleted = (stageId) => {
+    if (order && orderCompletion(dataset, order).date) return true;
+    const activities = (dataset.stageActivities ?? []).filter((item) => item.stageId === stageId && item.active !== false);
+    return activities.length > 0 && activities.every((item) => completedActivities.has(item.id));
+  };
+  const requirements = new Map();
+  for (const row of dataset.orderMaterialReservations ?? []) {
+    if (row.ceco !== ceco || !row.materialCode || !stageCompleted(row.stageId)) continue;
+    requirements.set(row.materialCode, (requirements.get(row.materialCode) ?? 0) + Number(row.requiredQuantity || 0));
+  }
+  let estimatedQuantity = 0;
+  for (const [code, required] of requirements) {
+    const recorded = selected.get(code)?.rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0) ?? 0;
+    const remainder = Math.max(0, required - recorded);
+    if (remainder > 0) {
+      selected.set(code, { source: selected.has(code) ? `${selected.get(code).source} + avance de fase/BOM` : "Avance de fase/BOM (estimado)", rows: [...(selected.get(code)?.rows ?? []), { code, quantity: remainder }] });
+      estimatedQuantity += remainder;
+    }
+  }
   const rows = [...selected.values()].flatMap((item) => item.rows);
-  if (!rows.length) return { cost: null, source: "Sin entrega ni consumo de material documentado por CECO", reason: "missing_consumption" };
+  const quantity = rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+  if (!rows.length) return { cost: null, quantity: 0, estimatedQuantity: 0, source: "Sin material vinculado al avance del CECO", reason: "missing_consumption" };
   const inventory = new Map((dataset.inventory ?? []).map((item) => [item.code, item]));
   const costs = rows.map((row) => inventory.get(row.code)?.unitCost);
+  const source = [...new Set([...selected.values()].map((item) => item.source))].join(" + ");
   if (costs.some((value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) || Number(value) <= 0)) {
-    return { cost: null, source: "Falta costo unitario de materiales consumidos", reason: "missing_unit_cost" };
+    return { cost: null, quantity, estimatedQuantity, source: `${source}; falta costo unitario`, reason: "missing_unit_cost" };
   }
   return {
     cost: rows.reduce((sum, row, index) => sum + Number(row.quantity) * Number(costs[index]), 0),
-    source: [...new Set([...selected.values()].map((item) => item.source))].join(" + "),
+    quantity, estimatedQuantity, source,
     reason: null
   };
 }
@@ -140,6 +167,7 @@ function calculatePeriod(dataset, start, end) {
 
   const completedCecos = new Set(completed.map((item) => item.order.ceco));
   const materialCostsByCeco = [...completedCecos].map((ceco) => materialConsumptionCost(dataset, ceco, start, end));
+  const hasEstimatedMaterialUsage = materialCostsByCeco.some((item) => (item.estimatedQuantity ?? 0) > 0);
   const materialCost = materialCostsByCeco.length && materialCostsByCeco.every((item) => item.cost !== null)
     ? materialCostsByCeco.reduce((sum, item) => sum + item.cost, 0) : null;
   const materialCostReason = !completedCecos.size ? "no_completed_ceco"
@@ -177,6 +205,7 @@ function calculatePeriod(dataset, start, end) {
     materialProductivity: materialCost > 0 ? round(completed.length / materialCost, 4) : null,
     materialCost: round(materialCost, 2),
     materialCostReason,
+    hasEstimatedMaterialUsage,
     completedCecoCount: completedCecos.size,
     laborCost: round(laborCost, 2),
     otherCosts: round(otherCosts, 2),
