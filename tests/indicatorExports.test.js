@@ -75,6 +75,16 @@ test("la ficha de productividad toma salidas por CECO sin duplicar reservas", ()
   assert.match(rows[4][16], /Salidas por CECO/);
 });
 
+test("la ficha de productividad usa la tarifa registrada del trabajador", () => {
+  const dataset = fixture();
+  delete dataset.operations[0].hourlyCost;
+  dataset.personnel = [{ name: "Ana", hourlyCost: 10 }];
+  const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Ficha productividad"], { header: 1 });
+  assert.equal(rows[4][6], 10);
+  assert.equal(rows[4][15], 1000 / (20 + 80 + 50 + 30));
+});
+
 test("la ficha y el microdato de avance usan el fin de una actividad terminada", () => {
   const dataset = fixture();
   dataset.activityProgress[0].startedAt = "2026-09-29";

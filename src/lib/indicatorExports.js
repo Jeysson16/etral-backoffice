@@ -114,7 +114,8 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
       const logs = operations.filter((item) => item.ceco === completed.ceco && inRange(item.date, range.start, range.end));
       const hours = logs.reduce((sum, item) => sum + Number(item.totalHours ?? 0), 0);
       const workers = new Set(logs.map((item) => item.worker).filter(Boolean)).size;
-      const rates = logs.map((item) => recordedNumber(item.hourlyCost ?? item.laborCostPerHour));
+      const personnelRates = new Map((dataset.personnel ?? []).map((person) => [person.name, person.hourlyCost]));
+      const rates = logs.map((item) => recordedNumber(item.hourlyCost ?? item.laborCostPerHour ?? personnelRates.get(item.worker)));
       const laborCost = logs.length && rates.every((item) => item !== null) ? logs.reduce((sum, item, index) => sum + Number(item.totalHours ?? 0) * rates[index], 0) : null;
       const { cost: materialCost, source: materialSource } = materialConsumptionCost(dataset, completed.ceco, range.start, range.end);
       const output = recordedNumber(order?.outputValue);
