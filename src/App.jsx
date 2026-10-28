@@ -703,9 +703,9 @@ function CurrentMaterialAlerts({ dataset, heatmap, mrp, setView }) {
   </section>;
 }
 
-function formatIndicator(value, suffix = "") {
+function formatIndicator(value, suffix = "", maximumFractionDigits = 3) {
   if (value == null) return "Sin datos";
-  return `${new Intl.NumberFormat("es-PE", { maximumFractionDigits: 3 }).format(value)}${suffix}`;
+  return `${new Intl.NumberFormat("es-PE", { maximumFractionDigits }).format(value)}${suffix}`;
 }
 
 function changeBetween(current, previous) {
@@ -713,12 +713,12 @@ function changeBetween(current, previous) {
   return Math.round((current - previous) * 10) / 10;
 }
 
-function ProductivityCard({ label, value, previous, suffix, detail, formula, tone = "neutral", tooltip, missingLabel }) {
+function ProductivityCard({ label, value, previous, suffix, detail, formula, tone = "neutral", tooltip, missingLabel, maximumFractionDigits }) {
   const delta = changeBetween(value, previous);
   const width = value == null ? 0 : Math.max(4, Math.min(100, suffix === "%" ? value : value * 100));
   return <article className={`productive-card ${tone} ${value == null ? "unavailable" : ""}`}>
     <header><span>{label}</span>{delta != null && delta !== 0 && <b className={delta > 0 ? "up" : "down"}>{delta > 0 ? "↑" : "↓"} {Math.abs(delta)}</b>}</header>
-    <strong>{value == null && missingLabel ? missingLabel : formatIndicator(value, suffix)}</strong>
+    <strong>{value == null && missingLabel ? missingLabel : formatIndicator(value, suffix, maximumFractionDigits)}</strong>
     <div className="indicator-track"><i style={{ width: `${width}%` }} /></div>
     <small>{detail}</small>
     <p>{formula}</p>
@@ -752,7 +752,7 @@ function ProductivityDashboard({ report, onOpen }) {
     { label: "Retraso promedio de entrega", value: current.averageLeadTime, previous: previous.averageLeadTime, suffix: " días", detail: current.leadTimeSamples ? `${current.leadTimeSamples} órdenes con fechas completas; negativo = anticipada` : "Falta fecha real o pactada", formula: "Fecha real de entrega − fecha pactada", tone: "purple", tooltip: "Se calcula con la fecha real y la fecha pactada de cada CECO cerrado en el periodo." },
     { label: "Cobertura de seguridad", value: current.safetyCoverage, previous: previous.safetyCoverage, suffix: "%", detail: `${current.safetyCovered} de ${current.safetyTotal} materiales sobre el mínimo`, formula: "Disponible ≥ stock de seguridad calculado", tone: "green", tooltip: "1. Ve a Inventario > Insumos y partes.\n2. Configura el 'Stock de seguridad' y registra ingresos de stock para mantener los materiales sobre ese nivel." },
     { label: "Productividad de mano de obra", value: current.laborProductivity, previous: previous.laborProductivity, suffix: " und/HH", detail: `${current.producedUnits} unidades / ${current.reportedHours} horas reportadas`, formula: "Unidades producidas ÷ horas-hombre", tone: "teal", tooltip: "1. Ve a Producción > Partes de operación.\n2. Registra las horas trabajadas en las actividades." },
-    { label: "Productividad de materiales", value: current.materialProductivity, previous: previous.materialProductivity, suffix: " und/S/", missingLabel: materialMissing, detail: current.materialProductivity == null ? materialDetail : `Costo valorizado S/ ${current.materialCost}${current.hasEstimatedMaterialUsage ? " · cantidades inferidas del avance" : ""}`, formula: "Unidades producidas ÷ costo de materiales", tone: "yellow", tooltip: "Las fases terminadas acreditan las cantidades de sus reservas BOM. Las salidas explícitas tienen prioridad y no se duplican. El costo en soles usa el precio unitario del maestro de materiales." },
+    { label: "Productividad de materiales", value: current.materialProductivity, previous: previous.materialProductivity, suffix: " und/S/", maximumFractionDigits: 4, missingLabel: materialMissing, detail: current.materialProductivity == null ? materialDetail : `Costo valorizado S/ ${current.materialCost}${current.hasEstimatedMaterialUsage ? " · cantidades inferidas del avance" : ""}`, formula: "Unidades producidas ÷ costo de materiales", tone: "yellow", tooltip: "Las fases terminadas acreditan las cantidades de sus reservas BOM. Las salidas explícitas tienen prioridad y no se duplican. El costo en soles usa el precio unitario del maestro de materiales." },
     { label: "Productividad multifactorial", value: current.multifactorProductivity, previous: previous.multifactorProductivity, suffix: "", missingLabel: "Valoración pendiente", detail: current.multifactorProductivity == null ? `Hay avance y horas registrados. Sin importe verificable de: ${missingFactors.join(", ") || "factores con valor positivo"}.` : `Valor producido S/ ${current.outputValue}`, formula: "Producto total ÷ factores utilizados", tone: "navy", tooltip: "El avance acredita cantidades de materiales y los partes acreditan horas. Los importes se toman de Inventario, Recursos > Personal y Datos complementarios del CECO." }
   ];
   const available = rows.filter((item) => item.value != null).length;
