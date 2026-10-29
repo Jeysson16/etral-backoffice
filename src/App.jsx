@@ -888,7 +888,6 @@ function IndicatorsView({ dataset }) {
 function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities, simulationTime, dataReady, isRunning }) {
   const [tab, setTab] = useState("capacity");
   const [calibInfo, setCalibInfo] = useState(null);
-  const [adjustmentsReviewed, setAdjustmentsReviewed] = useState(false);
 
   useEffect(() => {
     if (dataReady) {
@@ -939,7 +938,6 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
   }
 
   function toggleMaterialAdjustment(materialCode) {
-    setAdjustmentsReviewed(false);
     setDraft((current) => {
       const adjustments = current.materialAdjustments ?? [];
       const isSelected = adjustments.some((item) => item.materialCode === materialCode);
@@ -953,7 +951,6 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
   }
 
   function updateMaterialAdjustment(materialCode, stockAdjustment) {
-    setAdjustmentsReviewed(false);
     setDraft((current) => ({
       ...current,
       materialAdjustments: (current.materialAdjustments ?? []).map((item) => (
@@ -1049,7 +1046,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
     if (values.filter((item) => item.priority === priority).length > 1) return [`CECO ${ceco}: el orden ${priority} está repetido.`];
     return [];
   });
-  const canExecute = dataReady && !isRunning && materialAdjustmentErrors.length === 0 && priorityErrors.length === 0 && (!(draft.materialAdjustments ?? []).length || adjustmentsReviewed);
+  const canExecute = dataReady && !isRunning && materialAdjustmentErrors.length === 0 && priorityErrors.length === 0;
 
   const comparisons = result ? [
     ["Órdenes terminables", result.baseline.throughput, result.scenario.throughput, "órdenes"],
@@ -1094,7 +1091,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           <div className="multi-picker" role="group" aria-label="Materiales para ajuste extraordinario">
             {dataset.inventory.map((item) => <label key={item.code}><input type="checkbox" checked={(draft.materialAdjustments ?? []).some((adjustment) => adjustment.materialCode === item.code)} onChange={() => toggleMaterialAdjustment(item.code)} /><span><strong>{item.code}</strong><small>{item.description}</small></span></label>)}
           </div>
-          <small>Seleccione uno o varios materiales. Use un valor positivo para un ingreso y negativo para una pérdida simulada. No altera el inventario real.</small>
+          <small>Seleccione uno o varios materiales. Use un valor positivo para un ingreso y negativo para una pérdida simulada. Los ajustes válidos se consideran automáticamente al ejecutar la simulación; no alteran el inventario real.</small>
           {(draft.materialAdjustments ?? []).length > 0 && <div className="scenario-selection-list material-adjustment-list">
             {draft.materialAdjustments.map((adjustment) => {
               const material = dataset.inventory.find((item) => item.code === adjustment.materialCode);
@@ -1104,12 +1101,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
               </div>;
             })}
           </div>}
-          {(draft.materialAdjustments ?? []).length > 0 && <div className="scenario-review">
-            <strong>Revisión antes de aplicar al escenario</strong>
-            <small>Comprueba que las cantidades sean números válidos y que el stock físico simulado no quede negativo. Por ejemplo, con 20 unidades, un ajuste de −30 se rechaza.</small>
-            {materialAdjustmentErrors.length > 0 ? <small className="form-error">{materialAdjustmentErrors.join(" ")}</small> : <small>{draft.materialAdjustments.map((item) => `${item.materialCode} ${Number(item.stockAdjustment) > 0 ? "+" : ""}${item.stockAdjustment}`).join(" · ")}</small>}
-            <button type="button" className="text-button" disabled={materialAdjustmentErrors.length > 0} onClick={() => setAdjustmentsReviewed(true)}>{adjustmentsReviewed ? "Ajustes confirmados" : "Confirmar ajustes del escenario"}</button>
-          </div>}
+          {materialAdjustmentErrors.length > 0 && <small className="form-error">{materialAdjustmentErrors.join(" ")}</small>}
         </div>
 
         <div className="field-group multi-scenario-field">
