@@ -1283,6 +1283,14 @@ pre,
 .indicator-detail-note { padding: 0 22px 15px; color: #5c687a; font-size: 12px; }
 .indicator-detail-scroll { max-height: 420px; overflow: auto; }
 .indicator-detail-scroll table { min-width: 850px; }
+.academic-stock-reference { margin: 18px 0; border: 1px solid #dce2e9; border-radius: 10px; background: #fbfcfd; }
+.academic-stock-reference > summary { cursor: pointer; padding: 14px 16px; color: #a73506; font-size: 13px; font-weight: 800; }
+.academic-stock-reference > p { padding: 0 16px 12px; color: #5c687a; font-size: 12px; }
+.academic-stock-totals { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 16px 16px; }
+.academic-stock-totals span { display: grid; gap: 3px; border: 1px solid #e1e5ea; border-radius: 8px; background: white; padding: 9px 12px; color: #5c687a; font-size: 11px; }
+.academic-stock-totals strong { color: #172033; font-size: 17px; }
+.academic-stock-scroll { max-height: 440px; overflow: auto; }
+.academic-stock-scroll table { min-width: 1220px; }
 .planning-status.this-week { background: #fff5e8; color: #9a4b05; }
 .planning-status.planned { background: #eef4ff; color: #244692; }
 .mrp-layout { display: grid; grid-template-columns: 255px minmax(0, 1fr); gap: 20px; align-items: start; }

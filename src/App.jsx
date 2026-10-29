@@ -18,6 +18,7 @@ import ResourcesView from "./components/ResourcesView.jsx";
 import { MaterialMrpView, SuggestedPurchasesView } from "./components/PlanningViews.jsx";
 import ProductionPlanView from "./components/PmpPeriodView.jsx";
 import IndicatorDetails from "./components/IndicatorDetails.jsx";
+import AcademicStockReference from "./components/AcademicStockReference.jsx";
 
 
 const views = {
@@ -875,6 +876,7 @@ function IndicatorsView({ dataset, openDrawer }) {
       <p>Cobertura = materiales con disponible ≥ SS ÷ total de materiales × 100. Disponible = físico − comprometido.</p>
       <p>{(dataset.inventory ?? []).filter(hasSafetyStockParameters).length} de {(dataset.inventory ?? []).length} materiales tienen los parámetros de SS. En {estimatedSafetyCount} son aproximaciones basadas en planificación CECO/BOM y plazo referencial. Hay {estimatedPriceCount} precios estimados. Revisa ambos en Inventario: el SS calculado reemplaza el mínimo anterior cuando la ficha está completa.</p>
       <details><summary>Ver cómo se estiman dp y s1</summary><p>Se usan salidas o consumos registrados; luego salidas de almacén; y, si no existen, demanda planificada de CECO y BOM. Esta última es planificación, no consumo observado.</p></details>
+      <AcademicStockReference />
       <div className="table-scroll"><table><thead><tr><th>Material</th><th>Precio unitario</th><th>dp</th><th>s1</th><th>Lt</th><th>s2</th><th>Nivel de servicio</th><th>z</th><th>SS aplicado</th><th>Origen</th><th>Disponible</th><th>Brecha</th></tr></thead><tbody>{(dataset.inventory ?? []).map((item) => {
         const calculated = hasSafetyStockParameters(item);
         const safety = calculateSafetyStock(item);
