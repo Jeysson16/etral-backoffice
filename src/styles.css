@@ -1264,6 +1264,7 @@ pre,
 .planning-empty { padding: 22px; color: #657084; font-size: 13px; }
 .planning-status { display: inline-flex; white-space: nowrap; border-radius: 99px; padding: 4px 9px; background: #eaf8ef; color: #166534; font-size: 11px; font-weight: 800; }
 .planning-status.late { background: #fdf0f0; color: #ad1f1f; }
+.planning-status.no-lead { background: #f2f2f2; color: #4b5563; }
 .planning-status.this-week { background: #fff5e8; color: #9a4b05; }
 .planning-status.planned { background: #eef4ff; color: #244692; }
 .mrp-layout { display: grid; grid-template-columns: 255px minmax(0, 1fr); gap: 20px; align-items: start; }
