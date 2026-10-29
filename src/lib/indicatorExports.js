@@ -52,7 +52,7 @@ const definitions = [
   ["safety_coverage", "Cobertura de stock de seguridad", "%", "Materiales con disponible ≥ stock de seguridad / total materiales × 100", "Resultado", "Escala"],
   ["labor_productivity", "Productividad mano de obra", "und/HH", "Unidades producidas / horas-hombre", "Resultado", "Escala"],
   ["material_productivity", "Productividad materiales", "und/S/", "Unidades producidas / costo de materiales", "Resultado", "Escala"],
-  ["multifactor_productivity", "Productividad multifactorial", "ratio", "Valor de salida / (materiales + mano de obra + otros factores)", "Resultado", "Escala"]
+  ["multifactor_productivity", "Productividad multifactorial", "ratio", "Valor producido / (mano de obra + materiales)", "Resultado", "Escala"]
 ];
 
 export function buildIndicatorsWorkbook(dataset, report, range, grouping = "month") {
@@ -107,7 +107,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     }), { 6: "0", 7: "0", 8: "0", 9: "0.00", 10: "0", 11: "0", 12: "0.00" });
   appendSheet(workbook, "Ficha plan maestro", thesisPlan.rows, thesisPlan.options);
   const thesisProductivity = thesisRows("FICHA DE RECOLECCIÓN Y CÁLCULO · PRODUCTIVIDAD", range,
-    ["Fecha", "CECO", "Descripción de carrocería", "Unidades producidas", "N.º de trabajadores", "Tiempo real (horas-hombre)", "Costo por hora-hombre", "Productividad mano de obra (und/HH)", "Costo materia prima", "Costo insumos", "Costo total materiales", "Productividad materiales (und/S/)", "Producto total S/", "Energía S/", "Capital S/", "Productividad multifactorial", "Observaciones"],
+    ["Fecha", "CECO", "Descripción de carrocería", "Unidades producidas", "N.º de trabajadores", "Tiempo real (horas-hombre)", "Costo por hora-hombre", "Productividad mano de obra (und/HH)", "Costo materia prima", "Costo insumos", "Costo total materiales", "Productividad materiales (und/S/)", "Producto total S/", "Costo total mano de obra S/", "Capital de trabajo (materiales) S/", "Denominador (MO + materiales) S/", "Energía complementaria S/", "Capital complementario S/", "Productividad multifactorial", "Observaciones"],
     current.completedOrders.map((completed) => {
       const order = (dataset.orders ?? []).find((item) => item.ceco === completed.ceco);
       const product = (dataset.bodyTypes ?? []).find((item) => item.id === order?.bodyTypeId);
@@ -122,13 +122,13 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
       const output = recordedNumber(order?.outputValue);
       const energy = recordedNumber(order?.energyCost);
       const capital = recordedNumber(order?.capitalCost);
-      const totalCost = materialCost !== null && laborCost !== null && energy !== null && capital !== null ? materialCost + laborCost + energy + capital : null;
+      const totalCost = materialCost !== null && laborCost !== null ? materialCost + laborCost : null;
       return [completed.completionDate, completed.ceco, product?.name ?? "", 1, workers || null, hours || null,
         laborCost !== null && hours > 0 ? laborCost / hours : null, hours > 0 ? 1 / hours : null,
-        null, null, materialCost, materialCost > 0 ? 1 / materialCost : null, output, energy, capital,
+        null, null, materialCost, materialCost > 0 ? 1 / materialCost : null, output, laborCost, materialCost, totalCost, energy, capital,
         output !== null && totalCost > 0 ? output / totalCost : null,
-        [completed.estimated ? "Fecha de cierre inferida" : "", materialSource, estimatedPrices ? "Precio de material estimado" : "", estimatedLabor ? "Tarifa laboral estimada" : "", [order?.outputValueBasis, order?.energyCostBasis, order?.capitalCostBasis].some((basis) => String(basis ?? "").startsWith("Estimado")) ? "Venta/energía/capital estimados" : "", materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible"].filter(Boolean).join("; ")];
-    }), { 3: "0", 4: "0", 5: "0.00", 6: "0.00", 7: "0.000", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.0000", 12: "0.00", 13: "0.00", 14: "0.00", 15: "0.000" });
+        [completed.estimated ? "Fecha de cierre inferida" : "", materialSource, estimatedPrices ? "Precio de material estimado" : "", estimatedLabor ? "Tarifa laboral estimada" : "", String(order?.outputValueBasis ?? "").startsWith("Estimado") ? "Venta estimada" : "", materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible", "Energía y capital fuera de la razón multifactorial"].filter(Boolean).join("; ")];
+    }), { 3: "0", 4: "0", 5: "0.00", 6: "0.00", 7: "0.000", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.0000", 12: "0.00", 13: "0.00", 14: "0.00", 15: "0.00", 16: "0.00", 17: "0.00", 18: "0.000" });
   appendSheet(workbook, "Ficha productividad", thesisProductivity.rows, thesisProductivity.options);
   appendSheet(workbook, "Registros CECO", [
     ["ceco", "cliente", "producto", "linea", "estado", "avance_pct", "fecha_pactada", "fecha_inicio_plan", "fecha_final", "calidad_fecha_final"],

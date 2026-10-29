@@ -39,13 +39,13 @@ export function buildIndicatorDetails(dataset, report, range) {
     }), note: "Disponible = físico − comprometido. La tabla conserva los valores bajo el mínimo para su revisión." },
     { key: "labor", label: "Productividad laboral", columns: ["Fecha", "CECO", "Trabajador", "Actividad", "Horas", "Tarifa S/ por hora"], rows: operations.map((item) => [item.date, item.ceco, item.worker, item.activity, number(item.totalHours), number(item.hourlyCost ?? item.laborCostPerHour ?? rates.get(workerKey(item.worker)))]), note: "Las horas se suman en el periodo; el numerador son los CECO terminados del mismo periodo." },
     { key: "materials", label: "Productividad de materiales", columns: ["CECO terminado", "Fecha", "Cantidad acreditada", "Costo de materiales S/", "Procedencia"], rows: materialRows.map((item) => [item.ceco, item.completionDate, number(item.material.quantity), number(item.material.cost), `${item.material.source}${item.material.estimatedPrices ? "; precios estimados" : ""}`]), note: "El avance de fases puede acreditar cantidades BOM estimadas; las salidas registradas tienen prioridad para evitar duplicaciones." },
-    { key: "multifactor", label: "Productividad multifactorial", columns: ["CECO terminado", "Valor producido S/", "Materiales S/", "Mano de obra S/", "Energía S/", "Capital S/", "Factores S/", "Procedencia"], rows: materialRows.map((item) => {
+    { key: "multifactor", label: "Productividad multifactorial", columns: ["CECO terminado", "Valor producido S/", "Materiales S/", "Mano de obra S/", "Denominador S/", "Energía S/", "Capital S/", "Procedencia"], rows: materialRows.map((item) => {
       const labor = laborCost(item.ceco);
       const energy = item.order?.energyCost;
       const capital = item.order?.capitalCost;
-      const factors = [item.material.cost, labor, energy, capital].every((value) => value != null) ? Number(item.material.cost) + Number(labor) + Number(energy) + Number(capital) : null;
-      return [item.ceco, number(item.order?.outputValue), number(item.material.cost), number(labor), number(energy), number(capital), number(factors), [item.order?.outputValueBasis, item.order?.energyCostBasis, item.order?.capitalCostBasis, item.material.estimatedPrices ? "precio estimado" : null].filter(Boolean).join(" · ") || "Registrado"];
-    }), note: "Valor producido ÷ (materiales + mano de obra + energía + capital). Los importes estimados se muestran como tales; no equivalen a facturas." }
+      const factors = [item.material.cost, labor].every((value) => value != null) ? Number(item.material.cost) + Number(labor) : null;
+      return [item.ceco, number(item.order?.outputValue), number(item.material.cost), number(labor), number(factors), number(energy), number(capital), [item.order?.outputValueBasis, item.material.estimatedPrices ? "precio estimado" : null].filter(Boolean).join(" · ") || "Registrado"];
+    }), note: "Valor producido ÷ (mano de obra + materiales). Energía y capital son complementarios y no entran en el denominador. Los importes estimados no equivalen a facturas." }
   ];
 }
 

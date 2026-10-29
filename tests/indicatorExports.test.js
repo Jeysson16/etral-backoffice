@@ -32,7 +32,10 @@ test("libro de tesis expone valores por ficha y distingue SS de tesis del operat
   assert.equal(plan[4][12], 100);
   assert.equal(productivity[4][5], 8);
   assert.equal(productivity[4][10], 20);
-  assert.equal(productivity[4][15], 1000 / (20 + 80 + 50 + 30));
+  assert.equal(productivity[4][13], 80);
+  assert.equal(productivity[4][14], 20);
+  assert.equal(productivity[4][15], 100);
+  assert.equal(productivity[4][18], 1000 / (20 + 80));
   assert.equal(stock[4][3], 5);
   assert.equal(stock[4][5], 3);
   assert.equal(stock[4][8], 1);
@@ -73,7 +76,7 @@ test("la ficha de productividad toma salidas por CECO sin duplicar reservas", ()
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Ficha productividad"], { header: 1 });
   assert.equal(rows[4][10], 20);
-  assert.match(rows[4][16], /Salidas por CECO/);
+  assert.match(rows[4][19], /Salidas por CECO/);
 });
 
 test("la ficha de productividad usa la tarifa registrada del trabajador", () => {
@@ -83,7 +86,7 @@ test("la ficha de productividad usa la tarifa registrada del trabajador", () => 
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Ficha productividad"], { header: 1 });
   assert.equal(rows[4][6], 10);
-  assert.equal(rows[4][15], 1000 / (20 + 80 + 50 + 30));
+  assert.equal(rows[4][18], 1000 / (20 + 80));
 });
 
 test("la ficha reconoce material imputado por avance del CECO", () => {
@@ -93,7 +96,7 @@ test("la ficha reconoce material imputado por avance del CECO", () => {
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Ficha productividad"], { header: 1 });
   assert.equal(rows[4][10], 20);
-  assert.match(rows[4][16], /Avance de fase\/BOM/);
+  assert.match(rows[4][19], /Avance de fase\/BOM/);
 });
 
 test("la ficha y el microdato de avance usan el fin de una actividad terminada", () => {

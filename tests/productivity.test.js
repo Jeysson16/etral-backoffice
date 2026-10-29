@@ -113,10 +113,12 @@ test("costo de materiales reúne fuentes por material sin duplicar salida y cons
   assert.equal(current.materialProductivity, 0.01);
 });
 
-test("productividad multifactorial queda pendiente si faltan costos de factores", () => {
+test("productividad multifactorial no depende de energía ni capital", () => {
   const withoutEnergy = { ...dataset, orders: dataset.orders.map((order) => order.ceco === "1" ? { ...order, energyCost: null } : order) };
   const report = calculateProductivityReport(withoutEnergy, "2026-01-01", "2026-01-31");
-  assert.equal(report.current.multifactorProductivity, null);
+  assert.equal(report.current.multifactorProductivity, 5);
+  const withHighEnergy = { ...dataset, orders: dataset.orders.map((order) => order.ceco === "1" ? { ...order, energyCost: 500, capitalCost: 300 } : order) };
+  assert.equal(calculateProductivityReport(withHighEnergy, "2026-01-01", "2026-01-31").current.multifactorProductivity, 5);
 });
 
 test("costo de mano de obra usa la tarifa del trabajador cuando el parte solo registra horas", () => {

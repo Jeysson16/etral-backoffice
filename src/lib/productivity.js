@@ -188,8 +188,7 @@ function calculatePeriod(dataset, start, end) {
   const outputValue = completed.length && outputValues.every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
     ? outputValues.reduce((sum, value) => sum + Number(value), 0) : null;
   const factorCosts = completed.flatMap((item) => [item.order.energyCost, item.order.capitalCost]);
-  const estimatedOrderValues = completed.some((item) => [item.order.outputValueBasis, item.order.energyCostBasis, item.order.capitalCostBasis]
-    .some((basis) => String(basis ?? "").toLowerCase().startsWith("estimado")));
+  const estimatedOrderValues = completed.some((item) => String(item.order.outputValueBasis ?? "").toLowerCase().startsWith("estimado"));
   const otherCosts = completed.length && factorCosts.every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
     ? factorCosts.reduce((sum, value) => sum + Number(value), 0) : null;
 
@@ -219,8 +218,8 @@ function calculatePeriod(dataset, start, end) {
     completedCecoCount: completedCecos.size,
     laborCost: round(laborCost, 2),
     otherCosts: round(otherCosts, 2),
-    multifactorProductivity: materialCost !== null && laborCost !== null && otherCosts !== null && outputValue !== null && (materialCost + laborCost + otherCosts) > 0
-      ? round(outputValue / (materialCost + laborCost + otherCosts), 3)
+    multifactorProductivity: materialCost !== null && laborCost !== null && outputValue !== null && (materialCost + laborCost) > 0
+      ? round(outputValue / (materialCost + laborCost), 3)
       : null,
     outputValue: round(outputValue, 2),
     completedOrders: completed.map((item) => ({
@@ -306,7 +305,7 @@ export function buildExcelReport(report) {
     ["Cobertura de stock de seguridad", current.safetyCoverage, previous.safetyCoverage, "%", "Materiales con disponible mayor o igual al SS"],
     ["Productividad de mano de obra", current.laborProductivity, previous.laborProductivity, "unidades/HH", "Unidades producidas / horas-hombre"],
     ["Productividad de materiales", current.materialProductivity, previous.materialProductivity, "unidades/S/", "Unidades producidas / costo de materiales e insumos"],
-    ["Productividad multifactorial", current.multifactorProductivity, previous.multifactorProductivity, "ratio", "Valor de salida / factores de producción" ]
+    ["Productividad multifactorial", current.multifactorProductivity, previous.multifactorProductivity, "ratio", "Valor producido / (mano de obra + materiales)" ]
   ];
   const summaryRows = [
     [excelCell("REPORTE DE INDICADORES PRODUCTIVOS", "String", "Title")],
