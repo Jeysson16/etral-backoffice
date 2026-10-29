@@ -1074,38 +1074,6 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           </select>
         </Field>
 
-        <Field label="Modelo de inconsistencia de trabajadores" hint="La variabilidad laboral no es un porcentaje arbitrario plano.">
-          <select value={draft.workerInconsistencyMode} onChange={(e) => update("workerInconsistencyMode", e.target.value)}>
-            <option value="stochastic">Estocástico Monte Carlo (Varianza + Ausentismo)</option>
-            <option value="flat">Porcentual plano simple (legacy)</option>
-          </select>
-        </Field>
-
-        {draft.workerInconsistencyMode === "stochastic" && <>
-          <Field label="Desviación típica de rendimiento (σ)" hint={`Desviación en rendimiento laboral: ±${draft.inconsistencyStdDev}%.`}>
-            <input type="range" min="4" max="30" value={draft.inconsistencyStdDev} onChange={(e) => update("inconsistencyStdDev", Number(e.target.value))} />
-          </Field>
-          <Field label="Tasa de ausentismo esperada" hint={`Probabilidad de inasistencia/retraso: ${draft.absenteeismRate}%.`}>
-            <input type="range" min="0" max="25" value={draft.absenteeismRate} onChange={(e) => update("absenteeismRate", Number(e.target.value))} />
-          </Field>
-          <Field label="Corridas Monte Carlo" hint="Más corridas estabilizan el intervalo, pero requieren más tiempo de cálculo.">
-            <select value={draft.monteCarloRuns} onChange={(e) => update("monteCarloRuns", Number(e.target.value))}>
-              <option value="100">100 corridas</option>
-              <option value="250">250 corridas</option>
-              <option value="500">500 corridas</option>
-            </select>
-          </Field>
-          <Field label="Semilla reproducible" hint="La misma semilla y los mismos datos producen el mismo intervalo.">
-            <input type="number" min="0" max="2147483647" value={draft.randomSeed} onChange={(e) => update("randomSeed", Number(e.target.value))} />
-          </Field>
-        </>}
-
-        {draft.workerInconsistencyMode === "flat" && (
-          <Field label="Personal disponible" hint={`${draft.laborAvailability}% de la dotación planificada.`}>
-            <input type="range" min="40" max="100" value={draft.laborAvailability} onChange={(e) => update("laborAvailability", Number(e.target.value))} />
-          </Field>
-        )}
-
         <Field label="Turnos por día">
           <div className="segmented">
             {[1, 2, 3].map((value) => (
@@ -1138,8 +1106,9 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           </div>}
           {(draft.materialAdjustments ?? []).length > 0 && <div className="scenario-review">
             <strong>Revisión antes de aplicar al escenario</strong>
+            <small>Comprueba que las cantidades sean números válidos y que el stock físico simulado no quede negativo. Por ejemplo, con 20 unidades, un ajuste de −30 se rechaza.</small>
             {materialAdjustmentErrors.length > 0 ? <small className="form-error">{materialAdjustmentErrors.join(" ")}</small> : <small>{draft.materialAdjustments.map((item) => `${item.materialCode} ${Number(item.stockAdjustment) > 0 ? "+" : ""}${item.stockAdjustment}`).join(" · ")}</small>}
-            <button type="button" className="text-button" disabled={materialAdjustmentErrors.length > 0} onClick={() => setAdjustmentsReviewed(true)}>{adjustmentsReviewed ? "Ajustes revisados" : "Revisar y aplicar al escenario"}</button>
+            <button type="button" className="text-button" disabled={materialAdjustmentErrors.length > 0} onClick={() => setAdjustmentsReviewed(true)}>{adjustmentsReviewed ? "Ajustes confirmados" : "Confirmar ajustes del escenario"}</button>
           </div>}
         </div>
 
