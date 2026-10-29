@@ -15,7 +15,9 @@ import { formatHours, personnelWeeklyHours, shiftWeeklyHours } from "./lib/workS
 import { toLocalDateTimeInput, validateActivityTimes } from "./lib/dateTime.js";
 import { supabase } from "./supabase/client.js";
 import ResourcesView from "./components/ResourcesView.jsx";
-import { MaterialMrpView, ProductionPlanView, SuggestedPurchasesView } from "./components/PlanningViews.jsx";
+import { MaterialMrpView, SuggestedPurchasesView } from "./components/PlanningViews.jsx";
+import ProductionPlanView from "./components/PmpPeriodView.jsx";
+import IndicatorDetails from "./components/IndicatorDetails.jsx";
 
 
 const views = {
@@ -865,6 +867,8 @@ function IndicatorsView({ dataset, openDrawer }) {
     </section>
 
     <ProductivityDashboard report={report} />
+
+    <IndicatorDetails dataset={dataset} report={report} range={dateRange} />
 
     <section className="panel safety-indicator-panel">
       <SectionHeader eyebrow="Indicador de inventario" title="Cómo se calcula el stock de seguridad" detail="SS = redondear hacia arriba(z × √(s1² × Lt + s2² × dp²)). dp es demanda promedio; s1, desviación de demanda; Lt, plazo del proveedor; s2, desviación del plazo. Si falta un parámetro se usa el mínimo registrado." />

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { buildMaterialPlan, buildProductionPlan } from "../lib/planning.js";
+import { buildMaterialPlan } from "../lib/planning.js";
 
 const today = () => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
@@ -12,27 +12,6 @@ const amount = (value) => Number.isInteger(value) ? String(value) : Number(value
 
 function Heading({ eyebrow, title, subtitle, action }) {
   return <header className="planning-heading"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div>{action && <div className="planning-heading-actions">{action}</div>}</header>;
-}
-
-export function ProductionPlanView({ dataset, onRunMrp }) {
-  const plan = useMemo(() => buildProductionPlan(dataset, today()), [dataset]);
-  const products = [...new Map(plan.rows.map((row) => [row.product?.id, row.product]).filter(([id]) => id)).values()];
-  return <div className="planning-workspace">
-    <Heading eyebrow="Producción / Plan maestro" title="Plan Maestro de Producción" subtitle="Entregas de CECO abiertos, incluidas las vencidas, agrupadas en un horizonte de 8 semanas." action={<><span className="planning-chip">Horizonte: 8 semanas</span><button className="planning-primary" onClick={onRunMrp}>Ejecutar MRP →</button></>} />
-    <section className="panel planning-card"><div className="planning-card-title"><span className="eyebrow">Calendario de entregas</span><h3>{plan.rows.length} órdenes abiertas en el plan</h3></div>
-      <div className="table-scroll"><table className="planning-table"><thead><tr><th>Producto</th>{plan.weeks.map((week) => <th key={week.start}>{weekLabel(week)}</th>)}<th>Total</th></tr></thead><tbody>{products.map((product) => {
-        const productRows = plan.rows.filter((row) => row.product?.id === product.id);
-        return <tr key={product.id}><th><strong>{product.name}</strong><small>{product.code} · {product.targetDays || "—"} días</small></th>{plan.weeks.map((week, index) => {
-          const scheduled = productRows.filter((row) => row.week === index);
-          return <td key={week.start} className={scheduled.length ? "planning-filled" : ""}>{scheduled.length ? <><strong>{scheduled.length}</strong><small>{scheduled.map((row) => `CECO ${row.order.ceco}`).join(" · ")}</small></> : ""}</td>;
-        })}<td><strong>{productRows.length}</strong></td></tr>;
-      })}</tbody><tfoot><tr><th>Órdenes por semana</th>{plan.weeks.map((week, index) => <td key={week.start}>{plan.rows.filter((row) => row.week === index).length}</td>)}<td>{plan.rows.length}</td></tr></tfoot></table></div>
-      {products.length === 0 && <p className="planning-empty">No hay órdenes abiertas para mostrar.</p>}
-      {plan.overdue.length > 0 && <p className="planning-footnote"><strong>{plan.overdue.length} entrega(s) vencida(s)</strong> se muestran en la primera semana para mantenerlas visibles.</p>}
-      {plan.outside.length > 0 && <p className="planning-footnote">{plan.outside.length} orden(es) no tienen fecha dentro del horizonte y no se asignan a una semana.</p>}
-    </section>
-    <section className="panel planning-card"><div className="planning-card-title"><span className="eyebrow">Verificación de capacidad</span><h3>Horas estimadas para las entregas</h3><p>Suma de horas estándar de las fases de cada producto; capacidad semanal sumada de las fases.</p></div><div className="table-scroll"><table className="planning-table"><thead><tr><th>Concepto</th>{plan.weeks.map((week) => <th key={week.start}>{weekLabel(week)}</th>)}</tr></thead><tbody><tr><th>Horas requeridas</th>{plan.capacity.map((entry, index) => <td key={index}>{amount(entry.required)}</td>)}</tr><tr><th>Horas disponibles</th>{plan.capacity.map((entry, index) => <td key={index}>{amount(entry.available)}</td>)}</tr><tr><th>Utilización</th>{plan.capacity.map((entry, index) => <td key={index}><span className={`planning-status ${entry.utilization > 100 ? "late" : "covered"}`}>{entry.utilization}%</span></td>)}</tr></tbody></table></div><p className="planning-footnote">La capacidad es orientativa: agrupa el trabajo de cada CECO en su semana de entrega.</p></section>
-  </div>;
 }
 
 export function MaterialMrpView({ dataset, initialCode, onPurchases }) {

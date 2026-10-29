@@ -91,6 +91,30 @@ export function buildProductionPlan(dataset, today, count = 8) {
   return { weeks, rows, overdue, outside, capacity };
 }
 
+export function buildPmpPeriod(dataset, startMonth, endMonth, dateBasis = "start") {
+  if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth) || startMonth > endMonth) {
+    return { months: [], products: dataset.bodyTypes || [], orders: [], overlapping: [], totals: [] };
+  }
+  const months = [];
+  const start = new Date(`${startMonth}-01T12:00:00Z`);
+  const end = new Date(`${endMonth}-01T12:00:00Z`);
+  for (let date = start; date <= end; date.setUTCMonth(date.getUTCMonth() + 1)) months.push(date.toISOString().slice(0, 7));
+  const products = dataset.bodyTypes || [];
+  const byProduct = new Map(products.map((product) => [product.id, product]));
+  const all = (dataset.orders || []).map((order) => {
+    const product = byProduct.get(order.bodyTypeId);
+    const plannedStart = orderStart(order, product);
+    const date = dateBasis === "due" ? order.dueDate : plannedStart;
+    return { order, product, plannedStart, month: date?.slice(0, 7) || null };
+  });
+  const orders = all.filter((row) => row.month && row.month >= startMonth && row.month <= endMonth);
+  const periodStart = `${startMonth}-01`;
+  const periodEnd = shiftDate(`${endMonth}-01`, new Date(Date.UTC(Number(endMonth.slice(0, 4)), Number(endMonth.slice(5, 7)), 0)).getUTCDate() - 1);
+  const overlapping = all.filter((row) => row.plannedStart && row.plannedStart <= periodEnd && (!row.order.dueDate || row.order.dueDate >= periodStart))
+    .sort((a, b) => a.plannedStart.localeCompare(b.plannedStart) || a.order.ceco.localeCompare(b.order.ceco));
+  return { months, products, orders, overlapping, totals: months.map((month) => orders.filter((row) => row.month === month).length) };
+}
+
 export function buildMaterialPlan(dataset, today, count = 8) {
   const weeks = planningWeeks(today, count);
   const products = new Map((dataset.bodyTypes || []).map((product) => [product.id, product]));
