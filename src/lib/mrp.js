@@ -24,13 +24,18 @@ export function hasSafetyStockParameters(item) {
 }
 
 export function calculateSafetyStock(item) {
+  const thesis = calculateThesisSafetyStock(item);
+  return thesis == null ? Number(item.safety ?? 0) : thesis;
+}
+
+export function calculateThesisSafetyStock(item) {
   const z = Number(item.serviceFactor);
   const deviation = Number(item.demandStdDev);
   const leadTime = Number(item.leadTimeDays);
   if (hasSafetyStockParameters(item)) {
     return Math.ceil(z * Math.sqrt(deviation ** 2 * leadTime + Number(item.leadTimeStdDev) ** 2 * Number(item.averageDemand) ** 2));
   }
-  return Number(item.safety ?? 0);
+  return null;
 }
 
 export function buildMaterialExplosion(order, bodyTypes, bom, inventory, balances = null) {

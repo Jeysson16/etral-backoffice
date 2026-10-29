@@ -188,7 +188,10 @@ export const localRepository = {
       });
       order.ceco = nextCeco;
     }
-    Object.assign(order, { ...patch, ceco: nextCeco });
+    Object.assign(order, { ...patch, ceco: nextCeco,
+      outputValueBasis: Object.hasOwn(patch, "outputValue") ? patch.outputValueBasis ?? "Registrado en CECO" : order.outputValueBasis,
+      energyCostBasis: Object.hasOwn(patch, "energyCost") ? patch.energyCostBasis ?? "Registrado en CECO" : order.energyCostBasis,
+      capitalCostBasis: Object.hasOwn(patch, "capitalCost") ? patch.capitalCostBasis ?? "Registrado en CECO" : order.capitalCostBasis });
     save(dataset);
     return dataset;
   },
@@ -256,7 +259,10 @@ export const localRepository = {
       priority: dataset.orders.length + 1,
       active: true,
       createdAt: new Date().toISOString(),
-      ...payload
+      ...payload,
+      outputValueBasis: payload.outputValue == null ? null : "Registrado en CECO",
+      energyCostBasis: payload.energyCost == null ? null : "Registrado en CECO",
+      capitalCostBasis: payload.capitalCost == null ? null : "Registrado en CECO"
     };
     dataset.orders.unshift(order);
     reserveBom(dataset, order);
@@ -291,7 +297,7 @@ export const localRepository = {
       const brand = ensureCatalog("brands", row.brand);
       const existing = findMatchingMaterial(dataset.inventory, row);
       const code = existing?.code || row.code || nextInventoryCode(dataset.inventory, row.category || "MAT");
-      const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety ?? existing?.safety ?? 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor ?? existing?.serviceFactor, demandStdDev: row.demandStdDev ?? existing?.demandStdDev, leadTimeDays: row.leadTimeDays ?? existing?.leadTimeDays, averageDemand: row.averageDemand ?? existing?.averageDemand, leadTimeStdDev: row.leadTimeStdDev ?? existing?.leadTimeStdDev, serviceLevel: row.serviceLevel ?? existing?.serviceLevel, unitCost: row.unitCost, currency: row.currency || "PEN" };
+      const material = { id: existing?.id || `inv-${code}`, code, category: category.name, categoryId: category.id, description: row.description, physical: Number(existing?.physical || 0) + Number(row.physical || 0), committed: existing?.committed || 0, safety: Number(row.safety ?? existing?.safety ?? 0), unit: unit.symbol, unitId: unit.id, brandId: brand?.id || null, location: row.location || null, serviceFactor: row.serviceFactor ?? existing?.serviceFactor, demandStdDev: row.demandStdDev ?? existing?.demandStdDev, leadTimeDays: row.leadTimeDays ?? existing?.leadTimeDays, averageDemand: row.averageDemand ?? existing?.averageDemand, leadTimeStdDev: row.leadTimeStdDev ?? existing?.leadTimeStdDev, serviceLevel: row.serviceLevel ?? existing?.serviceLevel, unitCost: row.unitCost ?? existing?.unitCost ?? null, unitCostBasis: row.unitCost == null ? existing?.unitCostBasis ?? null : "Importado de Excel", safetyParametersBasis: row.averageDemand == null ? existing?.safetyParametersBasis ?? null : "Importado de Excel", currency: row.currency || "PEN" };
       material.safety = calculateSafetyStock(material);
       if (existing) Object.assign(existing, material); else dataset.inventory.unshift(material);
       for (const sourceCode of row.sourceCodes?.length ? row.sourceCodes : [row.code]) {
@@ -452,7 +458,20 @@ export const localRepository = {
   async updateInventory(code, patch) {
     const dataset = load();
     const calculatedSafety = calculateSafetyStock(patch);
-    dataset.inventory = dataset.inventory.map((item) => (item.code === code ? { ...item, ...patch, safety: calculatedSafety } : item));
+    dataset.inventory = dataset.inventory.map((item) => (item.code === code ? { ...item, ...patch, safety: calculatedSafety,
+      unitCostBasis: patch.unitCost == null ? null : patch.unitCostBasis ?? "Registrado en Inventario", safetyParametersBasis: patch.safetyParametersBasis ?? "Registrado en Inventario" } : item));
+    save(dataset);
+    return dataset;
+  },
+  async updateMaterialPrices(entries) {
+    const dataset = load();
+    const prices = new Map(entries.map(({ code, unitCost }) => [code, Number(unitCost)]));
+    for (const [code, price] of prices) {
+      if (!dataset.inventory.some((item) => item.code === code) || !Number.isFinite(price) || price <= 0) {
+        throw new Error(`Precio no válido para el material ${code}.`);
+      }
+    }
+    dataset.inventory = dataset.inventory.map((item) => prices.has(item.code) ? { ...item, unitCost: prices.get(item.code), unitCostBasis: "Importado de Excel" } : item);
     save(dataset);
     return dataset;
   },
@@ -587,7 +606,7 @@ export const localRepository = {
     const normalizedName = String(payload.name).trim().toLocaleLowerCase("es");
     if (dataset.personnel.some((item) => String(item.name).trim().toLocaleLowerCase("es") === normalizedName)) throw new Error("Ya existe un trabajador con ese nombre. Edítalo para cambiar o agregar turnos.");
     const shiftIds = [...new Set(payload.shiftIds || [])];
-    dataset.personnel.unshift({ id: `person-${Date.now()}`, ...payload, shiftIds, shiftId: shiftIds[0] || null, efficiency: Number(payload.efficiency), weeklyHours: personnelWeeklyHours(dataset.shifts, shiftIds), active: true });
+    dataset.personnel.unshift({ id: `person-${Date.now()}`, ...payload, hourlyCostBasis: payload.hourlyCost == null ? null : payload.hourlyCostBasis ?? "Registrado en Personal", shiftIds, shiftId: shiftIds[0] || null, efficiency: Number(payload.efficiency), weeklyHours: personnelWeeklyHours(dataset.shifts, shiftIds), active: true });
     save(dataset); return dataset;
   },
   async updatePersonnel(id, payload) {
@@ -597,7 +616,7 @@ export const localRepository = {
     const normalizedName = String(payload.name).trim().toLocaleLowerCase("es");
     if (dataset.personnel.some((item) => item.id !== id && String(item.name).trim().toLocaleLowerCase("es") === normalizedName)) throw new Error("Ya existe otro trabajador con ese nombre.");
     const shiftIds = [...new Set(payload.shiftIds || [])];
-    Object.assign(row, payload, { shiftIds, shiftId: shiftIds[0] || null, efficiency: Number(payload.efficiency), weeklyHours: personnelWeeklyHours(dataset.shifts, shiftIds) });
+    Object.assign(row, payload, { hourlyCostBasis: payload.hourlyCost == null ? null : payload.hourlyCostBasis ?? "Registrado en Personal", shiftIds, shiftId: shiftIds[0] || null, efficiency: Number(payload.efficiency), weeklyHours: personnelWeeklyHours(dataset.shifts, shiftIds) });
     save(dataset); return dataset;
   },
   async createEquipment(payload) {

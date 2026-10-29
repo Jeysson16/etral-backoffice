@@ -1,7 +1,7 @@
 import XLSX from "xlsx-js-style";
 import { activityProgressDate, buildIndicatorSeries, materialConsumptionCost } from "./productivity.js";
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
-import { calculateSafetyStock, hasSafetyStockParameters } from "./mrp.js";
+import { calculateSafetyStock, calculateThesisSafetyStock, hasSafetyStockParameters } from "./mrp.js";
 import { deriveMaterialDemand } from "./materialDemand.js";
 
 function inRange(value, start, end) {
@@ -114,10 +114,11 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
       const logs = operations.filter((item) => item.ceco === completed.ceco && inRange(item.date, range.start, range.end));
       const hours = logs.reduce((sum, item) => sum + Number(item.totalHours ?? 0), 0);
       const workers = new Set(logs.map((item) => item.worker).filter(Boolean)).size;
-      const personnelRates = new Map((dataset.personnel ?? []).map((person) => [person.name, person.hourlyCost]));
-      const rates = logs.map((item) => recordedNumber(item.hourlyCost ?? item.laborCostPerHour ?? personnelRates.get(item.worker)));
+      const personnelRates = new Map((dataset.personnel ?? []).map((person) => [String(person.name ?? "").trim().toLocaleLowerCase("es"), person.hourlyCost]));
+      const rates = logs.map((item) => recordedNumber(item.hourlyCost ?? item.laborCostPerHour ?? personnelRates.get(String(item.worker ?? "").trim().toLocaleLowerCase("es"))));
       const laborCost = logs.length && rates.every((item) => item !== null) ? logs.reduce((sum, item, index) => sum + Number(item.totalHours ?? 0) * rates[index], 0) : null;
-      const { cost: materialCost, source: materialSource } = materialConsumptionCost(dataset, completed.ceco, range.start, range.end);
+      const { cost: materialCost, source: materialSource, estimatedPrices } = materialConsumptionCost(dataset, completed.ceco, range.start, range.end);
+      const estimatedLabor = logs.some((item) => (dataset.personnel ?? []).some((person) => String(person.name ?? "").trim().toLocaleLowerCase("es") === String(item.worker ?? "").trim().toLocaleLowerCase("es") && String(person.hourlyCostBasis ?? "").startsWith("Estimado")));
       const output = recordedNumber(order?.outputValue);
       const energy = recordedNumber(order?.energyCost);
       const capital = recordedNumber(order?.capitalCost);
@@ -126,7 +127,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
         laborCost !== null && hours > 0 ? laborCost / hours : null, hours > 0 ? 1 / hours : null,
         null, null, materialCost, materialCost > 0 ? 1 / materialCost : null, output, energy, capital,
         output !== null && totalCost > 0 ? output / totalCost : null,
-        [completed.estimated ? "Fecha de cierre inferida" : "", materialSource, materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible"].filter(Boolean).join("; ")];
+        [completed.estimated ? "Fecha de cierre inferida" : "", materialSource, estimatedPrices ? "Precio de material estimado" : "", estimatedLabor ? "Tarifa laboral estimada" : "", [order?.outputValueBasis, order?.energyCostBasis, order?.capitalCostBasis].some((basis) => String(basis ?? "").startsWith("Estimado")) ? "Venta/energía/capital estimados" : "", materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible"].filter(Boolean).join("; ")];
     }), { 3: "0", 4: "0", 5: "0.00", 6: "0.00", 7: "0.000", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.0000", 12: "0.00", 13: "0.00", 14: "0.00", 15: "0.000" });
   appendSheet(workbook, "Ficha productividad", thesisProductivity.rows, thesisProductivity.options);
   appendSheet(workbook, "Registros CECO", [
@@ -150,7 +151,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     ...(dataset.inventoryMovements ?? []).filter((item) => inRange(item.timestamp, range.start, range.end)).map((item) => [item.timestamp, item.type, item.code, item.ceco ?? "", Number(item.quantity ?? 0), item.note ?? ""])
   ], { numberFormats: { 4: "#,##0.00" } });
   const thesisStock = thesisRows("FICHA DE RECOLECCIÓN DE DATOS Y CÁLCULO · STOCK DE SEGURIDAD", range,
-    ["Fecha", "Material", "Unidad", "Demanda promedio (dp)", "Desviación estándar demanda (s1)", "Lead time proveedor (Lt) días", "Desv. est. lead time (s2)", "Nivel de servicio", "z", "SS según tesis", "SS operativo", "Observaciones", "Stock físico", "Comprometido", "Disponible", "Brecha vs. SS operativo"],
+    ["Fecha", "Material", "Unidad", "Costo unitario S/", "Origen del costo", "Demanda promedio (dp)", "Desviación estándar demanda (s1)", "Lead time proveedor (Lt) días", "Desv. est. lead time (s2)", "Nivel de servicio", "z", "SS según tesis", "SS operativo", "Observaciones", "Stock físico", "Comprometido", "Disponible", "Brecha vs. SS operativo"],
     (dataset.inventory ?? []).map((item) => {
       const estimatedDemand = demandByCode.get(item.code);
       const deviation = recordedNumber(item.demandStdDev) ?? recordedNumber(estimatedDemand?.demandStdDev);
@@ -160,16 +161,16 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
       const safety = calculateSafetyStock(item);
       const available = Number(item.physical ?? 0) - Number(item.committed ?? 0);
       const estimatedInput = { ...item, averageDemand, demandStdDev: deviation };
-      const thesisSafety = hasSafetyStockParameters(estimatedInput) ? calculateSafetyStock(estimatedInput) : null;
+      const thesisSafety = calculateThesisSafetyStock(estimatedInput);
       const missing = [["dp", averageDemand], ["s1", deviation], ["Lt", leadTime], ["s2", leadTimeDeviation], ["z", recordedNumber(item.serviceFactor)]]
         .filter(([, value]) => value === null).map(([label]) => label);
       const provenance = estimatedDemand && (recordedNumber(item.averageDemand) === null || recordedNumber(item.demandStdDev) === null)
         ? `dp/s1 estimados desde ${estimatedDemand.source} en ${estimatedDemand.days} días; ` : "";
-      return [range.end, `${item.code} · ${item.description}`, item.unit, averageDemand, deviation, leadTime, leadTimeDeviation,
+      return [range.end, `${item.code} · ${item.description}`, item.unit, recordedNumber(item.unitCost), item.unitCostBasis ?? "Registrado", averageDemand, deviation, leadTime, leadTimeDeviation,
         recordedNumber(item.serviceLevel), recordedNumber(item.serviceFactor), thesisSafety, safety,
-        missing.length ? `${provenance}Corte de inventario; SS de tesis no calculable: falta ${missing.join(", ")}. Se conserva el mínimo previo registrado.` : `${provenance}Corte de inventario; SS = REDONDEAR.MAS(z × RAIZ(s1² × Lt + s2² × dp²); 0)`,
+        missing.length ? `${provenance}Corte de inventario; SS de tesis no calculable: falta ${missing.join(", ")}. Se conserva el mínimo previo registrado.` : `${provenance}${item.safetyParametersBasis ?? ""}; SS aplicado = fórmula de tesis`,
         Number(item.physical ?? 0), Number(item.committed ?? 0), available, available - safety];
-    }), { 3: "0.00", 4: "0.00", 5: "0.00", 6: "0.00", 7: "0.00%", 8: "0.00", 9: "#,##0", 10: "#,##0", 12: "#,##0.00", 13: "#,##0.00", 14: "#,##0.00", 15: "#,##0.00" });
+    }), { 3: "#,##0.00", 5: "0.00", 6: "0.00", 7: "0.00", 8: "0.00", 9: "0.00%", 10: "0.00", 11: "#,##0", 12: "#,##0", 14: "#,##0.00", 15: "#,##0.00", 16: "#,##0.00", 17: "#,##0.00" });
   appendSheet(workbook, "Stock seguridad", thesisStock.rows, thesisStock.options);
   appendSheet(workbook, "Diccionario SPSS", [
     ["variable", "etiqueta", "tipo", "nivel", "valores / criterio"],

@@ -33,10 +33,11 @@ test("libro de tesis expone valores por ficha y distingue SS de tesis del operat
   assert.equal(productivity[4][5], 8);
   assert.equal(productivity[4][10], 20);
   assert.equal(productivity[4][15], 1000 / (20 + 80 + 50 + 30));
-  assert.equal(stock[4][3], 3);
-  assert.equal(stock[4][6], 1);
-  assert.equal(stock[4][9], Math.ceil(1.65 * Math.sqrt(2 ** 2 * 4 + 1 ** 2 * 3 ** 2)));
-  assert.equal(stock[4][10], stock[4][9]);
+  assert.equal(stock[4][3], 5);
+  assert.equal(stock[4][5], 3);
+  assert.equal(stock[4][8], 1);
+  assert.equal(stock[4][11], Math.ceil(1.65 * Math.sqrt(2 ** 2 * 4 + 1 ** 2 * 3 ** 2)));
+  assert.equal(stock[4][12], stock[4][11]);
   assert.equal(summary.find((row) => row[0] === "average_delivery_delay")[2], 2);
 });
 
@@ -46,9 +47,9 @@ test("la ficha de stock deja sin valor el SS de tesis si faltan dp o s2", () => 
   delete dataset.inventory[0].leadTimeStdDev;
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const stock = XLSX.utils.sheet_to_json(workbook.Sheets["Stock seguridad"], { header: 1 });
-  assert.equal(stock[4][9], "");
-  assert.match(stock[4][11], /falta dp, s2/);
-  assert.equal(stock[4][10], 5);
+  assert.equal(stock[4][11], "");
+  assert.match(stock[4][13], /falta dp, s2/);
+  assert.equal(stock[4][12], 5);
 });
 
 test("la ficha estima dp y s1 desde CECO/BOM y muestra su procedencia", () => {
@@ -58,11 +59,11 @@ test("la ficha estima dp y s1 desde CECO/BOM y muestra su procedencia", () => {
   dataset.bom = [{ bodyTypeId: "body-1", materialCode: "MAT-1", quantity: 31 }];
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const stock = XLSX.utils.sheet_to_json(workbook.Sheets["Stock seguridad"], { header: 1 });
-  assert.equal(stock[4][3], 1);
-  assert.equal(stock[4][4], 5.5678);
-  assert.match(stock[4][11], /demanda planificada CECO\/BOM/);
-  assert.notEqual(stock[4][9], "");
-  assert.equal(stock[4][10], 5);
+  assert.equal(stock[4][5], 1);
+  assert.equal(stock[4][6], 5.5678);
+  assert.match(stock[4][13], /demanda planificada CECO\/BOM/);
+  assert.notEqual(stock[4][11], "");
+  assert.equal(stock[4][12], 5);
 });
 
 test("la ficha de productividad toma salidas por CECO sin duplicar reservas", () => {

@@ -34,6 +34,8 @@ function round(value, digits = 2) {
   return Math.round(value * factor) / factor;
 }
 
+const workerKey = (value) => String(value ?? "").trim().toLocaleLowerCase("es");
+
 export function materialConsumptionCost(dataset, ceco, start, end) {
   const reservations = (dataset.orderMaterialReservations ?? []).filter((row) => row.ceco === ceco && Number(row.consumedQuantity) > 0);
   const movements = (dataset.inventoryMovements ?? []).filter((row) => row.ceco === ceco && ["salida", "consumo"].includes(row.type) && inRange(row.timestamp, start, end));
@@ -82,12 +84,13 @@ export function materialConsumptionCost(dataset, ceco, start, end) {
   const inventory = new Map((dataset.inventory ?? []).map((item) => [item.code, item]));
   const costs = rows.map((row) => inventory.get(row.code)?.unitCost);
   const source = [...new Set([...selected.values()].map((item) => item.source))].join(" + ");
+  const estimatedPrices = rows.some((row) => String(inventory.get(row.code)?.unitCostBasis ?? "").toLowerCase().startsWith("estimado"));
   if (costs.some((value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) || Number(value) <= 0)) {
     return { cost: null, quantity, estimatedQuantity, source: `${source}; falta costo unitario`, reason: "missing_unit_cost" };
   }
   return {
     cost: rows.reduce((sum, row, index) => sum + Number(row.quantity) * Number(costs[index]), 0),
-    quantity, estimatedQuantity, source,
+    quantity, estimatedQuantity, estimatedPrices, source,
     reason: null
   };
 }
@@ -166,22 +169,27 @@ function calculatePeriod(dataset, start, end) {
   }).length;
 
   const completedCecos = new Set(completed.map((item) => item.order.ceco));
+  const completedOperations = operations.filter((item) => completedCecos.has(item.ceco));
   const materialCostsByCeco = [...completedCecos].map((ceco) => materialConsumptionCost(dataset, ceco, start, end));
   const hasEstimatedMaterialUsage = materialCostsByCeco.some((item) => (item.estimatedQuantity ?? 0) > 0);
+  const estimatedMaterialPrices = materialCostsByCeco.some((item) => item.estimatedPrices);
   const materialCost = materialCostsByCeco.length && materialCostsByCeco.every((item) => item.cost !== null)
     ? materialCostsByCeco.reduce((sum, item) => sum + item.cost, 0) : null;
   const materialCostReason = !completedCecos.size ? "no_completed_ceco"
     : materialCostsByCeco.some((item) => item.reason === "missing_consumption") ? "missing_consumption"
       : materialCostsByCeco.some((item) => item.reason === "missing_unit_cost") ? "missing_unit_cost" : null;
 
-  const personnelRates = new Map((dataset.personnel ?? []).map((person) => [person.name, person.hourlyCost]));
-  const hourlyRates = operations.map((item) => item.hourlyCost ?? item.laborCostPerHour ?? personnelRates.get(item.worker));
-  const laborCost = operations.length && hourlyRates.every((rate) => rate !== null && rate !== undefined && rate !== "" && Number.isFinite(Number(rate)))
-    ? operations.reduce((sum, item, index) => sum + Number(item.totalHours || 0) * Number(hourlyRates[index]), 0) : null;
+  const personnelRates = new Map((dataset.personnel ?? []).map((person) => [workerKey(person.name), person.hourlyCost]));
+  const estimatedLaborRates = completedOperations.some((item) => String((dataset.personnel ?? []).find((person) => workerKey(person.name) === workerKey(item.worker))?.hourlyCostBasis ?? "").toLowerCase().startsWith("estimado"));
+  const hourlyRates = completedOperations.map((item) => item.hourlyCost ?? item.laborCostPerHour ?? personnelRates.get(workerKey(item.worker)));
+  const laborCost = completedOperations.length && hourlyRates.every((rate) => rate !== null && rate !== undefined && rate !== "" && Number.isFinite(Number(rate)))
+    ? completedOperations.reduce((sum, item, index) => sum + Number(item.totalHours || 0) * Number(hourlyRates[index]), 0) : null;
   const outputValues = completed.map((item) => item.order.outputValue);
   const outputValue = completed.length && outputValues.every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
     ? outputValues.reduce((sum, value) => sum + Number(value), 0) : null;
   const factorCosts = completed.flatMap((item) => [item.order.energyCost, item.order.capitalCost]);
+  const estimatedOrderValues = completed.some((item) => [item.order.outputValueBasis, item.order.energyCostBasis, item.order.capitalCostBasis]
+    .some((basis) => String(basis ?? "").toLowerCase().startsWith("estimado")));
   const otherCosts = completed.length && factorCosts.every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
     ? factorCosts.reduce((sum, value) => sum + Number(value), 0) : null;
 
@@ -206,6 +214,8 @@ function calculatePeriod(dataset, start, end) {
     materialCost: round(materialCost, 2),
     materialCostReason,
     hasEstimatedMaterialUsage,
+    estimatedMaterialPrices,
+    estimatedMonetaryInputs: estimatedMaterialPrices || estimatedLaborRates || estimatedOrderValues,
     completedCecoCount: completedCecos.size,
     laborCost: round(laborCost, 2),
     otherCosts: round(otherCosts, 2),

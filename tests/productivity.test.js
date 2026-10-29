@@ -130,6 +130,22 @@ test("costo de mano de obra usa la tarifa del trabajador cuando el parte solo re
   assert.equal(current.multifactorProductivity, 5);
 });
 
+test("multifactorial usa horas de CECO terminados y normaliza el nombre del trabajador", () => {
+  const withOpenWork = {
+    ...dataset,
+    personnel: [{ name: " Ana ", hourlyCost: 10, hourlyCostBasis: "Estimado: nómina" }],
+    operations: [
+      { ...dataset.operations[0], hourlyCost: null },
+      { ceco: "2", date: "2026-01-10", totalHours: 20, worker: "Ana" }
+    ]
+  };
+  const { current } = calculateProductivityReport(withOpenWork, "2026-01-01", "2026-01-31");
+  assert.equal(current.reportedHours, 30);
+  assert.equal(current.laborCost, 100);
+  assert.equal(current.multifactorProductivity, 5);
+  assert.equal(current.estimatedMonetaryInputs, true);
+});
+
 test("determina el rango disponible y genera un libro compatible con Excel", () => {
   assert.deepEqual(availableDateRange(dataset), { start: "2026-01-01", end: "2026-01-20" });
   const report = calculateProductivityReport(dataset, "2026-01-01", "2026-01-31");

@@ -43,6 +43,7 @@ test("stock de seguridad usa los cinco parámetros de la tesis y conserva mínim
     Math.ceil(paint.serviceFactor * Math.sqrt(paint.demandStdDev ** 2 * paint.leadTimeDays + 3 ** 2)));
   assert.equal(calculateSafetyStock({ ...paint, averageDemand: 3, leadTimeStdDev: 0 }),
     Math.ceil(paint.serviceFactor * paint.demandStdDev * Math.sqrt(paint.leadTimeDays)));
+  assert.equal(calculateSafetyStock({ ...paint, safety: 50, averageDemand: 0, demandStdDev: 0, leadTimeStdDev: 0 }), 0);
 });
 
 test("requerimiento abierto se calcula desde órdenes activas y BOM", () => {
