@@ -14,13 +14,16 @@ export default function PhaseSuggestionBoard({ board, query, ceco, onCeco, showC
   const selectedVisible = visibleSuggestions.filter((item) => selected.has(keyOf(item)));
   const allSelected = visibleSuggestions.length > 0 && selectedVisible.length === visibleSuggestions.length;
   const cecos = [...new Map(board.groups.map((group) => [group.ceco, group.product])).entries()];
-  const stageCount = new Set(board.groups.filter((group) => group.requestCount).map((group) => group.key)).size;
+  const scopedGroups = board.groups.filter((group) => !ceco || group.ceco === ceco);
+  const scopedPhaseKeys = new Set(scopedGroups.map((group) => group.key));
+  const stageCount = scopedGroups.filter((group) => group.requestCount).length;
+  const suggestionCount = board.suggestions.filter((item) => scopedPhaseKeys.has(item.phaseKey)).length;
 
   return <section className="phase-board">
     <div className="phase-board-overview">
-      <div><span>CECO activos</span><strong>{cecos.length}</strong></div>
+      <div><span>CECO activos</span><strong>{ceco ? 1 : cecos.length}</strong></div>
       <div><span>Fases con reposición</span><strong>{stageCount}</strong></div>
-      <div><span>Materiales por solicitar</span><strong>{board.suggestions.length}</strong></div>
+      <div><span>Materiales por solicitar</span><strong>{suggestionCount}</strong></div>
     </div>
     <div className="phase-board-toolbar">
       <label>Producto / CECO<select value={ceco} onChange={(event) => onCeco(event.target.value)}><option value="">Todos los CECO</option>{cecos.map(([code, product]) => <option key={code} value={code}>{code} · {product}</option>)}</select></label>
@@ -44,7 +47,7 @@ export default function PhaseSuggestionBoard({ board, query, ceco, onCeco, showC
             {row.suggestion ? <input type="checkbox" aria-label={`Seleccionar ${row.code} para CECO ${group.ceco}`} checked={selected.has(keyOf(row.suggestion))} onChange={(event) => onSelect(row.suggestion, event.target.checked)} /> : <span className="phase-material-dot" />}
             <div><strong>{row.code}</strong><span>{row.material.description}</span></div>
           </div>
-          <div className="phase-material-figures"><div><small>Fase</small><b>{amount(row.quantity)} {row.material.unit}</b></div><div className={row.projected < row.safety ? "below" : ""}><small>Proyectado / SS</small><b>{amount(row.projected)} / {amount(row.safety)}</b></div><div><small>{row.suggestion ? "Solicitar" : row.status === "pending" ? "En trámite" : "Cobertura"}</small><b>{row.suggestion ? `${amount(row.suggestion.quantity)} ${row.material.unit}` : row.status === "pending" ? `${amount(row.pendingSupply)} ${row.material.unit}` : row.status === "covered" ? "Cubierto" : row.status === "planned" ? "Incluido" : "Revisar"}</b></div></div>
+          <div className="phase-material-figures"><div><small>Requiere</small><b>{amount(row.quantity)} {row.material.unit}</b></div><div className={row.projected < row.safety ? "below" : ""}><small>Proyectado / SS</small><b>{amount(row.projected)} / {amount(row.safety)}</b></div><div><small>{row.suggestion ? "Solicitar" : row.status === "pending" ? "En trámite" : "Cobertura"}</small><b>{row.suggestion ? `${amount(row.suggestion.quantity)} ${row.material.unit}` : row.status === "pending" ? `${amount(row.pendingSupply)} ${row.material.unit}` : row.status === "covered" ? "Cubierto" : row.status === "planned" ? "Incluido" : "Revisar"}</b></div></div>
         </div>)}</div>
       </article>;
     })}</div>
