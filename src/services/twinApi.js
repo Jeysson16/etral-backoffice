@@ -113,7 +113,7 @@ export async function runTwinSimulation(dataset, draft) {
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.detail || "No fue posible ejecutar el gemelo digital.");
+      throw new Error(body.detail || "No fue posible ejecutar la simulación.");
     }
     const payload = await response.json();
     return normalizePythonResult(payload.result);

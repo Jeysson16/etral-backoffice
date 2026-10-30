@@ -461,7 +461,7 @@ export default function App() {
       const shiftIds = form.getAll("shiftIds");
       if (!shiftIds.length) return setError("Selecciona al menos un turno para el trabajador.");
       const payload = { employeeCode: values.employeeCode, name: values.name, role: values.role, specialty: values.specialty, shiftIds, status: values.status, efficiency: Number(values.efficiency), hourlyCost: values.hourlyCost === "" ? null : Number(values.hourlyCost), hourlyCostBasis: drawer.personnel && String(values.hourlyCost) === String(drawer.personnel.hourlyCost ?? "") ? drawer.personnel.hourlyCostBasis : "Registrado en Personal" };
-      return persist(() => drawer.personnel ? repo.updatePersonnel(drawer.personnel.id, payload) : repo.createPersonnel(payload), drawer.personnel ? "Trabajador actualizado." : "Trabajador incorporado a la alimentación del gemelo.");
+      return persist(() => drawer.personnel ? repo.updatePersonnel(drawer.personnel.id, payload) : repo.createPersonnel(payload), drawer.personnel ? "Trabajador actualizado." : "Trabajador incorporado a los recursos de planta.");
     }
     if (drawer.type === "equipment") {
       const payload = { code: values.code, name: values.name, stageId: values.stageId, status: values.status, capacityHours: Number(values.capacityHours), maintenanceDue: values.maintenanceDue };
@@ -507,7 +507,7 @@ export default function App() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <button className="brand" onClick={() => { setView("overview"); setMenuOpen(false); }} aria-label="Ir al inicio">
-          <span><strong>Control de planta</strong><small>Gemelo digital</small></span>
+          <span><strong>Control de planta</strong><small>ETRAL</small></span>
         </button>
         <nav aria-label="Navegación principal">
           {Object.entries(views).map(([key, item]) => (
@@ -564,7 +564,7 @@ function AccessScreen({ loading = false }) {
     setSubmitting(false);
   }
 
-  return <main className="access-screen"><section className="access-card"><p className="eyebrow">Acceso protegido</p><h1>Gemelo digital</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración el alta de tu cuenta.</small></>}</section></main>;
+  return <main className="access-screen"><section className="access-card"><p className="eyebrow">Acceso protegido</p><h1>Control de planta</h1>{loading ? <p>Comprobando sesión segura…</p> : <><p>Ingresa con una cuenta autorizada. La operación de planta no está disponible para visitantes anónimos.</p><form onSubmit={submit}><label>Correo<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Contraseña<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <small className="form-error">{error}</small>}<Button type="submit" disabled={submitting}>{submitting ? "Ingresando…" : "Iniciar sesión"}</Button></form><small>Solicita a la administración el alta de tu cuenta.</small></>}</section></main>;
 }
 
 function PageActions({ children, className = "" }) {
@@ -1141,7 +1141,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, d
                 <div className="calib-block">
                   <span>Puntuación de confiabilidad</span>
                   <strong>{result.calibration.reliabilityScore}%</strong>
-                  <small>Ajuste estadístico global del gemelo digital.</small>
+                  <small>Ajuste estadístico global de la simulación.</small>
                 </div>
               </div>
               {result.calibration.warnings?.length > 0 && <div className="notice warning"><strong>Calidad de datos:</strong> {result.calibration.warnings.join(" ")}</div>}
