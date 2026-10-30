@@ -1599,4 +1599,11 @@ pre,
 .thesis-phase { display: inline-block; padding: 0.18rem 0.45rem; border-radius: 5px; font-size: 0.72rem; font-weight: 700; background: #e9efff; color: #305899; }
 .thesis-phase.post { background: #e5f7ec; color: #167044; }
 .thesis-source { margin: 0.7rem 0 0; font-size: 0.75rem; color: #66768c; }
+.thesis-extra-header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin: 1.2rem 0 0.6rem; }
+.thesis-extra-header h3 { margin: 0; font-size: 1rem; }
+.thesis-extra-header span { color: #66768c; font-size: 0.75rem; }
+.thesis-extra-scroll { max-height: 20rem; overflow: auto; border: 1px solid #e3e9f0; border-radius: 10px; }
+.thesis-extra-scroll table { min-width: 870px; }
+.thesis-extra-scroll th { position: sticky; top: 0; background: #f2f5f9; z-index: 1; }
+.thesis-extra-scroll td, .thesis-extra-scroll th { padding: 0.65rem; white-space: nowrap; }
 @media (max-width: 700px) { .thesis-instrument-metrics { grid-template-columns: 1fr; } .thesis-instrument-panel .section-header { flex-direction: column; } }

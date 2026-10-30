@@ -47,12 +47,15 @@ test("libro de indicadores exporta SS y ROP con la fórmula del Excel", () => {
 
 test("el libro conserva las lecturas del instrumento y su promedio por CECO", () => {
   const dataset = fixture();
-  dataset.thesisMeasurements = [{ phase: "post", ceco: "260350", date: "2026-06-08", product: "Baranda Mixta", weightKg: 624.29, workers: 8, laborHours: 65.5, hourlyCost: 4.708333333333333, rawMaterialCost: 1992.12, suppliesCost: 1828.27, outputValue: 11500, energyCost: 1200, workbookMultifactor: 2.158090109019519, sourceSheet: "Post MO y MAT ", sourceRow: 8 }];
+  dataset.thesisMeasurements = [{ phase: "post", ceco: "260350", date: "2026-06-08", product: "Baranda Mixta", weightKg: 624.29, workers: 8, laborHours: 65.5, hourlyCost: 4.708333333333333, rawMaterialCost: 1992.12, suppliesCost: 1828.27, outputValue: 11500, energyCost: 1200, capitalCost: 3820.39, baseHours: 202.16, groupMultifactorSum: 8.756465627219828, groupLaborSum: 37.860987966156166, groupMaterialSum: 0.45633305912878647, workbookMultifactor: 2.158090109019519, sourceSheet: "Post MO y MAT ", sourceRow: 8 }];
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Instrumento tesis"], { header: 1 });
   const summary = XLSX.utils.sheet_to_json(workbook.Sheets.Resumen, { header: 1 });
   const ceco = rows.find((row) => row[0] === "post" && row[1] === "260350");
   assert.equal(ceco[4], 624.29);
+  assert.equal(ceco[19], 202.16);
+  assert.equal(ceco[20], 3820.39);
+  assert.ok(Math.abs(ceco[24] - ceco[16]) < 1e-10);
   assert.ok(Math.abs(rows.at(-1)[13] - 624.29 / 65.5) < 1e-10);
   assert.equal(summary.find((row) => row[0] === "instrument_multifactor_excel")[2], 2.158090109019519);
 });

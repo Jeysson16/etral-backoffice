@@ -76,7 +76,12 @@ export const supabaseRepository = {
         weightKg: Number(row.weight_kg), workers: Number(row.worker_count), laborHours: Number(row.labor_hours),
         hourlyCost: Number(row.hourly_cost_pen), rawMaterialCost: Number(row.raw_material_cost_pen),
         suppliesCost: Number(row.supplies_cost_pen), outputValue: Number(row.output_value_pen),
+        baseHours: row.base_hours == null ? null : Number(row.base_hours),
         energyCost: row.energy_cost_pen == null ? null : Number(row.energy_cost_pen),
+        capitalCost: row.capital_cost_pen == null ? null : Number(row.capital_cost_pen),
+        groupMultifactorSum: row.group_multifactor_sum == null ? null : Number(row.group_multifactor_sum),
+        groupLaborSum: row.group_labor_sum == null ? null : Number(row.group_labor_sum),
+        groupMaterialSum: row.group_material_sum == null ? null : Number(row.group_material_sum),
         workbookMultifactor: Number(row.workbook_multifactor), sourceSheet: row.source_sheet, sourceRow: row.source_row
       })),
       catalogs: { categories: rows.material_categories, units: rows.measurement_units, brands: rows.brands },

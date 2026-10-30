@@ -4,6 +4,7 @@ import { calculateCecoProgress, calculateReorderPoint, calculateSafetyStock, eva
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { activityProgressDate, availableDateRange, calculateProductivityReport } from "./lib/productivity.js";
 import ThesisInstrumentPanel from "./components/ThesisInstrumentPanel.jsx";
+import { scopeDatasetToThesis, thesisPostCecos } from "./lib/thesisInstrument.js";
 import { exportIndicatorsWorkbook, exportPeriodRecords } from "./lib/indicatorExports.js";
 import { deriveMaterialDemand } from "./lib/materialDemand.js";
 import { downloadMaterialPricesWorkbook, parseMaterialPricesWorkbook } from "./lib/materialPrices.js";
@@ -763,13 +764,16 @@ function isWithinRange(value, range) {
 }
 
 function IndicatorsView({ dataset, openDrawer, setView }) {
-  const availableRange = useMemo(() => availableDateRange(dataset), [dataset]);
+  const researchDataset = useMemo(() => scopeDatasetToThesis(dataset), [dataset]);
+  const researchCecos = useMemo(() => thesisPostCecos(dataset), [dataset]);
+  const excludedCecos = researchCecos.size ? (dataset.orders ?? []).filter((order) => !researchCecos.has(order.ceco)).length : 0;
+  const availableRange = useMemo(() => availableDateRange(researchDataset), [researchDataset]);
   const [dateRange, setDateRange] = useState(availableRange);
   const [grouping, setGrouping] = useState("month");
   const [recordType, setRecordType] = useState("operations");
   useEffect(() => setDateRange(availableRange), [availableRange.start, availableRange.end]);
 
-  const report = useMemo(() => calculateProductivityReport(dataset, dateRange.start, dateRange.end), [dataset, dateRange]);
+  const report = useMemo(() => calculateProductivityReport(researchDataset, dateRange.start, dateRange.end), [researchDataset, dateRange]);
   const demandByCode = useMemo(() => deriveMaterialDemand(dataset, dateRange), [dataset, dateRange]);
   const { current, previous } = report;
   const series = useMemo(() => {
@@ -788,7 +792,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
         end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
       }
       if (end > dateRange.end) end = dateRange.end;
-      const period = calculateProductivityReport(dataset, cursor, end).current;
+      const period = calculateProductivityReport(researchDataset, cursor, end).current;
       rows.push({
         label: grouping === "week"
           ? new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${cursor}T12:00:00Z`))
@@ -798,11 +802,11 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
       cursor = addDaysUtc(end, 1);
     }
     return rows;
-  }, [dataset, dateRange, grouping]);
+  }, [researchDataset, dateRange, grouping]);
   const maxProduced = Math.max(...series.map((item) => item.producedUnits), 1);
-  const operations = (dataset.operations ?? []).filter((item) => isWithinRange(item.date, dateRange));
-  const progress = (dataset.activityProgress ?? []).filter((item) => isWithinRange(activityProgressDate(item), dateRange));
-  const movements = (dataset.inventoryMovements ?? []).filter((item) => isWithinRange(item.timestamp, dateRange));
+  const operations = (researchDataset.operations ?? []).filter((item) => isWithinRange(item.date, dateRange));
+  const progress = (researchDataset.activityProgress ?? []).filter((item) => isWithinRange(activityProgressDate(item), dateRange));
+  const movements = (researchDataset.inventoryMovements ?? []).filter((item) => isWithinRange(item.timestamp, dateRange));
   const records = { operations, progress, movements };
   const recordLabels = { operations: "Partes de operación", progress: "Avance de actividades", movements: "Movimientos de materiales" };
   const estimatedSafetyCount = (dataset.inventory ?? []).filter((item) => isEstimatedBasis(item.safetyParametersBasis)).length;
@@ -813,15 +817,15 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
       <div>
         <p className="eyebrow">Repositorio de resultados</p>
         <strong>Indicadores, ecuaciones y microdatos de investigación</strong>
-        <span>La ruta <code>/#/indicadores</code> concentra los resultados del periodo y su evidencia exportable.</span>
+        <span>{researchCecos.size} CECO de la hoja «Post» en el análisis{excludedCecos ? ` · ${excludedCecos} fuera del instrumento` : ""}.</span>
       </div>
       <div className="date-range">
         <label>Desde<input type="date" value={dateRange.start} max={dateRange.end} onChange={(event) => event.target.value && setDateRange((currentRange) => ({ ...currentRange, start: event.target.value }))} /></label>
         <label>Hasta<input type="date" value={dateRange.end} min={dateRange.start} onChange={(event) => event.target.value && setDateRange((currentRange) => ({ ...currentRange, end: event.target.value }))} /></label>
         <label>Serie<select value={grouping} onChange={(event) => setGrouping(event.target.value)}><option value="month">Mensual</option><option value="week">Semanal</option></select></label>
         <Button variant="secondary" onClick={() => setDateRange(availableRange)}>Todo el histórico</Button>
-        <Button variant="secondary" onClick={() => exportPeriodRecords(dataset, dateRange)}>↓ Registros Excel</Button>
-        <Button onClick={() => exportIndicatorsWorkbook(dataset, report, dateRange, grouping)}>↓ Libro de tesis</Button>
+        <Button variant="secondary" onClick={() => exportPeriodRecords(researchDataset, dateRange)}>↓ Registros Excel</Button>
+        <Button onClick={() => exportIndicatorsWorkbook(researchDataset, report, dateRange, grouping)}>↓ Libro de tesis</Button>
       </div>
     </section>
 
@@ -836,7 +840,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
     <ProductivityDashboard report={report} />
     <MaterialCoverageReview dataset={dataset} setView={setView} />
 
-    <IndicatorDetails dataset={dataset} report={report} range={dateRange} />
+    <IndicatorDetails dataset={researchDataset} report={report} range={dateRange} />
 
     <section className="panel safety-indicator-panel">
       <SectionHeader eyebrow="Indicador de inventario" title="Cómo se calcula el stock de seguridad" detail="SS = redondear hacia arriba(Z × d × σLT). ROP = d × LT promedio + SS. d es la demanda promedio diaria; σLT, variabilidad del tiempo de entrega. Si falta un parámetro se conserva el mínimo registrado." />
