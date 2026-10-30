@@ -752,7 +752,7 @@ function ProductivityDashboard({ report, onOpen }) {
   ];
   const available = rows.filter((item) => item.value != null).length;
   return <section className="panel productivity-panel">
-    <SectionHeader eyebrow="Operación del periodo" title="MRP y productividad en unidades" detail="Estas tarjetas usan CECO terminados, partes e inventario del rango seleccionado. El instrumento de tesis en kg está en Indicadores." action={<div className="indicator-header-actions"><span className="coverage-chip">{available}/7 calculables</span>{onOpen && <button className="text-button" onClick={onOpen}>Abrir tablero →</button>}</div>} />
+    <SectionHeader eyebrow="Operación del periodo" title="MRP y productividad en unidades" detail={`Estas tarjetas usan CECO terminados, partes e inventario del rango seleccionado. ${onOpen ? "El instrumento de tesis en kg está en Indicadores." : "El instrumento de tesis en kg figura arriba."}`} action={<div className="indicator-header-actions"><span className="coverage-chip">{available}/7 calculables</span>{onOpen && <button className="text-button" onClick={onOpen}>Abrir tablero →</button>}</div>} />
     <div className="productivity-grid">{rows.map((item) => <ProductivityCard key={item.label} {...item} />)}</div>
     <div className="data-quality-note"><span>i</span><p><strong>Calidad del dato:</strong> {current.estimatedProducedUnits} unidades terminadas se infieren por estado y fecha pactada. El avance de fase acredita cantidades BOM cuando no hay salida explícita. Los costos, tarifas y valores marcados como estimados son referenciales y deben contrastarse con compras, nómina y venta reales.</p></div>
   </section>;
@@ -817,7 +817,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
       <div>
         <p className="eyebrow">Repositorio de resultados</p>
         <strong>Indicadores, ecuaciones y microdatos de investigación</strong>
-        <span>{researchCecos.size} CECO de la hoja «Post» en el análisis{excludedCecos ? ` · ${excludedCecos} fuera del instrumento` : ""}.</span>
+        <span>{researchCecos.size ? `${researchCecos.size} CECO de la hoja «Post» en el análisis${excludedCecos ? ` · ${excludedCecos} fuera del instrumento` : ""}.` : "Resultados del periodo y su evidencia exportable."}</span>
       </div>
       <div className="date-range">
         <label>Desde<input type="date" value={dateRange.start} max={dateRange.end} onChange={(event) => event.target.value && setDateRange((currentRange) => ({ ...currentRange, start: event.target.value }))} /></label>
