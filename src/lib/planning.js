@@ -36,6 +36,19 @@ export function orderStart(order, product) {
   return order.plannedStartDate || shiftDate(order.dueDate, -Math.max(0, Number(product?.targetDays || 1) - 1));
 }
 
+export function phaseMaterialDate(dataset, order, product, stageId) {
+  const activityIds = new Set((dataset.stageActivities || []).filter((activity) => activity.stageId === stageId && activity.active !== false).map((activity) => activity.id));
+  const scheduled = (dataset.activityProgress || [])
+    .filter((entry) => entry.ceco === order.ceco && activityIds.has(entry.activityId) && entry.plannedStartDate)
+    .map((entry) => entry.plannedStartDate).sort()[0];
+  if (scheduled) return scheduled;
+  const start = orderStart(order, product) || order.dueDate;
+  const route = product?.route || [];
+  const index = route.indexOf(stageId);
+  if (!start || index < 0 || !route.length) return start;
+  return shiftDate(start, Math.floor(index * Math.max(1, Number(product.targetDays || 1)) / route.length));
+}
+
 export function materialOrderLinks(dataset) {
   const result = new Map();
   const products = new Map((dataset.bodyTypes || []).map((product) => [product.id, product]));
@@ -125,28 +138,33 @@ export function buildPmpCalendar(rows, month) {
 export function buildMaterialPlan(dataset, today, count = 8) {
   const weeks = planningWeeks(today, count);
   const products = new Map((dataset.bodyTypes || []).map((product) => [product.id, product]));
+  const stages = new Map((dataset.flowStages || []).map((stage) => [stage.id, stage]));
   const demand = new Map();
   const requirements = new Map();
   for (const order of dataset.orders || []) {
     if (order.active === false || Number(order.progress) >= 100) continue;
-    const originalNeeded = orderStart(order, products.get(order.bodyTypeId)) || order.dueDate || null;
-    const needed = originalNeeded && originalNeeded > today ? originalNeeded : today;
-    const index = weekIndex(needed, weeks);
-    if (index === null) continue;
+    const product = products.get(order.bodyTypeId);
     for (const piece of dataset.bom || []) {
       if (piece.bodyTypeId !== order.bodyTypeId) continue;
       const quantity = pendingMaterialQuantity(dataset, order, piece);
       if (!quantity) continue;
+      const originalNeeded = phaseMaterialDate(dataset, order, product, piece.stageId) || order.dueDate || null;
+      const needed = originalNeeded && originalNeeded > today ? originalNeeded : today;
+      const index = weekIndex(needed, weeks);
+      if (index === null) continue;
+      const phaseKey = `${order.ceco}:${piece.stageId || "sin-fase"}`;
       const key = `${piece.materialCode}:${index}`;
-      const entry = demand.get(key) || { quantity: 0, cecos: new Set(), overdue: false, needed: null, originalNeeded: null };
+      const entry = demand.get(key) || { quantity: 0, cecos: new Set(), phases: new Set(), overdue: false, needed: null, originalNeeded: null };
       entry.quantity += quantity;
       entry.cecos.add(order.ceco);
+      entry.phases.add(phaseKey);
       entry.overdue ||= Boolean(originalNeeded && originalNeeded < today);
       if (!entry.needed || needed < entry.needed) entry.needed = needed;
       if (originalNeeded && (!entry.originalNeeded || originalNeeded < entry.originalNeeded)) entry.originalNeeded = originalNeeded;
       demand.set(key, entry);
-      const orderKey = `${piece.materialCode}:${order.ceco}`;
-      const requirement = requirements.get(orderKey) || { code: piece.materialCode, ceco: order.ceco, product: products.get(order.bodyTypeId)?.name || "Producto", quantity: 0, needed, originalNeeded, overdue: Boolean(originalNeeded && originalNeeded < today), progress: Number(order.progress || 0), week: weeks[index] };
+      const orderKey = `${piece.materialCode}:${phaseKey}`;
+      const stage = stages.get(piece.stageId);
+      const requirement = requirements.get(orderKey) || { code: piece.materialCode, ceco: order.ceco, phaseKey, stageId: piece.stageId, stageName: stage?.name || "Fase sin nombre", stageCode: stage?.code || piece.sourcePhaseCode || "", routeOrder: product?.route?.indexOf(piece.stageId) ?? -1, product: product?.name || "Producto", quantity: 0, needed, originalNeeded, overdue: Boolean(originalNeeded && originalNeeded < today), progress: Number(order.progress || 0), week: weeks[index] };
       requirement.quantity += quantity;
       requirements.set(orderKey, requirement);
     }
@@ -167,7 +185,7 @@ export function buildMaterialPlan(dataset, today, count = 8) {
     }
     const suggestions = [];
     const cells = weeks.map((week, index) => {
-      const needed = demand.get(`${material.code}:${index}`) || { quantity: 0, cecos: new Set(), overdue: false, needed: null, originalNeeded: null };
+      const needed = demand.get(`${material.code}:${index}`) || { quantity: 0, cecos: new Set(), phases: new Set(), overdue: false, needed: null, originalNeeded: null };
       const opening = balance;
       const afterDemand = opening - needed.quantity;
       let receipt = scheduled.get(index) || 0;
@@ -187,7 +205,7 @@ export function buildMaterialPlan(dataset, today, count = 8) {
         else beyondHorizon += suggestedOrder;
         suggestions.push({ code: material.code, material, quantity: suggestedOrder, unit: material.unit,
           orderBy, needed: targetDate, originalNeeded: needed.originalNeeded, arrivalDate, leadTime,
-          cecos: [...needed.cecos], gross: needed.quantity, opening, safety, afterDemand,
+          cecos: [...needed.cecos], phases: [...needed.phases], gross: needed.quantity, opening, safety, afterDemand,
           overdue: needed.overdue, cannotMeetNeed: arrivalDate == null || arrivalDate > targetDate });
       }
       balance = afterDemand + receipt;
@@ -195,10 +213,10 @@ export function buildMaterialPlan(dataset, today, count = 8) {
         cecos: [...needed.cecos], overdue: needed.overdue, needed: targetDate, originalNeeded: needed.originalNeeded, orderBy, arrivalDate };
     });
     return { material, safety, leadTime, cells, suggestions, pendingSupply: pendingRequests.reduce((sum, request) => sum + Math.max(0, Number(request.quantity) - Number(request.received_quantity || 0)), 0),
-      orders: [...requirements.values()].filter((item) => item.code === material.code).sort((a, b) => a.needed.localeCompare(b.needed) || a.ceco.localeCompare(b.ceco)),
+      orders: [...requirements.values()].filter((item) => item.code === material.code).sort((a, b) => a.needed.localeCompare(b.needed) || a.ceco.localeCompare(b.ceco) || a.routeOrder - b.routeOrder),
       totalGross: cells.reduce((sum, cell) => sum + cell.gross, 0), totalSuggested: suggestions.reduce((sum, item) => sum + item.quantity, 0) };
   });
   const purchases = rows.flatMap((row) => row.suggestions)
     .sort((a, b) => a.orderBy.localeCompare(b.orderBy) || a.code.localeCompare(b.code));
-  return { weeks, rows, purchases };
+  return { weeks, rows, purchases, phaseRequirements: [...requirements.values()] };
 }

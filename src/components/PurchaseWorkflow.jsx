@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { buildMaterialPlan } from "../lib/planning.js";
+import { buildPhasePurchaseBoard } from "../lib/phasePurchases.js";
 import { toLocalDateTimeInput } from "../lib/dateTime.js";
+import PhaseSuggestionBoard from "./PhaseSuggestionBoard.jsx";
 
 const number = (value) => Number(value || 0).toLocaleString("es-PE", { maximumFractionDigits: 3 });
 const labels = { requested: "Solicitud pendiente", ordered: "Orden de compra", received: "Recibida", cancelled: "Cancelada" };
@@ -42,6 +44,7 @@ function ReceiptCheck({ item, today, onSave, onError }) {
 export default function PurchaseWorkflow({ dataset, onMaterial, onSave }) {
   const today = toLocalDateTimeInput(new Date().toISOString()).slice(0, 10);
   const plan = useMemo(() => buildMaterialPlan(dataset, today), [dataset, today]);
+  const board = useMemo(() => buildPhasePurchaseBoard(dataset, plan, today), [dataset, plan, today]);
   const openCecos = (dataset.orders || []).filter((order) => order.active !== false && Number(order.progress) < 100).map((order) => order.ceco);
   const openCecoSet = new Set(openCecos);
   const requests = (dataset.purchaseRequests || []).filter((item) => ["received", "cancelled"].includes(item.status) || item.cecos?.some((ceco) => openCecoSet.has(ceco)));
@@ -52,9 +55,12 @@ export default function PurchaseWorkflow({ dataset, onMaterial, onSave }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [cecoFilter, setCecoFilter] = useState("");
+  const [showCovered, setShowCovered] = useState(false);
+  const [selectedSuggestions, setSelectedSuggestions] = useState(new Set());
   const materials = new Map(dataset.inventory.map((item) => [item.code, item]));
   const matches = (code) => `${code} ${materials.get(code)?.description || ""}`.toLowerCase().includes(query.toLowerCase());
-  const suggestions = plan.purchases.filter((item) => item.cecos.some((ceco) => openCecoSet.has(ceco)) && matches(item.code));
+  const suggestions = board.suggestions.filter((item) => item.cecos.some((ceco) => openCecoSet.has(ceco)));
   const historicalRows = historical.filter((item) => (!historyCeco || item.ceco === historyCeco) && matches(item.material_code)).sort((a,b) => a.ceco.localeCompare(b.ceco) || a.material_code.localeCompare(b.material_code));
   const historicalOrders = historical.map((item) => ({ id: item.id, historical: true, material_code: item.material_code, cecos: [item.ceco], quantity: item.purchased_quantity ?? item.bom_quantity, received_quantity: item.received_on ? (item.purchased_quantity ?? item.bom_quantity) : 0, received_on: item.received_on, status: item.received_on ? "received" : "ordered", order_number: `Histórica · CECO ${item.ceco}`, order_date: item.purchase_date, needed_date: item.purchase_date, supplier: item.supplier, receipt_reference: item.document_number }));
   const rows = [...requests.filter((item) => (tab === "history" ? item.status === "cancelled" : tab === "ordered" ? ["ordered", "received"].includes(item.status) : item.status === tab) && matches(item.material_code)), ...(tab === "ordered" ? historicalOrders.filter((item) => matches(item.material_code)) : [])].sort((a,b) => Number(b.request_number || 0)-Number(a.request_number || 0));
@@ -76,6 +82,29 @@ export default function PurchaseWorkflow({ dataset, onMaterial, onSave }) {
     setBusy(true); setError("");
     try { await onSave("cancel", { id: row.id }); } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
+  function selectSuggestions(items, checked) {
+    setSelectedSuggestions((current) => {
+      const next = new Set(current);
+      for (const item of items) {
+        const key = `${item.code}:${item.needed}`;
+        if (checked) next.add(key); else next.delete(key);
+      }
+      return next;
+    });
+  }
+  async function createSelected() {
+    const rows = suggestions.filter((item) => selectedSuggestions.has(`${item.code}:${item.needed}`));
+    if (!rows.length) return;
+    setBusy(true); setError("");
+    try {
+      await onSave("createMany", rows.map((item) => ({ id: crypto.randomUUID(), material_code: item.code,
+        quantity: item.quantity, needed_date: item.needed, cecos: item.cecos,
+        note: `Necesidad MRP · ${item.phases.join(", ")}` })));
+      setSelectedSuggestions(new Set());
+      setTab("requested");
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
   return <div className="planning-workspace">
     <header className="planning-heading"><div><span className="eyebrow">Abastecimiento</span><h2>Solicitudes y compras</h2><p>Necesidad MRP → solicitud de material → orden de compra → recepción en almacén.</p></div><button className="planning-primary" onClick={() => edit("create", { material_code: "", quantity: "", needed_date: today, cecos: [] })}>Nueva solicitud</button></header>
     <div className="purchase-filters" aria-label="Etapas de abastecimiento">{[["suggestions", `Sugerencias (${suggestions.length})`], ["requested", `Solicitudes (${requests.filter((r) => r.status === "requested").length})`], ["ordered", `Órdenes de compra (${requests.filter((r) => ["ordered", "received"].includes(r.status)).length + historicalOrders.length})`], ["history", "Historial"]].map(([key,label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{label}</button>)}</div>
@@ -94,9 +123,10 @@ export default function PurchaseWorkflow({ dataset, onMaterial, onSave }) {
       </>}
       <div className="section-actions"><button className="planning-primary" disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button><button type="button" className="text-button" disabled={busy} onClick={() => setForm(null)}>Cerrar</button></div>
     </form></section>}
-    {(tab !== "history" || rows.length > 0) && <section className="panel"><div className="table-scroll procurement-table-frame"><table className="planning-table purchase-table"><thead>{tab === "suggestions" ? <tr><th>Material</th><th>Cantidad pendiente de solicitar</th><th>CECO</th><th>Fecha de necesidad</th><th>Acción</th></tr> : <tr><th>Solicitud</th><th>Material / CECO</th><th>Solicitado</th><th>Recibido</th><th>Pendiente</th><th>Estado</th><th>Orden / proveedor</th><th>Fechas</th><th>Acciones</th></tr>}</thead><tbody>
-      {tab === "suggestions" ? suggestions.map((item) => <tr key={`${item.code}-${item.needed}`}><td><button className="row-action" onClick={() => onMaterial(item.code)}>{item.code}</button><small>{item.material.description}</small></td><td>{number(item.quantity)} {item.unit}</td><td>{item.cecos.join(" · ")}</td><td>{item.needed}</td><td><button className="row-action" onClick={() => edit("create", { material_code: item.code, quantity: item.quantity, needed_date: item.needed, cecos: item.cecos, note: "Necesidad calculada por MRP" })}>Crear solicitud</button></td></tr>) : rows.map((item) => <tr key={item.id}><td>{item.historical ? "Histórica" : `SC-${String(item.request_number).padStart(5,"0")}`}</td><td><button className="row-action" onClick={() => onMaterial(item.material_code)}>{item.material_code}</button><small>{materials.get(item.material_code)?.description}</small><small>{item.cecos?.join(" · ") || "Stock de seguridad"}</small></td><td>{number(item.quantity)}</td><td>{number(item.received_quantity)}</td><td>{number(Number(item.quantity)-Number(item.received_quantity))}</td><td>{item.status === "received" ? "Recibida" : item.historical ? "Por confirmar" : labels[item.status]}</td><td>{item.order_number || "—"}<small>{item.supplier}</small><small>{item.unit_cost != null && `S/ ${number(item.unit_cost)} por unidad`}</small></td><td>{item.historical ? `Compra estimada: ${item.order_date || "sin fecha"}` : `Solicitud: ${item.requested_date}`}<small>{!item.historical && `Necesidad: ${item.needed_date || "—"}`}</small><small>{!item.historical && item.order_date && `OC: ${item.order_date}`}</small><small>{!item.historical && item.expected_date && `Prevista: ${item.expected_date}`}</small><small>{item.historical && item.received_on && `Llegada real: ${item.received_on}`}</small><small>{!item.historical && item.receipt_at && `Última recepción: ${toLocalDateTimeInput(item.receipt_at).replace("T", " ")}`}</small><small>{item.receipt_reference}</small></td><td><div className="procurement-actions">{tab === "ordered" && <ReceiptCheck item={item} today={today} onSave={onSave} onError={setError} />}{!item.historical && item.status === "ordered" && <button className="row-action" disabled={busy} onClick={() => cancel(item)}>Cancelar saldo</button>}</div></td></tr>)}
-    </tbody></table></div>{(tab === "suggestions" ? suggestions : rows).length === 0 && <p className="planning-empty">{tab === "suggestions" ? "No hay necesidades nuevas por solicitar. Revisa las solicitudes y órdenes pendientes en sus pestañas." : "No hay registros para este filtro."}</p>}</section>}
+    {tab === "suggestions" && <PhaseSuggestionBoard board={board} query={query} ceco={cecoFilter} onCeco={setCecoFilter} showCovered={showCovered} onShowCovered={setShowCovered} selected={selectedSuggestions} onSelect={(item, checked) => selectSuggestions([item], checked)} onSelectMany={selectSuggestions} onCreateMany={createSelected} busy={busy} />}
+    {tab !== "suggestions" && (tab !== "history" || rows.length > 0) && <section className="panel"><div className="table-scroll procurement-table-frame"><table className="planning-table purchase-table"><thead><tr><th>Solicitud</th><th>Material / CECO</th><th>Solicitado</th><th>Recibido</th><th>Pendiente</th><th>Estado</th><th>Orden / proveedor</th><th>Fechas</th><th>Acciones</th></tr></thead><tbody>
+      {rows.map((item) => <tr key={item.id}><td>{item.historical ? "Histórica" : `SC-${String(item.request_number).padStart(5,"0")}`}</td><td><button className="row-action" onClick={() => onMaterial(item.material_code)}>{item.material_code}</button><small>{materials.get(item.material_code)?.description}</small><small>{item.cecos?.join(" · ") || "Stock de seguridad"}</small></td><td>{number(item.quantity)}</td><td>{number(item.received_quantity)}</td><td>{number(Number(item.quantity)-Number(item.received_quantity))}</td><td>{item.status === "received" ? "Recibida" : item.historical ? "Por confirmar" : labels[item.status]}</td><td>{item.order_number || "—"}<small>{item.supplier}</small><small>{item.unit_cost != null && `S/ ${number(item.unit_cost)} por unidad`}</small></td><td>{item.historical ? `Compra estimada: ${item.order_date || "sin fecha"}` : `Solicitud: ${item.requested_date}`}<small>{!item.historical && `Necesidad: ${item.needed_date || "—"}`}</small><small>{!item.historical && item.order_date && `OC: ${item.order_date}`}</small><small>{!item.historical && item.expected_date && `Prevista: ${item.expected_date}`}</small><small>{item.historical && item.received_on && `Llegada real: ${item.received_on}`}</small><small>{!item.historical && item.receipt_at && `Última recepción: ${toLocalDateTimeInput(item.receipt_at).replace("T", " ")}`}</small><small>{item.receipt_reference}</small></td><td><div className="procurement-actions">{tab === "ordered" && <ReceiptCheck item={item} today={today} onSave={onSave} onError={setError} />}{!item.historical && item.status === "ordered" && <button className="row-action" disabled={busy} onClick={() => cancel(item)}>Cancelar saldo</button>}</div></td></tr>)}
+    </tbody></table></div>{rows.length === 0 && <p className="planning-empty">No hay registros para este filtro.</p>}</section>}
     {tab === "history" && <section className="panel">
       <header className="section-header"><div><span className="eyebrow">CECO completados</span><h2>Compras históricas reconstruidas</h2><p>Cantidades estimadas desde el BOM y fechas de compra estimadas desde el cronograma. Confirma la llegada y su fecha real en Órdenes de compra. Estos registros no duplican el stock actual.</p></div></header>
       <div className="coverage-controls"><label>CECO<select aria-label="Filtrar compras históricas por CECO" value={historyCeco} onChange={(event) => setHistoryCeco(event.target.value)}><option value="">Todos los CECO completados</option>{[...new Set(historical.map((item) => item.ceco))].sort().map((ceco) => <option key={ceco} value={ceco}>{ceco}</option>)}</select></label><span>{historicalRows.length} registros de materiales</span></div>

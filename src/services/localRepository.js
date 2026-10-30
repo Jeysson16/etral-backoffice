@@ -159,6 +159,21 @@ export const localRepository = {
     const dataset = load();
     dataset.purchaseRequests ||= [];
     const today = toLocalDateTimeInput(new Date().toISOString()).slice(0, 10);
+    if (action === "createMany") {
+      if (!Array.isArray(payload) || !payload.length) throw new Error("Selecciona materiales para solicitar");
+      for (const row of payload) {
+        if (!(Number(row.quantity) > 0) || !dataset.inventory.some((item) => item.code === row.material_code) || !row.cecos?.length) throw new Error("Revisa los materiales y cantidades seleccionados");
+      }
+      for (const row of payload) {
+        if (row.id && dataset.purchaseRequests.some((item) => item.id === row.id)) continue;
+        dataset.purchaseRequests.push({ id: row.id || newInternalId("request"), request_number: dataset.purchaseRequests.length + 1,
+          material_code: row.material_code, quantity: Number(row.quantity), received_quantity: 0,
+          status: "requested", requested_date: today, needed_date: row.needed_date || null,
+          cecos: row.cecos, note: row.note || "" });
+      }
+      save(dataset);
+      return dataset;
+    }
     if (action === "historicalReceipt") {
       const historical = dataset.historicalPurchases?.find((item) => item.id === payload.id);
       if (!historical) throw new Error("Compra histórica no encontrada");
