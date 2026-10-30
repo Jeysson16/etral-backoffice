@@ -1365,6 +1365,8 @@ pre,
 .procurement-form form { display: grid; gap: 16px; margin-top: 16px; }
 .procurement-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
 .procurement-actions { display: grid; gap: 9px; }
+.procurement-table-frame { max-height: 58vh; overflow: auto; }
+.procurement-table-frame thead th { position: sticky; top: 0; z-index: 1; background: #f6f8fb; }
 .purchase-table th, .purchase-table td { text-align: left; }
 .purchase-table th:first-child { min-width: 110px; }
 .purchase-table td:nth-child(2) { min-width: 225px; }
