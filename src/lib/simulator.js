@@ -396,7 +396,7 @@ function buildNotifications(dataset, scenario) {
       reason: `${material.required} ${material.unit} pendientes de consumir en pedidos abiertos; el saldo físico actual es ${material.physical} ${material.unit}.`,
       affected: material.requirements.map((need) => `CECO ${need.ceco} · ${need.product} · ${need.stage}: ${need.quantity} ${material.unit} (${need.source})`),
       recommendedAction: material.suggestedReplenishment == null ? "Registrar el plazo de abastecimiento para calcular una reposición sugerida." : `Solicitar ${material.suggestedReplenishment} ${material.unit} como mínimo; cubre la demanda durante ${material.leadTimeDays} días de abastecimiento y restablece el stock de seguridad.`,
-      calculation: `${material.physical} físico − ${material.required} programado = ${material.projected} ${material.unit}; SS = z × √(s1² × Lt + s2² × dp²) = ${material.safety}`
+      calculation: `${material.physical} físico − ${material.required} programado = ${material.projected} ${material.unit}; SS = redondear arriba(Z × d × σLT) = ${material.safety}`
     });
   });
 

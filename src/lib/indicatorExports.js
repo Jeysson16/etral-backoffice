@@ -1,7 +1,7 @@
 import XLSX from "xlsx-js-style";
 import { activityProgressDate, buildIndicatorSeries, materialConsumptionCost } from "./productivity.js";
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
-import { calculateSafetyStock, calculateThesisSafetyStock, hasSafetyStockParameters } from "./mrp.js";
+import { calculateFormulaSafetyStock, calculateReorderPoint, calculateSafetyStock, hasSafetyStockParameters } from "./mrp.js";
 import { deriveMaterialDemand } from "./materialDemand.js";
 
 function inRange(value, start, end) {
@@ -151,26 +151,31 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     ...(dataset.inventoryMovements ?? []).filter((item) => inRange(item.timestamp, range.start, range.end)).map((item) => [item.timestamp, item.type, item.code, item.ceco ?? "", Number(item.quantity ?? 0), item.note ?? ""])
   ], { numberFormats: { 4: "#,##0.00" } });
   const thesisStock = thesisRows("FICHA DE RECOLECCIÓN DE DATOS Y CÁLCULO · STOCK DE SEGURIDAD", range,
-    ["Fecha", "Material", "Unidad", "Costo unitario S/", "Origen del costo", "Demanda promedio (dp)", "Desviación estándar demanda (s1)", "Lead time proveedor (Lt) días", "Desv. est. lead time (s2)", "Nivel de servicio", "z", "SS según tesis", "SS operativo", "Observaciones", "Stock físico", "Comprometido", "Disponible", "Brecha vs. SS operativo"],
+    ["Fecha", "Material", "Unidad", "Costo unitario S/", "Origen del costo", "Demanda promedio diaria (d)", "LT promedio (días)", "Variabilidad LT (σLT, días)", "Nivel de servicio", "Z", "SS = redondear arriba(Z × d × σLT)", "ROP = d × LT promedio + SS", "SS aplicado", "Observaciones", "Stock físico", "Comprometido", "Disponible", "Brecha vs. SS"],
     (dataset.inventory ?? []).map((item) => {
       const estimatedDemand = demandByCode.get(item.code);
-      const deviation = recordedNumber(item.demandStdDev) ?? recordedNumber(estimatedDemand?.demandStdDev);
       const leadTime = recordedNumber(item.leadTimeDays);
       const averageDemand = recordedNumber(item.averageDemand) ?? recordedNumber(estimatedDemand?.averageDemand);
       const leadTimeDeviation = recordedNumber(item.leadTimeStdDev);
       const safety = calculateSafetyStock(item);
       const available = Number(item.physical ?? 0) - Number(item.committed ?? 0);
-      const estimatedInput = { ...item, averageDemand, demandStdDev: deviation };
-      const thesisSafety = calculateThesisSafetyStock(estimatedInput);
-      const missing = [["dp", averageDemand], ["s1", deviation], ["Lt", leadTime], ["s2", leadTimeDeviation], ["z", recordedNumber(item.serviceFactor)]]
+      const estimatedInput = { ...item, averageDemand };
+      const formulaSafety = calculateFormulaSafetyStock(estimatedInput);
+      const reorderPoint = calculateReorderPoint(estimatedInput);
+      const missing = [["d", averageDemand], ["LT promedio", leadTime], ["σLT", leadTimeDeviation], ["Z", recordedNumber(item.serviceFactor)]]
         .filter(([, value]) => value === null).map(([label]) => label);
-      const provenance = estimatedDemand && (recordedNumber(item.averageDemand) === null || recordedNumber(item.demandStdDev) === null)
-        ? `dp/s1 estimados desde ${estimatedDemand.source} en ${estimatedDemand.days} días; ` : "";
-      return [range.end, `${item.code} · ${item.description}`, item.unit, recordedNumber(item.unitCost), item.unitCostBasis ?? "Registrado", averageDemand, deviation, leadTime, leadTimeDeviation,
-        recordedNumber(item.serviceLevel), recordedNumber(item.serviceFactor), thesisSafety, safety,
-        missing.length ? `${provenance}Corte de inventario; SS de tesis no calculable: falta ${missing.join(", ")}. Se conserva el mínimo previo registrado.` : `${provenance}${item.safetyParametersBasis ?? ""}; SS aplicado = fórmula de tesis`,
+      const provenance = estimatedDemand && recordedNumber(item.averageDemand) === null
+        ? `d estimada desde ${estimatedDemand.source} en ${estimatedDemand.days} días; ` : "";
+      const observation = missing.length
+        ? `${provenance}Faltan ${missing.join(", ")}. Se conserva el mínimo previo registrado.`
+        : !hasSafetyStockParameters(item)
+          ? `${provenance}SS y ROP referenciales; se conserva el mínimo previo hasta registrar la demanda.`
+          : `${provenance}${item.safetyParametersBasis ?? ""}; SS aplicado = fórmula del Excel`;
+      return [range.end, `${item.code} · ${item.description}`, item.unit, recordedNumber(item.unitCost), item.unitCostBasis ?? "Registrado", averageDemand, leadTime, leadTimeDeviation,
+        recordedNumber(item.serviceLevel), recordedNumber(item.serviceFactor), formulaSafety, reorderPoint, safety,
+        observation,
         Number(item.physical ?? 0), Number(item.committed ?? 0), available, available - safety];
-    }), { 3: "#,##0.00", 5: "0.00", 6: "0.00", 7: "0.00", 8: "0.00", 9: "0.00%", 10: "0.00", 11: "#,##0", 12: "#,##0", 14: "#,##0.00", 15: "#,##0.00", 16: "#,##0.00", 17: "#,##0.00" });
+    }), { 3: "#,##0.00", 5: "0.0000", 6: "0.00", 7: "0.00", 8: "0.00%", 9: "0.000", 10: "#,##0", 11: "#,##0.000", 12: "#,##0", 14: "#,##0.00", 15: "#,##0.00", 16: "#,##0.00", 17: "#,##0.00" });
   appendSheet(workbook, "Stock seguridad", thesisStock.rows, thesisStock.options);
   appendSheet(workbook, "Diccionario SPSS", [
     ["variable", "etiqueta", "tipo", "nivel", "valores / criterio"],
@@ -216,7 +221,8 @@ export function exportPeriodRecords(dataset, range) {
   exportTable("Inventario", (dataset.inventory ?? []).map((item) => ({
     ...item,
     safety: calculateSafetyStock(item),
-    safetySource: hasSafetyStockParameters(item) ? "Fórmula de tesis" : "Mínimo previo registrado"
+    safetySource: hasSafetyStockParameters(item) ? "Fórmula del Excel" : "Mínimo previo registrado",
+    reorderPoint: calculateReorderPoint(item)
   })));
   exportTable("BOM", dataset.bom);
   exportTable("Salidas almacén", dataset.warehouse, "date");

@@ -1,6 +1,6 @@
 import XLSX from "xlsx-js-style";
 import { addExportTitle, styleInstructionSheet, styleWorkbookSheet } from "./excelWorkbookStyle.js";
-import { calculateSafetyStock } from "./mrp.js";
+import { calculateReorderPoint, calculateSafetyStock } from "./mrp.js";
 
 const normalize = (value) => String(value ?? "")
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -43,14 +43,15 @@ function numeric(value, defaultValue = 0) {
 
 function requireCompleteSafetyParameters(materials) {
   for (const material of materials) {
-    const fields = ["averageDemand", "demandStdDev", "leadTimeDays", "leadTimeStdDev", "serviceLevel", "serviceFactor"];
+    const fields = ["averageDemand", "leadTimeDays", "leadTimeStdDev", "serviceFactor"];
     const provided = fields.filter((key) => material[key] !== null);
     if (provided.length && provided.length < fields.length) {
-      throw new Error(`Material fila ${material.row}: completa dp, s1, Lt, s2, nivel de servicio y z para calcular el stock de seguridad.`);
+      throw new Error(`Material fila ${material.row}: completa demanda diaria, LT promedio, variabilidad del LT y Z para calcular el stock de seguridad.`);
     }
-    if (provided.length && (material.averageDemand < 0 || material.demandStdDev < 0 || material.leadTimeDays <= 0 || material.leadTimeStdDev < 0
-      || material.serviceLevel <= 0 || material.serviceLevel >= 1 || material.serviceFactor <= 0)) {
-      throw new Error(`Material fila ${material.row}: dp, s1 y s2 deben ser no negativos; Lt y z positivos; nivel de servicio entre 0 y 1.`);
+    if (provided.length && (material.averageDemand < 0 || (material.demandStdDev !== null && material.demandStdDev < 0)
+      || material.leadTimeDays <= 0 || material.leadTimeStdDev < 0 || material.serviceFactor <= 0
+      || (material.serviceLevel !== null && (material.serviceLevel <= 0 || material.serviceLevel >= 1)))) {
+      throw new Error(`Material fila ${material.row}: demanda y σLT deben ser no negativos; LT y Z positivos; nivel de servicio entre 0 y 1.`);
     }
   }
   return materials;
@@ -131,10 +132,10 @@ export function downloadCatalogWorkbook(dataset, type = "all") {
   if (type === "all" || type === "materials") {
     const rows = dataset.inventory.map((item) => ({
       "Código": item.code, "Descripción": item.description, "Categoría": item.category, "Unidad": item.unit, "Marca": dataset.catalogs.brands.find((brand) => brand.id === item.brandId)?.name ?? "",
-      "Ubicación": item.location ?? "", "Stock físico": item.physical, "Stock seguridad": calculateSafetyStock(item), "Demanda promedio dp": item.averageDemand ?? "", "Desviación demanda s1": item.demandStdDev ?? "", "Plazo reposición días": item.leadTimeDays ?? "", "Desviación lead time s2": item.leadTimeStdDev ?? "", "Nivel servicio": item.serviceLevel ?? "", "Factor z": item.serviceFactor ?? "", "Costo unitario": item.unitCost ?? "", "Origen costo": item.unitCostBasis ?? "Registrado", "Origen SS": item.safetyParametersBasis ?? "Registrado", "Moneda": item.currency ?? "PEN"
+      "Ubicación": item.location ?? "", "Stock físico": item.physical, "Stock seguridad": calculateSafetyStock(item), "Demanda promedio dp": item.averageDemand ?? "", "Desviación demanda s1": item.demandStdDev ?? "", "Plazo reposición días": item.leadTimeDays ?? "", "Desviación lead time s2": item.leadTimeStdDev ?? "", "Nivel servicio": item.serviceLevel ?? "", "Factor z": item.serviceFactor ?? "", "Punto de reorden ROP": calculateReorderPoint(item) ?? "", "Costo unitario": item.unitCost ?? "", "Origen costo": item.unitCostBasis ?? "Registrado", "Origen SS": item.safetyParametersBasis ?? "Registrado", "Moneda": item.currency ?? "PEN"
     }));
     const sheet = XLSX.utils.json_to_sheet(addExportTitle(rows.length ? rows : [materialTemplateRow()], "MATERIALES", "Maestro de inventario"));
-    XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(sheet, { headerRow: 3, titleRow: 0, numberFormats: { 6: "#,##0.00", 7: "#,##0.00", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.00", 12: "0.00%", 13: "0.000", 14: "S/ #,##0.00" } }), "Materiales");
+    XLSX.utils.book_append_sheet(workbook, styleWorkbookSheet(sheet, { headerRow: 3, titleRow: 0, numberFormats: { 6: "#,##0.00", 7: "#,##0.00", 8: "0.0000", 9: "0.00", 10: "0.00", 11: "0.00", 12: "0.00%", 13: "0.000", 14: "#,##0.000", 15: "S/ #,##0.00" } }), "Materiales");
   }
   if (type === "all" || type === "products") {
     const products = dataset.bodyTypes.map((item) => ({ "Código": item.code, "Nombre producto": item.name, "Familia": item.family, "Marca": dataset.catalogs.brands.find((brand) => brand.id === item.brandId)?.name ?? "", "Unidad salida": item.outputUnit, "Días objetivo": item.targetDays, "Ruta fases": item.route.map((id) => dataset.flowStages.find((stage) => stage.id === id)?.code ?? id).join(";") }));

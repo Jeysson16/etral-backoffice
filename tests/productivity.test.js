@@ -31,7 +31,7 @@ test("calcula los indicadores definidos por la tesis", () => {
 
 test("cobertura usa el stock de seguridad calculado y el mínimo manual cuando faltan parámetros", () => {
   const inventory = [
-    { code: "A", physical: 8, committed: 0, safety: 2, serviceFactor: 2, demandStdDev: 3, leadTimeDays: 4, averageDemand: 2, leadTimeStdDev: 1 },
+    { code: "A", physical: 2, committed: 0, safety: 2, serviceFactor: 2, demandStdDev: 3, leadTimeDays: 4, averageDemand: 2, leadTimeStdDev: 1 },
     { code: "B", physical: 5, committed: 1, safety: 5, serviceFactor: 1.65, demandStdDev: "", leadTimeDays: 3 }
   ];
   const report = calculateProductivityReport({ ...dataset, inventory }, "2026-01-01", "2026-01-31");

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { initialDataset } from "../src/data/seed.js";
-import { buildMaterialExplosion, calculateCecoProgress, calculateSafetyStock, evaluateMrp, inventoryHeatmap, materialRequirementSummary, materialRequirementsByStage } from "../src/lib/mrp.js";
+import { buildMaterialExplosion, calculateCecoProgress, calculateReorderPoint, calculateSafetyStock, evaluateMrp, inventoryHeatmap, materialRequirementSummary, materialRequirementsByStage } from "../src/lib/mrp.js";
 import { calibrateDigitalTwin, runDigitalTwin } from "../src/lib/simulator.js";
 
 test("explota BOM por carrocería y calcula faltantes", () => {
@@ -54,14 +54,19 @@ test("mapa de calor clasifica stock disponible", () => {
   assert.equal(paint.tone, "warning");
 });
 
-test("stock de seguridad usa los cinco parámetros de la tesis y conserva mínimos anteriores", () => {
-  const paint = initialDataset.inventory.find((item) => item.code === "MAT-0042");
-  assert.equal(calculateSafetyStock(paint), 15);
-  assert.equal(calculateSafetyStock({ ...paint, averageDemand: 3, leadTimeStdDev: 1 }),
-    Math.ceil(paint.serviceFactor * Math.sqrt(paint.demandStdDev ** 2 * paint.leadTimeDays + 3 ** 2)));
-  assert.equal(calculateSafetyStock({ ...paint, averageDemand: 3, leadTimeStdDev: 0 }),
-    Math.ceil(paint.serviceFactor * paint.demandStdDev * Math.sqrt(paint.leadTimeDays)));
+test("stock de seguridad y ROP siguen la fórmula del Excel", () => {
+  const paint = { ...initialDataset.inventory.find((item) => item.code === "MAT-0042"), averageDemand: 2, leadTimeStdDev: 1 };
+  assert.equal(calculateSafetyStock(paint), Math.ceil(paint.serviceFactor * 2));
+  assert.equal(calculateReorderPoint(paint), 2 * paint.leadTimeDays + calculateSafetyStock(paint));
+  assert.equal(calculateSafetyStock({ ...paint, averageDemand: 3, leadTimeStdDev: 1 }), Math.ceil(paint.serviceFactor * 3));
+  assert.equal(calculateSafetyStock({ ...paint, averageDemand: 3, leadTimeStdDev: 0 }), 0);
   assert.equal(calculateSafetyStock({ ...paint, safety: 50, averageDemand: 0, demandStdDev: 0, leadTimeStdDev: 0 }), 0);
+  assert.equal(calculateSafetyStock({ safety: 7, averageDemand: null, leadTimeStdDev: 2, serviceFactor: 1.645 }), 7);
+  const washer = { averageDemand: 2.0556, leadTimeDays: 5, leadTimeStdDev: 1.25, serviceFactor: 1.645, safety: 12 };
+  assert.equal(calculateSafetyStock(washer), 5);
+  assert.equal(calculateReorderPoint(washer), 15.278);
+  assert.equal(calculateSafetyStock({ ...washer, averageDemand: 0, safetyParametersBasis: "Estimado: sin demanda observada ni planificada" }), 12);
+  assert.equal(calculateReorderPoint({ ...paint, leadTimeDays: null }), null);
 });
 
 test("requerimiento abierto se calcula desde órdenes activas y BOM", () => {
@@ -119,7 +124,7 @@ test("simulador aplica el SS calculado incluso si el mínimo almacenado está de
   const material = dataset.inventory.find((item) => item.code === "MAT-0042");
   Object.assign(material, { safety: 1, serviceFactor: 2, demandStdDev: 3, leadTimeDays: 4, averageDemand: 2, leadTimeStdDev: 1 });
   const result = runDigitalTwin(dataset, { horizonDays: 14 });
-  assert.equal(result.scenario.materials.find((item) => item.code === material.code).safety, 13);
+  assert.equal(result.scenario.materials.find((item) => item.code === material.code).safety, 4);
 });
 
 test("simulación aplica un arreglo de ajustes de material", () => {

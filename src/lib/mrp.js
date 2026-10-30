@@ -19,25 +19,31 @@ export function effectiveOrderStageId(order, bodyTypes, stageActivities, activit
 }
 
 export function hasSafetyStockParameters(item) {
-  return [item.serviceFactor, item.demandStdDev, item.leadTimeDays, item.averageDemand, item.leadTimeStdDev]
+  return [item.serviceFactor, item.averageDemand, item.leadTimeStdDev]
     .every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
-    && Number(item.serviceFactor) > 0 && Number(item.demandStdDev) >= 0 && Number(item.leadTimeDays) > 0
-    && Number(item.averageDemand) >= 0 && Number(item.leadTimeStdDev) >= 0;
+    && Number(item.serviceFactor) > 0 && Number(item.averageDemand) >= 0 && Number(item.leadTimeStdDev) >= 0
+    && !(Number(item.averageDemand) === 0 && String(item.safetyParametersBasis ?? "").includes("sin demanda"));
 }
 
 export function calculateSafetyStock(item) {
-  const thesis = calculateThesisSafetyStock(item);
-  return thesis == null ? Number(item.safety ?? 0) : thesis;
+  const calculated = calculateFormulaSafetyStock(item);
+  return calculated == null ? Number(item.safety ?? 0) : calculated;
 }
 
-export function calculateThesisSafetyStock(item) {
-  const z = Number(item.serviceFactor);
-  const deviation = Number(item.demandStdDev);
+export function calculateFormulaSafetyStock(item) {
+  return hasSafetyStockParameters(item)
+    ? Math.ceil(Number(item.serviceFactor) * Number(item.averageDemand) * Number(item.leadTimeStdDev))
+    : null;
+}
+
+export function calculateReorderPoint(item) {
+  const demand = Number(item.averageDemand);
   const leadTime = Number(item.leadTimeDays);
-  if (hasSafetyStockParameters(item)) {
-    return Math.ceil(z * Math.sqrt(deviation ** 2 * leadTime + Number(item.leadTimeStdDev) ** 2 * Number(item.averageDemand) ** 2));
-  }
-  return null;
+  if (item.averageDemand === null || item.averageDemand === undefined || item.averageDemand === ""
+    || item.leadTimeDays === null || item.leadTimeDays === undefined || item.leadTimeDays === ""
+    || !Number.isFinite(demand) || demand < 0 || !Number.isFinite(leadTime) || leadTime <= 0
+    || !hasSafetyStockParameters(item)) return null;
+  return demand * leadTime + calculateSafetyStock(item);
 }
 
 export function buildMaterialExplosion(order, bodyTypes, bom, inventory, balances = null, dataset = null) {

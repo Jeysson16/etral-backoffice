@@ -19,7 +19,7 @@ function fixture() {
   };
 }
 
-test("libro de tesis expone valores por ficha y distingue SS de tesis del operativo", () => {
+test("libro de indicadores exporta SS y ROP con la fórmula del Excel", () => {
   const dataset = fixture();
   const report = calculateProductivityReport(dataset, range.start, range.end);
   const workbook = XLSX.read(XLSX.write(buildIndicatorsWorkbook(dataset, report, range), { type: "buffer", bookType: "xlsx" }), { type: "buffer" });
@@ -38,24 +38,26 @@ test("libro de tesis expone valores por ficha y distingue SS de tesis del operat
   assert.equal(productivity[4][18], 1000 / (20 + 80));
   assert.equal(stock[4][3], 5);
   assert.equal(stock[4][5], 3);
-  assert.equal(stock[4][8], 1);
-  assert.equal(stock[4][11], Math.ceil(1.65 * Math.sqrt(2 ** 2 * 4 + 1 ** 2 * 3 ** 2)));
-  assert.equal(stock[4][12], stock[4][11]);
+  assert.equal(stock[4][7], 1);
+  assert.equal(stock[4][10], Math.ceil(1.65 * 3 * 1));
+  assert.equal(stock[4][11], 3 * 4 + stock[4][10]);
+  assert.equal(stock[4][12], stock[4][10]);
   assert.equal(summary.find((row) => row[0] === "average_delivery_delay")[2], 2);
 });
 
-test("la ficha de stock deja sin valor el SS de tesis si faltan dp o s2", () => {
+test("la ficha de stock deja sin valor SS y ROP si faltan d o σLT", () => {
   const dataset = fixture();
   delete dataset.inventory[0].averageDemand;
   delete dataset.inventory[0].leadTimeStdDev;
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const stock = XLSX.utils.sheet_to_json(workbook.Sheets["Stock seguridad"], { header: 1 });
+  assert.equal(stock[4][10], "");
   assert.equal(stock[4][11], "");
-  assert.match(stock[4][13], /falta dp, s2/);
+  assert.match(stock[4][13], /faltan d, σLT/i);
   assert.equal(stock[4][12], 5);
 });
 
-test("la ficha estima dp y s1 desde CECO/BOM y muestra su procedencia", () => {
+test("la ficha estima d desde CECO/BOM y muestra su procedencia", () => {
   const dataset = fixture();
   delete dataset.inventory[0].averageDemand;
   delete dataset.inventory[0].demandStdDev;
@@ -63,9 +65,10 @@ test("la ficha estima dp y s1 desde CECO/BOM y muestra su procedencia", () => {
   const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
   const stock = XLSX.utils.sheet_to_json(workbook.Sheets["Stock seguridad"], { header: 1 });
   assert.equal(stock[4][5], 1);
-  assert.equal(stock[4][6], 5.5678);
+  assert.equal(stock[4][6], 4);
   assert.match(stock[4][13], /demanda planificada CECO\/BOM/);
-  assert.notEqual(stock[4][11], "");
+  assert.equal(stock[4][10], 2);
+  assert.equal(stock[4][11], 6);
   assert.equal(stock[4][12], 5);
 });
 
