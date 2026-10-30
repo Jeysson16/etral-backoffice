@@ -1474,6 +1474,22 @@ pre,
 .supply-results .procurement-table-frame { border: 1px solid var(--supply-border); border-radius: 10px; }
 .supply-results .procurement-table-frame th { white-space: nowrap; font-size: 11px; }
 .supply-results .procurement-table-frame td { vertical-align: top; font-size: 12px; }
+.supply-impact { margin: 22px 0; padding: 20px; border: 1px solid #f0c7a9; border-radius: 12px; background: #fffaf6; }
+.supply-impact h3 { margin: 0 0 14px; color: #8e340d; font-size: 17px; }
+.supply-impact-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.supply-impact-grid article { padding: 13px; border: 1px solid #f0ded0; border-radius: 9px; background: #fff; }
+.supply-impact-grid span { display: block; min-height: 34px; color: #5b6471; font-size: 12px; font-weight: 700; }
+.supply-impact-grid strong { color: #91370c; font-size: 23px; }
+.supply-impact-explanation { margin: 15px 0 0; padding: 12px 14px; border-left: 3px solid #d95317; background: #fff; line-height: 1.5; color: #394658; }
+.supply-impact-table { max-height: 320px; margin-top: 16px; border: 1px solid #f0ded0; border-radius: 9px; background: #fff; }
+.supply-impact-table th { position: sticky; top: 0; background: #fff4eb; }
+.supply-impact-table td { vertical-align: top; }
+.supply-negative { color: #b04420; font-weight: 800; }
+.supply-positive { color: #187445; font-weight: 800; }
+.supply-results .supply-changed-row { background: #fff6ed; }
+.supply-results .supply-changed-row td:first-child { box-shadow: inset 3px 0 #d95317; }
+@media (max-width: 900px) { .supply-impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 580px) { .supply-impact-grid { grid-template-columns: 1fr; } }
 .supply-method { border-top: 1px solid var(--supply-border); padding-top: 16px; }
 .supply-advanced { padding: 20px 24px; }
 @media (max-width: 650px) {
@@ -1489,6 +1505,10 @@ pre,
 .procurement-form form { display: grid; gap: 16px; margin-top: 16px; }
 .procurement-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
 .procurement-actions { display: grid; gap: 9px; }
+.receipt-check { display: grid; gap: 7px; min-width: 145px; }
+.receipt-check label { display: flex; align-items: center; gap: 7px; white-space: nowrap; font-weight: 700; }
+.receipt-check input[type="checkbox"] { width: 16px; height: 16px; accent-color: #bd410c; }
+.receipt-check input[type="date"] { width: 100%; min-width: 140px; }
 .procurement-table-frame { max-height: 58vh; overflow: auto; }
 .procurement-table-frame thead th { position: sticky; top: 0; z-index: 1; background: #f6f8fb; }
 .purchase-table th, .purchase-table td { text-align: left; }

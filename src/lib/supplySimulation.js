@@ -85,3 +85,31 @@ export function simulateSupply(dataset, { startDate, horizonDays = 30, deliverie
 export function compareSupply(dataset, options) {
   return { baseline: simulateSupply(dataset, { startDate: options.startDate, horizonDays: options.horizonDays }), scenario: simulateSupply(dataset, options) };
 }
+
+// Keep quantities in their own units. Counts can be compared across materials,
+// but adding gallons, rolls and pieces would make a misleading headline.
+export function summarizeSupplyComparison(baseline, scenario, options = {}) {
+  const basePurchases = new Map(baseline.purchases.map((row) => [row.id, row]));
+  const baseInventory = new Map(baseline.inventory.map((row) => [row.code, row]));
+  const baseNeeds = new Map(baseline.cecoMaterials.map((row) => [`${row.ceco}:${row.code}`, row]));
+  const adjustedPurchases = scenario.purchases.filter((row) => Object.keys(options.deliveries?.[row.id] || {}).length > 0).map((row) => ({
+    ...row,
+    baseQuantity: basePurchases.get(row.id)?.quantity || 0,
+    notArriving: round(row.remaining - row.quantity)
+  }));
+  const changedInventory = scenario.inventory.filter((row) => {
+    const base = baseInventory.get(row.code);
+    return base && (row.closing !== base.closing || row.receipts !== base.receipts || row.replenish !== base.replenish);
+  });
+  const changedNeeds = scenario.cecoMaterials.filter((row) => {
+    const base = baseNeeds.get(`${row.ceco}:${row.code}`);
+    return base && (row.onTime !== base.onTime || row.missing !== base.missing || row.coverageDate !== base.coverageDate);
+  });
+  const arrivingInPeriod = (value) => value.purchases.filter((row) => row.quantity > 0 && row.arrival && row.arrival <= value.endDate).length;
+  return {
+    adjustedPurchases, changedInventory, changedNeeds,
+    baseArrivingOrders: arrivingInPeriod(baseline), scenarioArrivingOrders: arrivingInPeriod(scenario),
+    baselineHasUndatedRequests: adjustedPurchases.some((row) => row.status === 'requested' && !basePurchases.get(row.id)?.arrival),
+    hasOperatingChange: changedInventory.length > 0 || changedNeeds.length > 0
+  };
+}
