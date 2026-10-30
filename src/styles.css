@@ -1450,6 +1450,9 @@ pre,
 .supply-edit-list tbody tr.selected, .supply-edit-list tbody tr.selected:hover { background: #fff6ef; }
 .supply-edit-list tbody tr.selected td:first-child { box-shadow: inset 3px 0 #df5716; }
 .supply-edit-list input[type=number], .supply-edit-list input[type=date] { font-size: 12px; }
+.supply-row-amount { display: flex; align-items: center; gap: 6px; min-width: 150px; }
+.supply-row-amount select { width: 66px; min-width: 66px; padding-inline: 6px; font-size: 12px; }
+.supply-row-amount input[type=number] { width: 78px; min-width: 78px; padding-inline: 7px; }
 .supply-run { border-top: 1px solid var(--supply-border); padding-top: 20px; justify-content: flex-end; }
 .supply-run .planning-primary { padding: 12px 22px; font-size: 13px; }
 .supply-history { margin-top: 22px; }

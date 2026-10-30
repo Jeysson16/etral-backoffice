@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scenarioRecord, reuseScenario, changeSelectedDeliveries, reduceSelectedStock } from '../src/lib/supplyScenarios.js';
+import { scenarioRecord, reuseScenario, changeSelectedDeliveries, reduceSelectedStock, reduceSelectedStockByQuantity } from '../src/lib/supplyScenarios.js';
 
 test('un escenario guarda opciones y resultados originales, sin referencias al dataset vivo', () => {
   const run = { options: { startDate: '2026-10-29', horizonDays: 30, deliveries: { a: { delayDays: 3 } } }, baseline: { inventory: [{ physical: 2 }] }, scenario: { inventory: [{ physical: 1 }] }, dataset: { private: 'not stored' } };
@@ -39,4 +39,14 @@ test('reducción masiva respeta cantidad y unidad de cada material, sin inventar
   assert.deepEqual(reduceSelectedStock({ other: 1 }, materials, 50), { other: 1, kg: -1.2, und: -4 });
   assert.throws(() => reduceSelectedStock({}, materials, 101));
   assert.throws(() => reduceSelectedStock({}, materials, ''));
+});
+test('edición masiva permite cantidades exactas y cambia entre medidas sin mezclar valores', () => {
+  const quantities = changeSelectedDeliveries({ a: { percent: 50 }, b: {} }, ['a'], { quantity: 2 });
+  assert.deepEqual(quantities.a, { quantity: 2, missed: false });
+  const percentages = changeSelectedDeliveries(quantities, ['a'], { percent: 25 });
+  assert.deepEqual(percentages.a, { percent: 25, missed: false });
+  assert.deepEqual(percentages.b, {});
+  const materials = [{ code: 'M1', physical: 4 }, { code: 'M2', physical: 8 }];
+  assert.deepEqual(reduceSelectedStockByQuantity({ other: 1 }, materials, 2), { other: 1, M1: -2, M2: -2 });
+  assert.throws(() => reduceSelectedStockByQuantity({}, materials, 5), /M1/);
 });

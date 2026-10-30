@@ -14,15 +14,18 @@ export function simulateSupply(dataset, { startDate, horizonDays = 30, deliverie
     const change = deliveries[purchase.id];
     const remaining = round(Number(purchase.quantity) - Number(purchase.received_quantity || 0));
     const percent = Number(change?.percent ?? 100);
+    if (change?.quantity === '') throw new Error(`${purchase.material_code}: indica la cantidad que llega.`);
+    const exactQuantity = change?.quantity == null ? null : Number(change.quantity);
     const delay = Number(change?.delayDays ?? 0);
     if (!Number.isFinite(percent) || percent < 0 || percent > 100 || !Number.isInteger(delay) || delay < 0) throw new Error('Usa una entrega de 0 a 100% y días de retraso enteros, desde cero.');
+    if (exactQuantity !== null && (!Number.isFinite(exactQuantity) || exactQuantity < 0 || exactQuantity > remaining)) throw new Error(`${purchase.material_code}: la cantidad que llega debe estar entre 0 y ${remaining}.`);
     const expected = change && Object.hasOwn(change, 'date') ? change.date : (purchase.status === 'ordered' ? purchase.expected_date : null);
     if (expected && !dateValid(expected)) throw new Error('La fecha de ingreso no es válida.');
     const arrival = expected ? shiftDate(expected, delay) : null;
-    const quantity = change?.missed ? 0 : round(remaining * percent / 100);
+    const quantity = change?.missed ? 0 : exactQuantity === null ? round(remaining * percent / 100) : round(exactQuantity);
     const usable = !!arrival && arrival >= startDate && quantity > 0;
     return { ...purchase, remaining, arrival, quantity: usable ? quantity : 0,
-      outcome: change?.missed || percent === 0 ? 'No ingresa' : !arrival ? 'Sin fecha de ingreso' : arrival < startDate ? 'Fecha vencida sin recepción' : arrival > endDate ? 'Fuera del horizonte' : percent < 100 ? 'Ingreso parcial' : delay > 0 ? 'Ingreso con retraso' : purchase.status === 'requested' ? 'Ingreso supuesto para la solicitud' : 'Ingreso previsto' };
+      outcome: change?.missed || quantity === 0 ? 'No ingresa' : !arrival ? 'Sin fecha de ingreso' : arrival < startDate ? 'Fecha vencida sin recepción' : arrival > endDate ? 'Fuera del horizonte' : quantity < remaining ? 'Ingreso parcial' : delay > 0 ? 'Ingreso con retraso' : purchase.status === 'requested' ? 'Ingreso supuesto para la solicitud' : 'Ingreso previsto' };
   });
   const cecoMaterials = [];
   const inventory = (dataset.inventory || []).map((material) => {

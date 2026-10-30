@@ -31,6 +31,14 @@ test('no ingreso y recepción parcial producen faltantes reales en el escenario'
   assert.equal(simulateSupply(fixture(), { ...options, deliveries: { R1: { missed: true } } }).cecoMaterials[0].missing, 4);
   assert.equal(simulateSupply(fixture(), { ...options, deliveries: { R1: { percent: 50 } } }).cecoMaterials[0].missing, 2);
 });
+test('la cantidad exacta de un pedido determina el ingreso parcial', () => {
+  const result = simulateSupply(fixture(), { ...options, deliveries: { R1: { quantity: 3 } } });
+  assert.equal(result.purchases[0].quantity, 3);
+  assert.equal(result.purchases[0].outcome, 'Ingreso parcial');
+  assert.equal(result.cecoMaterials[0].missing, 1);
+  assert.throws(() => simulateSupply(fixture(), { ...options, deliveries: { R1: { quantity: 5 } } }), /cantidad que llega/);
+  assert.throws(() => simulateSupply(fixture(), { ...options, deliveries: { R1: { quantity: '' } } }), /indica la cantidad/);
+});
 test('solicitud sin OC requiere fecha hipotética y no afecta la base', () => {
   const data = fixture(); data.purchaseRequests[0].status = 'requested';
   const result = compareSupply(data, { ...options, deliveries: { R1: { date: '2026-10-30' } } });

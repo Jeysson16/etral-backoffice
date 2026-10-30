@@ -25,11 +25,24 @@ export function reuseScenario(record, dataset, today) {
 
 export function changeSelectedDeliveries(current, ids, patch) {
   const changes = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== '' && value != null));
-  return { ...current, ...Object.fromEntries(ids.map((id) => [id, { ...current[id], ...changes, missed: false }])) };
+  return { ...current, ...Object.fromEntries(ids.map((id) => {
+    const previous = { ...current[id] };
+    if (Object.hasOwn(changes, 'quantity')) delete previous.percent;
+    if (Object.hasOwn(changes, 'percent')) delete previous.quantity;
+    return [id, { ...previous, ...changes, missed: false }];
+  })) };
 }
 
 export function reduceSelectedStock(current, materials, percent) {
   const amount = Number(percent);
   if (percent === '' || !Number.isFinite(amount) || amount < 0 || amount > 100) throw new Error('La reducción debe estar entre 0 y 100%.');
   return { ...current, ...Object.fromEntries(materials.map((row) => [row.code, -Math.round(Number(row.physical) * amount / 100 * 1000) / 1000])) };
+}
+
+export function reduceSelectedStockByQuantity(current, materials, quantity) {
+  const amount = Number(quantity);
+  if (quantity === '' || !Number.isFinite(amount) || amount < 0) throw new Error('Indica una cantidad válida para reducir el stock.');
+  const insufficient = materials.find((row) => Number(row.physical) < amount);
+  if (insufficient) throw new Error(`${insufficient.code}: el stock físico es menor que ${amount}.`);
+  return { ...current, ...Object.fromEntries(materials.map((row) => [row.code, -amount])) };
 }

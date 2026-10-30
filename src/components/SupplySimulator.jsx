@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { compareSupply, pendingPurchases } from '../lib/supplySimulation.js';
-import { scenarioRecord, reuseScenario, changeSelectedDeliveries, reduceSelectedStock } from '../lib/supplyScenarios.js';
+import { scenarioRecord, reuseScenario, changeSelectedDeliveries, reduceSelectedStock, reduceSelectedStockByQuantity } from '../lib/supplyScenarios.js';
 import { toLocalDateTimeInput } from '../lib/dateTime.js';
 
 const number = (value) => Number(value || 0).toLocaleString('es-PE', { maximumFractionDigits: 3 });
@@ -9,21 +9,26 @@ const stamp = (value) => new Intl.DateTimeFormat('es-PE', { dateStyle: 'short', 
 const reference = (row) => `${row.order_number ? `OC ${row.order_number} · ` : ''}SC-${String(row.request_number).padStart(5, '0')}`;
 const today = () => toLocalDateTimeInput(new Date().toISOString()).slice(0, 10);
 const remove = (object, key) => Object.fromEntries(Object.entries(object).filter(([id]) => id !== key));
+const draftKey = (userId) => `etral.supply.draft.v1.${userId || 'local'}`;
+function readDraft(userId) { try { return JSON.parse(localStorage.getItem(draftKey(userId)) || '{}'); } catch { return {}; } }
 
-export default function SupplySimulator({ dataset, dataReady, repository }) {
+export default function SupplySimulator({ dataset, dataReady, repository, userId }) {
   const [startDate, setStartDate] = useState(today);
-  const [horizonDays, setHorizonDays] = useState(30);
-  const [name, setName] = useState('');
-  const [deliveries, setDeliveries] = useState({});
-  const [stockAdjustments, setStockAdjustments] = useState({});
+  const [horizonDays, setHorizonDays] = useState(() => readDraft(userId).horizonDays ?? 30);
+  const [name, setName] = useState(() => readDraft(userId).name ?? '');
+  const [deliveries, setDeliveries] = useState(() => readDraft(userId).deliveries ?? {});
+  const [stockAdjustments, setStockAdjustments] = useState(() => readDraft(userId).stockAdjustments ?? {});
   const [query, setQuery] = useState('');
   const [ceco, setCeco] = useState('');
-  const [editor, setEditor] = useState('purchases');
+  const [editor, setEditor] = useState(() => readDraft(userId).editor ?? 'purchases');
   const [page, setPage] = useState('configure');
   const [tab, setTab] = useState('cecos');
   const [onlyIssues, setOnlyIssues] = useState(false);
-  const [batch, setBatch] = useState({ date: '', delayDays: '', percent: '' });
-  const [loss, setLoss] = useState('');
+  const [batch, setBatch] = useState(() => readDraft(userId).batch ?? { date: '', delayDays: '', percent: '', quantity: '' });
+  const [loss, setLoss] = useState(() => readDraft(userId).loss ?? '');
+  const [deliveryMode, setDeliveryMode] = useState(() => readDraft(userId).deliveryMode ?? 'percent');
+  const [stockMode, setStockMode] = useState(() => readDraft(userId).stockMode ?? 'percent');
+  const [stockQuantity, setStockQuantity] = useState(() => readDraft(userId).stockQuantity ?? '');
   const [run, setRun] = useState(null);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -36,6 +41,7 @@ export default function SupplySimulator({ dataset, dataReady, repository }) {
     repository.listSupplyScenarios().then((rows) => { if (live) setHistory(rows); }).catch((err) => { if (live) setHistoryError(err.message); }).finally(() => { if (live) setLoadingHistory(false); });
     return () => { live = false; };
   }, [repository]);
+  useEffect(() => { try { localStorage.setItem(draftKey(userId), JSON.stringify({ name, horizonDays, deliveries, stockAdjustments, editor, batch, loss, deliveryMode, stockMode, stockQuantity })); } catch { return; } }, [userId, name, horizonDays, deliveries, stockAdjustments, editor, batch, loss, deliveryMode, stockMode, stockQuantity]);
   const purchases = pendingPurchases(dataset);
   const materials = new Map(dataset.inventory.map((row) => [row.code, row]));
   const matches = (row, inventory = materials) => `${row.code || row.material_code} ${row.description || inventory.get(row.material_code)?.description || ''} ${row.request_number != null ? reference(row) : ''}`.toLowerCase().includes(query.toLowerCase());
@@ -54,13 +60,22 @@ export default function SupplySimulator({ dataset, dataReady, repository }) {
     if (editor === 'purchases') setDeliveries((current) => allSelected ? Object.fromEntries(Object.entries(current).filter(([id]) => !selectedVisible.includes(id))) : { ...current, ...Object.fromEntries(selectedVisible.map((id) => [id, current[id] || {}])) });
     else setStockAdjustments((current) => allSelected ? Object.fromEntries(Object.entries(current).filter(([id]) => !selectedVisible.includes(id))) : { ...current, ...Object.fromEntries(selectedVisible.map((id) => [id, current[id] ?? 0])) });
   }
-  function editDelivery(id, key, value) { setDeliveries((current) => ({ ...current, [id]: { ...current[id], [key]: value, missed: false } })); }
+  function editDelivery(id, key, value) { setDeliveries((current) => { const next = { ...current[id] }; if (key === 'quantity') delete next.percent; if (key === 'percent') delete next.quantity; return { ...current, [id]: { ...next, [key]: value, missed: false } }; }); }
   function applyBatch() {
     try {
       if (editor === 'purchases') {
-        if (!Object.values(batch).some((value) => value !== '')) throw new Error('Indica el cambio que quieres aplicar.');
-        setDeliveries((current) => changeSelectedDeliveries(current, selectedIds, batch));
-      } else setStockAdjustments((current) => reduceSelectedStock(current, dataset.inventory.filter((row) => selectedCodes.includes(row.code)), loss));
+        const patch = { date: batch.date, delayDays: batch.delayDays, [deliveryMode]: batch[deliveryMode] };
+        if (!Object.values(patch).some((value) => value !== '')) throw new Error('Indica el cambio que quieres aplicar.');
+        if (deliveryMode === 'quantity' && batch.quantity !== '') {
+          const amount = Number(batch.quantity);
+          const exceeds = purchases.find((row) => selectedIds.includes(row.id) && amount > Number(row.quantity) - Number(row.received_quantity || 0));
+          if (!Number.isFinite(amount) || amount < 0 || exceeds) throw new Error(exceeds ? `${reference(exceeds)}: quedan menos de ${amount} por recibir.` : 'Indica una cantidad válida.');
+        }
+        setDeliveries((current) => changeSelectedDeliveries(current, selectedIds, patch));
+      } else {
+        const selectedMaterials = dataset.inventory.filter((row) => selectedCodes.includes(row.code));
+        setStockAdjustments(stockMode === 'quantity' ? reduceSelectedStockByQuantity(stockAdjustments, selectedMaterials, stockQuantity) : reduceSelectedStock(stockAdjustments, selectedMaterials, loss));
+      }
       setError('');
     } catch (err) { setError(err.message); }
   }
@@ -78,7 +93,7 @@ export default function SupplySimulator({ dataset, dataReady, repository }) {
     try {
       for (const row of purchases.filter((item) => selectedIds.includes(item.id))) {
         const change = deliveries[row.id];
-        if (Number(change.percent ?? 100) > 0 && !change.missed && !(change.date || (row.status === 'ordered' && row.expected_date))) throw new Error(`${reference(row)}: indica la fecha de llegada o usa 0% si no ingresa.`);
+        if (Number(change.quantity ?? change.percent ?? 100) > 0 && !change.missed && !(change.date || (row.status === 'ordered' && row.expected_date))) throw new Error(`${reference(row)}: indica la fecha de llegada o usa 0 si no ingresa.`);
       }
       value = { ...compareSupply(dataset, options), options: structuredClone(options), signature, dataset,
         name: name.trim() || `Escenario ${stamp(new Date().toISOString())}` };
@@ -106,7 +121,7 @@ export default function SupplySimulator({ dataset, dataReady, repository }) {
     setName(`Copia de ${saved.name}`.slice(0, 100)); setRun(null); setPage('configure'); setQuery(''); setCeco('');
     setNotice(`Ajustes cargados para hoy.${loaded.omitted ? ` ${loaded.omitted} registros ya no están disponibles y se omitieron.` : ''} Pulsa «Simular y guardar» para obtener un nuevo resultado.`);
   }
-  function newScenario() { setStartDate(today()); setHorizonDays(30); setDeliveries({}); setStockAdjustments({}); setName(''); setRun(null); setPage('configure'); setQuery(''); setCeco(''); setBatch({ date: '', delayDays: '', percent: '' }); setLoss(''); setError(''); setNotice(''); }
+  function newScenario() { setStartDate(today()); setHorizonDays(30); setDeliveries({}); setStockAdjustments({}); setName(''); setRun(null); setPage('configure'); setQuery(''); setCeco(''); setBatch({ date: '', delayDays: '', percent: '', quantity: '' }); setLoss(''); setStockQuantity(''); setError(''); setNotice(''); }
   const result = run?.scenario;
   const resultMaterials = new Map((result?.inventory || []).map((row) => [row.code, row]));
   const cecoRows = result?.cecoMaterials.filter((row) => (!ceco || row.ceco === ceco) && matches(row, resultMaterials) && (!onlyIssues || row.state !== 'A tiempo')) || [];
@@ -122,12 +137,12 @@ export default function SupplySimulator({ dataset, dataReady, repository }) {
         <div className="purchase-filters supply-editor-tabs"><button className={editor === 'purchases' ? 'active' : ''} onClick={() => setEditor('purchases')}>Pedidos ({selectedIds.length})</button><button className={editor === 'inventory' ? 'active' : ''} onClick={() => setEditor('inventory')}>Inventario ({selectedCodes.length})</button></div>
         <div className="supply-controls"><label>Buscar<input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Material o pedido" /></label><label>CECO<select value={ceco} onChange={(e) => setCeco(e.target.value)}><option value="">Todos</option>{activeOrders.map((row) => <option key={row.ceco} value={row.ceco}>{row.ceco} · {dataset.bodyTypes.find((product) => product.id === row.bodyTypeId)?.name}</option>)}</select></label></div>
         <div className="supply-batch"><strong>Aplicar a {editor === 'purchases' ? selectedIds.length : selectedCodes.length} seleccionados</strong>
-          {editor === 'purchases' ? <><label>Llegada<input type="date" aria-label="Llegada para seleccionados" min={startDate} value={batch.date} onChange={(e) => setBatch({ ...batch, date: e.target.value })} /></label><label>Retraso (días)<input type="number" min="0" step="1" aria-label="Retraso para seleccionados" value={batch.delayDays} onChange={(e) => setBatch({ ...batch, delayDays: e.target.value })} /></label><label>Llega (%)<input type="number" min="0" max="100" aria-label="Porcentaje para seleccionados" value={batch.percent} onChange={(e) => setBatch({ ...batch, percent: e.target.value })} /></label></> : <label>Reducir stock (%)<input type="number" min="0" max="100" value={loss} onChange={(e) => setLoss(e.target.value)} /></label>}
+          {editor === 'purchases' ? <><label>Llegada<input type="date" aria-label="Llegada para seleccionados" min={startDate} value={batch.date} onChange={(e) => setBatch({ ...batch, date: e.target.value })} /></label><label>Retraso (días)<input type="number" min="0" step="1" aria-label="Retraso para seleccionados" value={batch.delayDays} onChange={(e) => setBatch({ ...batch, delayDays: e.target.value })} /></label><label>Medida<select value={deliveryMode} onChange={(e) => setDeliveryMode(e.target.value)}><option value="percent">Porcentaje</option><option value="quantity">Cantidad</option></select></label>{deliveryMode === 'percent' ? <label>Llega (%)<input type="number" min="0" max="100" aria-label="Porcentaje para seleccionados" value={batch.percent} onChange={(e) => setBatch({ ...batch, percent: e.target.value })} /></label> : <label>Llega (cantidad)<input type="number" min="0" step="0.001" aria-label="Cantidad para seleccionados" value={batch.quantity ?? ''} onChange={(e) => setBatch({ ...batch, quantity: e.target.value })} /></label>}</> : <><label>Medida<select value={stockMode} onChange={(e) => setStockMode(e.target.value)}><option value="percent">Porcentaje</option><option value="quantity">Cantidad</option></select></label>{stockMode === 'percent' ? <label>Reducir stock (%)<input type="number" min="0" max="100" value={loss} onChange={(e) => setLoss(e.target.value)} /></label> : <label>Reducir cantidad<input type="number" min="0" step="0.001" value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} /></label>}</>}
           <button className="planning-primary" disabled={!(editor === 'purchases' ? selectedIds.length : selectedCodes.length)} onClick={applyBatch}>Aplicar</button>
         </div>
-        <p className="supply-hint">{editor === 'purchases' ? 'Selecciona pedidos y edita sus filas. Llega: 100% = todo · 50% = mitad · 0% = no ingresa.' : 'Selecciona materiales y cambia la cantidad: −5 resta cinco; +5 añade cinco, en la unidad de cada material.'}</p>
-        <div className="table-scroll supply-edit-list"><table><thead><tr><th><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allSelected} disabled={!selectedVisible.length} onChange={selectVisible} /></th>{editor === 'purchases' ? <><th>Pedido / material</th><th>CECO · pendiente</th><th>Llegada</th><th>Retraso (días)</th><th>Llega (%)</th></> : <><th>Material</th><th>Stock actual</th><th>Cambio de cantidad</th></>}</tr></thead><tbody>
-          {editor === 'purchases' ? visiblePurchases.map((row) => { const selected = Object.hasOwn(deliveries, row.id); const change = deliveries[row.id] || {}; return <tr className={selected ? 'selected' : ''} key={row.id}><td><input type="checkbox" aria-label={`Seleccionar ${reference(row)}`} checked={selected} onChange={() => setDeliveries((current) => selected ? remove(current, row.id) : { ...current, [row.id]: {} })} /></td><td><strong>{reference(row)} · {row.material_code}</strong><small>{materials.get(row.material_code)?.description}</small></td><td>{row.cecos?.join(', ') || 'Inventario'}<small>{number(Number(row.quantity) - Number(row.received_quantity || 0))} {materials.get(row.material_code)?.unit}</small></td><td><input type="date" aria-label={`Llegada ${reference(row)}`} min={startDate} disabled={!selected} value={change.date ?? row.expected_date ?? ''} onChange={(e) => editDelivery(row.id, 'date', e.target.value)} />{!row.expected_date && !change.date && <small>Sin fecha</small>}</td><td><input type="number" aria-label={`Retraso ${reference(row)}`} min="0" step="1" disabled={!selected} value={change.delayDays ?? 0} onChange={(e) => editDelivery(row.id, 'delayDays', e.target.value)} /></td><td><input type="number" aria-label={`Porcentaje ${reference(row)}`} min="0" max="100" disabled={!selected} value={change.missed ? 0 : change.percent ?? 100} onChange={(e) => editDelivery(row.id, 'percent', e.target.value)} /></td></tr>; }) : visibleMaterials.map((row) => { const selected = Object.hasOwn(stockAdjustments, row.code); return <tr className={selected ? 'selected' : ''} key={row.code}><td><input type="checkbox" aria-label={`Seleccionar ${row.code}`} checked={selected} onChange={() => setStockAdjustments((current) => selected ? remove(current, row.code) : { ...current, [row.code]: 0 })} /></td><td><strong>{row.code}</strong><small>{row.description}</small></td><td>{number(row.physical)} {row.unit}</td><td><input type="number" aria-label={`Cambio ${row.code}`} step="0.001" min={-Number(row.physical)} disabled={!selected} value={stockAdjustments[row.code] ?? 0} onChange={(e) => setStockAdjustments((current) => ({ ...current, [row.code]: e.target.value }))} /></td></tr>; })}
+        <p className="supply-hint">{editor === 'purchases' ? 'Selecciona pedidos y edita cuánto llega por porcentaje o cantidad. Cero significa que no ingresa.' : 'Selecciona materiales y reduce el stock por porcentaje o cantidad. También puedes editar cada fila: −5 resta cinco; +5 añade cinco.'}</p>
+        <div className="table-scroll supply-edit-list"><table><thead><tr><th><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allSelected} disabled={!selectedVisible.length} onChange={selectVisible} /></th>{editor === 'purchases' ? <><th>Pedido / material</th><th>CECO · pendiente</th><th>Llegada</th><th>Retraso (días)</th><th>Llega (% o cantidad)</th></> : <><th>Material</th><th>Stock actual</th><th>Cambio de cantidad</th></>}</tr></thead><tbody>
+          {editor === 'purchases' ? visiblePurchases.map((row) => { const selected = Object.hasOwn(deliveries, row.id); const change = deliveries[row.id] || {}; return <tr className={selected ? 'selected' : ''} key={row.id}><td><input type="checkbox" aria-label={`Seleccionar ${reference(row)}`} checked={selected} onChange={() => setDeliveries((current) => selected ? remove(current, row.id) : { ...current, [row.id]: {} })} /></td><td><strong>{reference(row)} · {row.material_code}</strong><small>{materials.get(row.material_code)?.description}</small></td><td>{row.cecos?.join(', ') || 'Inventario'}<small>{number(Number(row.quantity) - Number(row.received_quantity || 0))} {materials.get(row.material_code)?.unit}</small></td><td><input type="date" aria-label={`Llegada ${reference(row)}`} min={startDate} disabled={!selected} value={change.date ?? row.expected_date ?? ''} onChange={(e) => editDelivery(row.id, 'date', e.target.value)} />{!row.expected_date && !change.date && <small>Sin fecha</small>}</td><td><input type="number" aria-label={`Retraso ${reference(row)}`} min="0" step="1" disabled={!selected} value={change.delayDays ?? 0} onChange={(e) => editDelivery(row.id, 'delayDays', e.target.value)} /></td><td><div className="supply-row-amount"><select aria-label={`Medida ${reference(row)}`} disabled={!selected} value={change.quantity != null ? 'quantity' : 'percent'} onChange={(e) => setDeliveries((current) => { const next = { ...current[row.id] }; delete next.quantity; delete next.percent; const pending = Number(row.quantity) - Number(row.received_quantity || 0); if (e.target.value === 'quantity') next.quantity = Math.round(pending * Number(current[row.id]?.percent ?? 100) / 100 * 1000) / 1000; else next.percent = pending ? Math.round(Number(current[row.id]?.quantity ?? pending) / pending * 10000) / 100 : 0; return { ...current, [row.id]: next }; })}><option value="percent">%</option><option value="quantity">{materials.get(row.material_code)?.unit || 'cant.'}</option></select><input type="number" aria-label={`Llega ${reference(row)}`} min="0" max={change.quantity != null ? Number(row.quantity) - Number(row.received_quantity || 0) : 100} step={change.quantity != null ? '0.001' : '1'} disabled={!selected} value={change.missed ? 0 : change.quantity ?? change.percent ?? 100} onChange={(e) => editDelivery(row.id, change.quantity != null ? 'quantity' : 'percent', e.target.value)} /></div></td></tr>; }) : visibleMaterials.map((row) => { const selected = Object.hasOwn(stockAdjustments, row.code); return <tr className={selected ? 'selected' : ''} key={row.code}><td><input type="checkbox" aria-label={`Seleccionar ${row.code}`} checked={selected} onChange={() => setStockAdjustments((current) => selected ? remove(current, row.code) : { ...current, [row.code]: 0 })} /></td><td><strong>{row.code}</strong><small>{row.description}</small></td><td>{number(row.physical)} {row.unit}</td><td><input type="number" aria-label={`Cambio ${row.code}`} step="0.001" min={-Number(row.physical)} disabled={!selected} value={stockAdjustments[row.code] ?? 0} onChange={(e) => setStockAdjustments((current) => ({ ...current, [row.code]: e.target.value }))} /></td></tr>; })}
         </tbody></table></div>{!selectedVisible.length && <p>No hay registros para este filtro.</p>}
         <div className="section-actions supply-run"><button className="planning-primary" disabled={!dataReady || busy} onClick={simulate}>{busy ? 'Guardando…' : 'Simular y guardar'}</button><button className="text-button" onClick={() => { setDeliveries({}); setStockAdjustments({}); }} disabled={busy}>Quitar ajustes</button></div>
       </>}
