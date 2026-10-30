@@ -213,6 +213,12 @@ select option { color: #1f2937; background: #fff; font-weight: 500; }
 @keyframes confirm-rise-in { from { opacity: 0; transform: translateY(8px) scale(.985); } }
 
 .table-scroll { overflow-x: auto; }
+.coverage-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; padding: 0 22px 18px; font-size: 13px; color: var(--muted); }
+.coverage-controls > input { flex: 1 1 250px; max-width: 420px; }
+.coverage-controls label { display: flex; align-items: center; gap: 8px; }
+.coverage-controls input[type="checkbox"] { width: auto; }
+.coverage-table { max-height: 360px; overflow: auto; }
+.coverage-table th { position: sticky; top: 0; z-index: 1; background: #f6f8fb; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th { background: #f7f8fa; color: #687386; font-size: 11px; text-transform: uppercase; letter-spacing: .045em; text-align: left; padding: 11px 14px; border-top: 1px solid #e9edf1; border-bottom: 1px solid #e3e7ec; white-space: nowrap; }
 td { padding: 13px 14px; border-bottom: 1px solid #edf0f3; color: #3a4351; vertical-align: middle; }

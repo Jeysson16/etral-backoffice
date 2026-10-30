@@ -536,7 +536,7 @@ export default function App() {
 
         <div className="page-content">
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} onUpdateMovementTimestamp={(id, timestamp) => mutate(() => repo.updateInventoryMovementTimestamp(id, timestamp), "Fecha y hora del movimiento actualizadas.")} />}
-          {view === "indicators" && <IndicatorsView dataset={dataset} openDrawer={setDrawer} />}
+          {view === "indicators" && <IndicatorsView dataset={dataset} openDrawer={setDrawer} setView={setView} />}
           {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} isRunning={simulationRunning} />}
           {view === "orders" && <OrdersView dataset={dataset} onRunMrp={() => setView("mrp")} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), patch.updateTimestamps ? "Fecha y hora de la actividad actualizadas." : "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), patch.ceco && patch.ceco !== ceco ? `CECO renombrado a ${patch.ceco}.` : "Datos de la orden actualizados.")} onDeleteOrder={(ceco) => mutate(() => repo.deleteOrder(ceco), `CECO ${ceco} eliminado y reservas pendientes liberadas.`)} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} onDeleteAssignment={(id) => mutate(() => repo.deleteAssignment(id), "Asignación eliminada.")} onDeleteOperation={(id) => mutate(() => repo.deleteOperation(id), "Parte diario eliminado.")} />}
           {view === "mrp" && <MaterialMrpView dataset={dataset} initialCode={mrpMaterialCode} onPurchases={() => setView("purchases")} onRegisterReceipt={(code, quantity) => setDrawer({ type: "movement", materialCode: code, quantity })} />}
@@ -620,8 +620,7 @@ function Overview({ dataset, kpis, heatmap, mrp, setView, onUpdateMovementTimest
   const [dateRange, setDateRange] = useState(availableRange);
   useEffect(() => setDateRange(availableRange), [availableRange.start, availableRange.end]);
   const report = useMemo(() => calculateProductivityReport(dataset, dateRange.start, dateRange.end), [dataset, dateRange]);
-  const critical = heatmap.filter((item) => item.tone !== "ok");
-  const priorityOrders = [...dataset.orders].sort((a, b) => a.priority - b.priority).slice(0, 4);
+  const priorityOrders = dataset.orders.filter((order) => order.active !== false && Number(order.progress) < 100).sort((a, b) => a.priority - b.priority).slice(0, 4);
 
   function exportReport() {
     exportIndicatorsWorkbook(dataset, report, dateRange, "month");
@@ -645,35 +644,20 @@ function Overview({ dataset, kpis, heatmap, mrp, setView, onUpdateMovementTimest
 
     <section className="metric-grid four">
       <Metric label="Órdenes activas" value={kpis.activeOrders} detail={`${kpis.dueSoon} vencen en 7 días`} />
-      <Metric label="CECO bloqueados" value={kpis.blocked} detail="Requieren intervención" tone={kpis.blocked ? "danger" : "success"} />
-      <Metric label="Materiales en riesgo" value={critical.length} detail={`${mrp.alerts.length} afectaciones por CECO`} tone={critical.length ? "warning" : "success"} />
+      <Metric label="CECO terminados" value={dataset.orders.filter((order) => Number(order.progress) >= 100).length} detail="Producción completada" />
+      <Metric label="Materiales registrados" value={dataset.inventory.length} detail="Cobertura y reposición en Indicadores" />
       <Metric label="Horas reportadas" value={`${dataset.operations.reduce((sum, item) => sum + item.totalHours, 0)} h`} detail="Últimos partes diarios" />
     </section>
 
-    <CurrentMaterialAlerts dataset={dataset} heatmap={heatmap} mrp={mrp} setView={setView} />
-
-    <ProductivityDashboard report={report} onOpen={() => setView("indicators")} />
-
-    <section className="split-grid overview-grid">
+    <section>
       <div className="panel">
-        <SectionHeader eyebrow="Prioridad de hoy" title="Órdenes que requieren seguimiento" action={<button className="text-button" onClick={() => setView("orders")}>Ver producción →</button>} />
+        <SectionHeader eyebrow="Producción" title="Órdenes en proceso" action={<button className="text-button" onClick={() => setView("orders")}>Ver producción →</button>} />
         <div className="order-list">
           {priorityOrders.map((order) => <article key={order.ceco}>
             <div className="order-index">{String(order.priority).padStart(2, "0")}</div>
             <div className="order-main"><strong>CECO {order.ceco}</strong><span>{productOf(dataset, order.bodyTypeId)?.name}</span></div>
             <div className="order-stage"><span>{stageOf(dataset, order.stageId)?.name}</span><small>Entrega {formatDate(order.dueDate)}</small></div>
-            <StatusPill status={order.status} />
-          </article>)}
-        </div>
-      </div>
-      <div className="panel">
-        <SectionHeader eyebrow="Excepciones MRP" title="Stock que limita el plan" action={<button className="text-button" onClick={() => setView("inventory")}>Abrir inventario →</button>} />
-        <div className="risk-list">
-          {critical.length === 0 && <EmptyState text="No hay materiales bajo el stock de seguridad." />}
-          {critical.slice(0, 5).map((item) => <article key={item.code}>
-            <span className={`risk-marker ${item.tone}`} />
-            <div><strong>{item.code} · {item.description}</strong><small>Físico {item.physical} · Requerido {item.required} · Proyección {item.projected} {item.unit}</small></div>
-            <b>{item.projected < 0 ? `Faltan ${Math.abs(item.projected)}` : "Bajo mínimo"}</b>
+            <span>{formatIndicator(Number(order.progress || 0), "%")} de avance</span>
           </article>)}
         </div>
       </div>
@@ -683,7 +667,7 @@ function Overview({ dataset, kpis, heatmap, mrp, setView, onUpdateMovementTimest
       <SectionHeader eyebrow="Flujo real" title="Carga actual por fase" detail="Cada CECO se muestra únicamente en las fases definidas por la ruta de su producto." />
       <div className="stage-pipeline">
         {byOrder(dataset).map((stage) => {
-          const orders = dataset.orders.filter((order) => order.stageId === stage.id);
+          const orders = dataset.orders.filter((order) => order.active !== false && Number(order.progress) < 100 && order.stageId === stage.id);
           return <article key={stage.id} style={{ "--stage-color": stage.color }}><div><span>{stage.shortName}</span><b>{orders.length}</b></div><strong>{stage.name}</strong><small>{orders.length ? orders.map((item) => item.ceco).join(" · ") : "Sin WIP"}</small></article>;
         })}
       </div>
@@ -696,29 +680,21 @@ function Overview({ dataset, kpis, heatmap, mrp, setView, onUpdateMovementTimest
   </div>;
 }
 
-function CurrentMaterialAlerts({ dataset, heatmap, mrp, setView }) {
-  const immediate = heatmap.filter((item) => item.available < item.safety);
-  const planned = heatmap.filter((item) => item.available >= item.safety && item.projected < item.safety);
-  const alerts = [
-    ...immediate.map((item) => ({ ...item, scope: "Ahora", severity: item.available < 0 ? "critical" : "warning", projectedRisk: false, replenish: Math.max(0, item.safety - item.available) })),
-    ...planned.map((item) => ({ ...item, scope: "Con CECO abiertos", severity: item.projected < 0 ? "critical" : "warning", projectedRisk: true, replenish: Math.max(0, item.safety - item.projected) }))
-  ].sort((a, b) => (a.severity === "critical" ? 0 : 1) - (b.severity === "critical" ? 0 : 1));
-
-  return <section className="panel home-material-alerts">
-    <SectionHeader eyebrow="Alertas actuales de materiales" title="Riesgos visibles al iniciar" detail="Lectura directa de inventario, stock comprometido, mínimo y CECO abiertos cargados desde Supabase." action={<button className="text-button" onClick={() => setView("inventory")}>Ver inventario →</button>} />
-    <div className="alert-list">
-      {alerts.length === 0 && <EmptyState text="El stock disponible actual y el plan de CECO abiertos permanecen por encima del mínimo configurado." />}
-      {alerts.slice(0, 5).map((item) => {
-        const affected = mrp.alerts.filter((alert) => alert.materialCode === item.code).map((alert) => `CECO ${alert.ceco}`);
-        const linkedOrders = [...new Set(dataset.orders.filter((order) => Number(order.progress) < 100 && dataset.bom.some((piece) => piece.bodyTypeId === order.bodyTypeId && piece.materialCode === item.code)).map((order) => `CECO ${order.ceco}`))];
-        const cecos = affected.length ? affected : linkedOrders;
-        return <article className={item.severity} key={item.code}>
-          <div className="alert-symbol">{item.severity === "critical" ? "!" : "△"}</div>
-          <div className="alert-content"><div><span>{item.scope}</span><strong>{item.code} · {item.description}</strong></div><p><b>Situación:</b> {item.projectedRisk ? `El plan de pedidos abiertos dejaría ${item.projected} ${item.unit}, bajo el mínimo de ${item.safety} ${item.unit}.` : `Solo hay ${item.available} ${item.unit} disponibles hoy, por debajo del mínimo de ${item.safety} ${item.unit}.`}</p><p><b>Por qué:</b> Físico {item.physical} {item.unit} − comprometido {item.committed} {item.unit}{item.projectedRisk ? ` − ${item.required} ${item.unit} requeridos por CECO abiertos` : ""}.</p>{cecos.length > 0 && <small><b>Afectados:</b> {cecos.join(" · ")}</small>}<p><b>Acción recomendada:</b> Reponer al menos {item.replenish} {item.unit} para recuperar el mínimo; revisa las reservas de los CECO indicados.</p></div>
-          <b>{item.projectedRisk ? "Riesgo del plan" : "Atención ahora"}</b>
-        </article>;
-      })}
-    </div>
+function MaterialCoverageReview({ dataset, setView }) {
+  const [query, setQuery] = useState("");
+  const [onlyPending, setOnlyPending] = useState(true);
+  const mrp = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory, dataset), [dataset]);
+  const rows = dataset.inventory.map((item) => {
+    const safety = calculateSafetyStock(item);
+    const projected = mrp.balances[item.code] ?? Number(item.physical);
+    const available = Number(item.physical) - Number(item.committed);
+    return { ...item, safety, projected, available, replenish: Math.max(0, safety - Math.min(available, projected)) };
+  }).filter((item) => (!onlyPending || item.replenish > 0) && `${item.code} ${item.description}`.toLowerCase().includes(query.toLowerCase()));
+  return <section className="panel">
+    <SectionHeader eyebrow="Seguimiento de inventario" title="Cobertura y reposición de materiales" detail="Situación actual del inventario. La demanda pendiente descuenta las entregas y las fases completadas." action={<button className="text-button" onClick={() => setView("inventory")}>Abrir inventario →</button>} />
+    <div className="coverage-controls"><input type="search" aria-label="Buscar material en cobertura" placeholder="Buscar código o material" value={query} onChange={(event) => setQuery(event.target.value)} /><label><input type="checkbox" checked={onlyPending} onChange={(event) => setOnlyPending(event.target.checked)} /> Solo materiales con reposición pendiente</label><span>{rows.length} materiales</span></div>
+    <div className="table-scroll coverage-table"><table><thead><tr><th>Material</th><th>Físico</th><th>Comprometido</th><th>Disponible</th><th>Proyectado</th><th>Stock de seguridad</th><th>Reposición necesaria</th></tr></thead><tbody>{rows.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{formatIndicator(Number(item.physical))}</td><td>{formatIndicator(Number(item.committed))}</td><td>{formatIndicator(item.available)}</td><td>{formatIndicator(item.projected)}</td><td>{formatIndicator(item.safety)}</td><td>{formatIndicator(item.replenish)} {item.unit}</td></tr>)}</tbody></table></div>
+    {rows.length === 0 && <EmptyState text="No hay materiales que coincidan con este filtro." />}
   </section>;
 }
 
@@ -796,7 +772,7 @@ function isWithinRange(value, range) {
   return Boolean(date && date >= range.start && date <= range.end);
 }
 
-function IndicatorsView({ dataset, openDrawer }) {
+function IndicatorsView({ dataset, openDrawer, setView }) {
   const availableRange = useMemo(() => availableDateRange(dataset), [dataset]);
   const [dateRange, setDateRange] = useState(availableRange);
   const [grouping, setGrouping] = useState("month");
@@ -867,6 +843,7 @@ function IndicatorsView({ dataset, openDrawer }) {
     </section>
 
     <ProductivityDashboard report={report} />
+    <MaterialCoverageReview dataset={dataset} setView={setView} />
 
     <IndicatorDetails dataset={dataset} report={report} range={dateRange} />
 
