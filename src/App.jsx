@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { initialDataset } from "./data/seed.js";
 import { calculateCecoProgress, calculateReorderPoint, calculateSafetyStock, evaluateMrp, hasSafetyStockParameters, inventoryHeatmap, materialRequirementsByStage } from "./lib/mrp.js";
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
-import { activityProgressDate, availableDateRange, calculateProductivityReport } from "./lib/productivity.js";
+import { activityProgressDate, availableDateRange, buildLiveProductivity, calculateProductivityReport } from "./lib/productivity.js";
 import IndicatorCecoSelector from "./components/IndicatorCecoSelector.jsx";
 import { scopeDatasetToThesis, thesisPostCecos } from "./lib/thesisInstrument.js";
 import { exportIndicatorsWorkbook, exportPeriodRecords } from "./lib/indicatorExports.js";
@@ -783,6 +783,11 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
   useEffect(() => setDateRange(availableRange), [availableRange.start, availableRange.end]);
 
   const report = useMemo(() => calculateProductivityReport(researchDataset, dateRange.start, dateRange.end), [researchDataset, dateRange]);
+  const today = useMemo(() => {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  }, []);
+  const liveProductivity = useMemo(() => dateRange.start <= today && today <= dateRange.end ? buildLiveProductivity(dataset, today) : [], [dataset, dateRange, today]);
   const demandByCode = useMemo(() => deriveMaterialDemand(dataset, dateRange), [dataset, dateRange]);
   const { current, previous } = report;
   const series = useMemo(() => {
@@ -834,7 +839,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
         <label>Serie<select value={grouping} onChange={(event) => setGrouping(event.target.value)}><option value="month">Mensual</option><option value="week">Semanal</option></select></label>
         <Button variant="secondary" onClick={() => setDateRange(availableRange)}>Todo el histórico</Button>
         <Button variant="secondary" onClick={() => exportPeriodRecords(researchDataset, dateRange)}>↓ Registros Excel</Button>
-        <Button onClick={() => exportIndicatorsWorkbook(researchDataset, report, dateRange, grouping)}>↓ Libro de tesis</Button>
+        <Button onClick={() => exportIndicatorsWorkbook(researchDataset, report, dateRange, grouping, liveProductivity)}>↓ Libro de tesis</Button>
       </div>
     </section>
 
@@ -851,6 +856,22 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
     </section>
 
     <ProductivityDashboard report={report} />
+    {liveProductivity.length > 0 && <section className="panel live-productivity-panel">
+      <SectionHeader eyebrow="En proceso" title="Productividad según avance" detail="El avance acredita kg equivalentes y materiales de la fase; las horas vienen de los partes registrados." action={<span className="coverage-chip">{liveProductivity.length} CECO</span>} />
+      <div className="live-productivity-list">{liveProductivity.map((row) => <article className="live-productivity-card" key={row.ceco}>
+        <header><div><strong>CECO {row.ceco}</strong><span>{dataset.bodyTypes.find((item) => item.id === row.bodyTypeId)?.name ?? "Producto"}</span></div><b>{formatIndicator(row.progress, "%", 1)}</b></header>
+        <span className="live-progress"><i style={{ width: `${row.progress}%` }} /></span>
+        <div className="live-productivity-values">
+          <div><small>kg equivalentes</small><strong>{row.equivalentWeightKg === null ? "—" : formatIndicator(row.equivalentWeightKg, " kg", 1)}</strong></div>
+          <div><small>Horas registradas</small><strong>{row.hours > 0 ? formatIndicator(row.hours, " h", 2) : "—"}</strong></div>
+          <div><small>Materiales</small><strong>{row.materialCost === null ? "—" : `S/ ${formatIndicator(row.materialCost, "", 2)}`}</strong></div>
+          <div><small>Mano de obra</small><strong>{row.laborProductivity === null ? "—" : formatIndicator(row.laborProductivity, " kg/h", 3)}</strong></div>
+          <div><small>Product. materiales</small><strong>{row.materialProductivity === null ? "—" : formatIndicator(row.materialProductivity, " kg/S/", 4)}</strong></div>
+          <div><small>Multifactorial</small><strong>{row.multifactorProductivity === null ? "—" : formatIndicator(row.multifactorProductivity, "", 3)}</strong></div>
+        </div>
+        <p>{[row.weightEstimated ? "Peso de referencia" : null, row.materialQuantityEstimated ? "Materiales según fase" : null, row.materialPricesEstimated ? "Precios estimados" : null].filter(Boolean).join(" · ")}</p>
+      </article>)}</div>
+    </section>}
     <MaterialCoverageReview dataset={dataset} setView={setView} />
 
     <IndicatorDetails dataset={researchDataset} report={report} range={dateRange} />

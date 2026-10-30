@@ -1,4 +1,4 @@
-import { calculateSafetyStock } from "./mrp.js";
+import { calculateCecoProgress, calculateSafetyStock } from "./mrp.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -59,7 +59,7 @@ export function cecoProductivityInput(order) {
 
 const workerKey = (value) => String(value ?? "").trim().toLocaleLowerCase("es");
 
-export function materialConsumptionCost(dataset, ceco, start, end) {
+export function materialConsumptionCost(dataset, ceco, start, end, { includePartialStages = false } = {}) {
   const reservations = (dataset.orderMaterialReservations ?? []).filter((row) => row.ceco === ceco && Number(row.consumedQuantity) > 0);
   const movements = (dataset.inventoryMovements ?? []).filter((row) => row.ceco === ceco && ["salida", "consumo"].includes(row.type) && inRange(row.timestamp, start, end));
   const warehouse = (dataset.warehouse ?? []).filter((row) => row.ceco === ceco && inRange(row.timestamp ?? row.date, start, end));
@@ -82,6 +82,10 @@ export function materialConsumptionCost(dataset, ceco, start, end) {
   const completedActivities = new Set((dataset.activityProgress ?? [])
     .filter((item) => item.ceco === ceco && (item.status === "completed" || Number(item.progress) >= 100))
     .map((item) => item.activityId));
+  const stageShares = includePartialStages && order
+    ? new Map(calculateCecoProgress(order, dataset.bodyTypes ?? [], dataset.stageActivities ?? [], dataset.activityProgress ?? [])
+      .stages.map((item) => [item.stageId, Math.min(1, Math.max(0, item.progress / 100))]))
+    : null;
   const stageCompleted = (stageId) => {
     if (order && orderCompletion(dataset, order).date) return true;
     const activities = (dataset.stageActivities ?? []).filter((item) => item.stageId === stageId && item.active !== false);
@@ -89,8 +93,10 @@ export function materialConsumptionCost(dataset, ceco, start, end) {
   };
   const requirements = new Map();
   for (const row of dataset.orderMaterialReservations ?? []) {
-    if (row.ceco !== ceco || !row.materialCode || !stageCompleted(row.stageId)) continue;
-    requirements.set(row.materialCode, (requirements.get(row.materialCode) ?? 0) + Number(row.requiredQuantity || 0));
+    if (row.ceco !== ceco || !row.materialCode) continue;
+    const share = stageShares ? stageShares.get(row.stageId) ?? 0 : stageCompleted(row.stageId) ? 1 : 0;
+    if (share <= 0) continue;
+    requirements.set(row.materialCode, (requirements.get(row.materialCode) ?? 0) + Number(row.requiredQuantity || 0) * share);
   }
   let estimatedQuantity = 0;
   for (const [code, required] of requirements) {
@@ -116,6 +122,45 @@ export function materialConsumptionCost(dataset, ceco, start, end) {
     quantity, estimatedQuantity, estimatedPrices, source,
     reason: null
   };
+}
+
+export function buildLiveProductivity(dataset, asOf) {
+  const weightByProduct = new Map();
+  for (const order of dataset.orders ?? []) {
+    if (Number(order.progress) < 100 || !validNumber(order.outputWeightKg)) continue;
+    const weights = weightByProduct.get(order.bodyTypeId) ?? [];
+    weights.push(Number(order.outputWeightKg));
+    weightByProduct.set(order.bodyTypeId, weights);
+  }
+  const personnelRates = new Map((dataset.personnel ?? []).map((person) => [workerKey(person.name), person.hourlyCost]));
+  return (dataset.orders ?? []).filter((order) => order.active !== false && Number(order.progress) < 100)
+    .map((order) => {
+      const calculated = calculateCecoProgress(order, dataset.bodyTypes ?? [], dataset.stageActivities ?? [], dataset.activityProgress ?? []);
+      const progress = calculated.stages.length ? calculated.progress : Number(order.progress || 0);
+      if (progress <= 0) return null;
+      const hasDirectWeight = validNumber(order.outputWeightKg) && Number(order.outputWeightKg) > 0;
+      const referenceWeight = hasDirectWeight ? Number(order.outputWeightKg) : mean(weightByProduct.get(order.bodyTypeId) ?? []);
+      const equivalentWeightKg = referenceWeight === null ? null : referenceWeight * progress / 100;
+      const logs = (dataset.operations ?? []).filter((item) => item.ceco === order.ceco && dateOnly(item.date) <= asOf);
+      const hours = logs.reduce((sum, item) => sum + Number(item.totalHours || 0), 0);
+      const costs = logs.map((item) => item.hourlyCost ?? item.laborCostPerHour ?? personnelRates.get(workerKey(item.worker)) ?? order.laborHourCostPen);
+      const laborCost = hours > 0 && costs.every(validNumber)
+        ? logs.reduce((sum, item, index) => sum + Number(item.totalHours || 0) * Number(costs[index]), 0) : null;
+      const material = materialConsumptionCost(dataset, order.ceco, "0001-01-01", asOf, { includePartialStages: true });
+      const materialCost = material.cost;
+      const valueShare = validNumber(order.outputValue) ? Number(order.outputValue) * progress / 100 : null;
+      const energyShare = validNumber(order.energyCost) ? Number(order.energyCost) * progress / 100 : 0;
+      const denominator = laborCost !== null && materialCost !== null ? laborCost + materialCost + energyShare : null;
+      return {
+        ceco: order.ceco, bodyTypeId: order.bodyTypeId, progress, equivalentWeightKg,
+        weightEstimated: !hasDirectWeight, hours, laborCost,
+        materialCost, materialQuantityEstimated: material.estimatedQuantity > 0,
+        materialPricesEstimated: Boolean(material.estimatedPrices), materialSource: material.source,
+        valueShare, laborProductivity: equivalentWeightKg !== null && hours > 0 ? equivalentWeightKg / hours : null,
+        materialProductivity: equivalentWeightKg !== null && materialCost > 0 ? equivalentWeightKg / materialCost : null,
+        multifactorProductivity: valueShare !== null && denominator > 0 ? valueShare / denominator : null
+      };
+    }).filter(Boolean);
 }
 
 function latest(values) {

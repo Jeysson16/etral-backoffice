@@ -56,7 +56,7 @@ const definitions = [
   ["multifactor_productivity", "Productividad multifactorial", "ratio", "Valor producido / (mano de obra + materiales)", "Resultado", "Escala"]
 ];
 
-export function buildIndicatorsWorkbook(dataset, report, range, grouping = "month") {
+export function buildIndicatorsWorkbook(dataset, report, range, grouping = "month", liveRows = []) {
   const workbook = XLSX.utils.book_new();
   const { current, previous } = report;
   const demandByCode = deriveMaterialDemand(dataset, range);
@@ -161,6 +161,13 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
         [completed.estimated ? "Fecha de cierre inferida" : "", materialSource, estimatedPrices ? "Precio de material estimado" : "", estimatedLabor ? "Tarifa laboral estimada" : "", String(order?.outputValueBasis ?? "").startsWith("Estimado") ? "Venta estimada" : "", materialCost !== null ? "Costo de materiales sin desglose de materia prima e insumos" : "Costo de materiales no disponible", "Energía y capital fuera de la razón multifactorial"].filter(Boolean).join("; ")];
     }), { 3: "0", 4: "0", 5: "0.00", 6: "0.00", 7: "0.000", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.0000", 12: "0.00", 13: "0.00", 14: "0.00", 15: "0.00", 16: "0.00", 17: "0.00", 18: "0.000" });
   appendSheet(workbook, "Ficha productividad", thesisProductivity.rows, thesisProductivity.options);
+  if (liveRows.length) appendSheet(workbook, "Productividad en proceso", [
+    ["CECO", "Producto", "Avance %", "Peso equivalente kg", "Peso de referencia estimado", "Horas registradas", "Materiales S/", "Cantidad de fase estimada", "Precios estimados", "Valor proporcional S/", "MO kg/h", "Materiales kg/S/", "Multifactorial", "Origen de materiales"],
+    ...liveRows.map((row) => [row.ceco, (dataset.bodyTypes ?? []).find((item) => item.id === row.bodyTypeId)?.name ?? "", row.progress,
+      row.equivalentWeightKg, row.weightEstimated ? "Sí" : "No", row.hours, row.materialCost,
+      row.materialQuantityEstimated ? "Sí" : "No", row.materialPricesEstimated ? "Sí" : "No", row.valueShare,
+      row.laborProductivity, row.materialProductivity, row.multifactorProductivity, row.materialSource])
+  ], { numberFormats: { 2: "0.00", 3: "0.00", 5: "0.00", 6: "0.00", 9: "0.00", 10: "0.000", 11: "0.0000", 12: "0.000" } });
   appendSheet(workbook, "Registros CECO", [
     ["ceco", "cliente", "producto", "linea", "estado", "avance_pct", "fecha_pactada", "fecha_inicio_plan", "fecha_final", "calidad_fecha_final"],
     ...dataset.orders.filter((item) => relevantCecos.has(item.ceco)).map((order) => {
@@ -218,8 +225,8 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
   return workbook;
 }
 
-export function exportIndicatorsWorkbook(dataset, report, range, grouping = "month") {
-  downloadWorkbook(buildIndicatorsWorkbook(dataset, report, range, grouping), `indicadores_${range.start}_${range.end}.xlsx`);
+export function exportIndicatorsWorkbook(dataset, report, range, grouping = "month", liveRows = []) {
+  downloadWorkbook(buildIndicatorsWorkbook(dataset, report, range, grouping, liveRows), `indicadores_${range.start}_${range.end}.xlsx`);
 }
 
 export function exportPeriodRecords(dataset, range) {

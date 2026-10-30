@@ -72,6 +72,22 @@ test("la ficha de productividad exporta los valores registrados en el CECO", () 
   assert.equal(summary.find((row) => row[0] === "labor_productivity")[4], "kg/h");
 });
 
+test("el libro incluye la productividad parcial calculada desde avances", () => {
+  const dataset = fixture();
+  const report = calculateProductivityReport(dataset, range.start, range.end);
+  const live = [{ ceco: "LIVE", bodyTypeId: "body-1", progress: 50, equivalentWeightKg: 100,
+    weightEstimated: true, hours: 5, materialCost: 40, materialQuantityEstimated: true,
+    materialPricesEstimated: false, valueShare: 500, laborProductivity: 20,
+    materialProductivity: 2.5, multifactorProductivity: 4, materialSource: "Avance de fase/BOM" }];
+  const workbook = buildIndicatorsWorkbook(dataset, report, range, "month", live);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Productividad en proceso"], { header: 1 });
+  assert.equal(rows[4][0], "LIVE");
+  assert.equal(rows[4][2], 50);
+  assert.equal(rows[4][10], 20);
+  assert.equal(rows[4][11], 2.5);
+  assert.equal(rows[4][12], 4);
+});
+
 test("el libro conserva las lecturas del instrumento y su promedio por CECO", () => {
   const dataset = fixture();
   dataset.thesisMeasurements = [{ phase: "post", ceco: "260350", date: "2026-06-08", product: "Baranda Mixta", weightKg: 624.29, workers: 8, laborHours: 65.5, hourlyCost: 4.708333333333333, rawMaterialCost: 1992.12, suppliesCost: 1828.27, outputValue: 11500, energyCost: 1200, capitalCost: 3820.39, baseHours: 202.16, groupMultifactorSum: 8.756465627219828, groupLaborSum: 37.860987966156166, groupMaterialSum: 0.45633305912878647, workbookMultifactor: 2.158090109019519, sourceSheet: "Post MO y MAT ", sourceRow: 8 }];

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { availableDateRange, buildExcelReport, calculateProductivityReport, materialConsumptionCost } from "../src/lib/productivity.js";
+import { availableDateRange, buildExcelReport, buildLiveProductivity, calculateProductivityReport, materialConsumptionCost } from "../src/lib/productivity.js";
 
 const dataset = {
   orders: [
@@ -40,6 +40,46 @@ test("productividad por peso usa los campos del CECO y el promedio de razones de
   assert.equal(measured.materialProductivity, 0.1634);
   assert.equal(measured.multifactorProductivity, 2.158);
   assert.equal(measured.cecoMeasurements[0].rawMaterialCost, 1992.12);
+});
+
+test("el avance de actividad actualiza la productividad parcial sin cambiar el promedio de CECO cerrados", () => {
+  const reference = { ceco: "REF", bodyTypeId: "body", progress: 100, dueDate: "2026-10-10", actualDeliveryDate: "2026-10-10",
+    outputWeightKg: 100, reportedLaborHours: 10, laborHourCostPen: 5, rawMaterialCostPen: 30, suppliesCostPen: 20,
+    outputValue: 1000, energyCost: 40, capitalCost: 50 };
+  const active = { ceco: "LIVE", bodyTypeId: "body", progress: 25, outputValue: 1000, energyCost: 40, active: true };
+  const base = { orders: [reference, active], bodyTypes: [{ id: "body", route: ["stage"] }],
+    stageActivities: [{ id: "a", stageId: "stage", active: true }, { id: "b", stageId: "stage", active: true }],
+    activityProgress: [{ ceco: "LIVE", activityId: "a", progress: 50, status: "in_progress" }],
+    orderMaterialReservations: [{ ceco: "LIVE", materialCode: "M", stageId: "stage", requiredQuantity: 8 }],
+    inventory: [{ code: "M", unitCost: 10, physical: 20, committed: 8, safety: 1 }],
+    operations: [{ ceco: "LIVE", date: "2026-10-20", totalHours: 2, worker: "Ana", hourlyCost: 5 }],
+    inventoryMovements: [], warehouse: [] };
+  const first = buildLiveProductivity(base, "2026-10-30")[0];
+  assert.equal(first.progress, 25);
+  assert.equal(first.equivalentWeightKg, 25);
+  assert.equal(first.materialCost, 20);
+  assert.equal(first.laborProductivity, 12.5);
+  assert.equal(first.materialProductivity, 1.25);
+  assert.equal(first.multifactorProductivity, 6.25);
+  assert.equal(first.weightEstimated, true);
+  const advanced = { ...base, orders: [reference, { ...active, progress: 50 }],
+    activityProgress: [{ ceco: "LIVE", activityId: "a", progress: 100, status: "completed" }] };
+  const next = buildLiveProductivity(advanced, "2026-10-30")[0];
+  assert.equal(next.progress, 50);
+  assert.equal(next.equivalentWeightKg, 50);
+  assert.equal(next.materialCost, 40);
+  assert.equal(next.laborProductivity, 25);
+  assert.equal(next.materialProductivity, 1.25);
+  const withRecordedInputs = { ...advanced,
+    operations: [{ ceco: "LIVE", date: "2026-10-20", totalHours: 4, worker: "Ana", hourlyCost: 5 }],
+    inventoryMovements: [{ ceco: "LIVE", timestamp: "2026-10-21", type: "salida", code: "M", quantity: 6 }] };
+  const recorded = buildLiveProductivity(withRecordedInputs, "2026-10-30")[0];
+  assert.equal(recorded.hours, 4);
+  assert.equal(recorded.materialCost, 60);
+  assert.equal(recorded.laborProductivity, 12.5);
+  assert.equal(recorded.materialProductivity, 50 / 60);
+  assert.equal(calculateProductivityReport(base, "2026-10-01", "2026-10-31").current.laborProductivity,
+    calculateProductivityReport(advanced, "2026-10-01", "2026-10-31").current.laborProductivity);
 });
 
 test("cobertura usa el stock de seguridad calculado y el mínimo manual cuando faltan parámetros", () => {
