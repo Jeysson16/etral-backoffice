@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { buildEstimatedHistoricalClosure, buildMaterialPlan } from "../lib/planning.js";
+import { buildMaterialPlan } from "../lib/planning.js";
 
 const today = () => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
@@ -14,21 +14,14 @@ function Heading({ eyebrow, title, subtitle, action }) {
   return <header className="planning-heading"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div>{action && <div className="planning-heading-actions">{action}</div>}</header>;
 }
 
-function ScenarioSwitch({ enabled, onChange, count }) {
-  if (!count) return null;
-  return <label className="planning-scenario-switch"><input type="checkbox" checked={enabled} onChange={(event) => onChange(event.target.checked)} />Cierre histórico supuesto · {count} CECO</label>;
-}
-
-export function MaterialMrpView({ dataset, initialCode, historicalScenario, setHistoricalScenario, onPurchases }) {
-  const scenario = useMemo(() => buildEstimatedHistoricalClosure(dataset, today()), [dataset]);
-  const plan = useMemo(() => buildMaterialPlan(historicalScenario ? { ...dataset, orders: dataset.orders.filter((order) => !scenario.cecos.has(order.ceco)) } : dataset, today()), [dataset, historicalScenario, scenario]);
+export function MaterialMrpView({ dataset, initialCode, onPurchases }) {
+  const plan = useMemo(() => buildMaterialPlan(dataset, today()), [dataset]);
   const [selectedCode, setSelectedCode] = useState(initialCode || "");
   const [query, setQuery] = useState("");
   const filtered = plan.rows.filter((row) => `${row.material.code} ${row.material.description}`.toLowerCase().includes(query.toLowerCase()));
   const selected = plan.rows.find((row) => row.material.code === selectedCode) || filtered[0];
   return <div className="planning-workspace">
-    <Heading eyebrow="Planificación / MRP" title="Registro MRP por material" subtitle="Necesidades, stock proyectado y compras sugeridas semana a semana." action={<><ScenarioSwitch enabled={historicalScenario} onChange={setHistoricalScenario} count={scenario.orders.length} /><button className="planning-primary" onClick={onPurchases}>Ver compras sugeridas →</button></>} />
-    {historicalScenario && <p className="planning-scenario-note">Escenario estimado: se excluyen del cálculo {scenario.orders.length} CECO históricos sin cierre registrado. No se modificaron órdenes, reservas ni inventario real.</p>}
+    <Heading eyebrow="Planificación / MRP" title="Registro MRP por material" subtitle="Necesidades, stock proyectado y compras sugeridas semana a semana." action={<button className="planning-primary" onClick={onPurchases}>Ver compras sugeridas →</button>} />
     <div className="mrp-layout"><aside className="panel mrp-material-list"><label htmlFor="mrp-search">Buscar material</label><input id="mrp-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Código o descripción" />
       <div>{filtered.map((row) => <button key={row.material.code} className={selected?.material.code === row.material.code ? "selected" : ""} onClick={() => setSelectedCode(row.material.code)}><span><strong>{row.material.code}</strong><small>{row.material.description}</small></span><em className={row.totalSuggested ? "needs-order" : "covered"}>{row.totalSuggested ? "Pedir" : "Cubierto"}</em></button>)}</div>{filtered.length === 0 && <p className="planning-empty">No se encontraron materiales.</p>}
     </aside><div className="mrp-detail">{selected ? <><section className="panel planning-card"><div className="mrp-material-heading"><div><span className="eyebrow">{selected.material.code}</span><h3>{selected.material.description}</h3><p>{selected.material.category} · unidad: {selected.material.unit}</p></div></div><div className="mrp-stats"><div><span>Stock físico</span><strong>{amount(selected.material.physical)} {selected.material.unit}</strong></div><div><span>Plazo de reposición</span><strong>{selected.leadTime ? `${selected.leadTime} días` : "Sin configurar"}</strong></div><div><span>Stock de seguridad</span><strong>{amount(selected.safety)} {selected.material.unit}</strong></div><div><span>Compra sugerida</span><strong>{amount(selected.totalSuggested)} {selected.material.unit}</strong></div></div></section>
@@ -37,9 +30,8 @@ export function MaterialMrpView({ dataset, initialCode, historicalScenario, setH
   </div>;
 }
 
-export function SuggestedPurchasesView({ dataset, historicalScenario, setHistoricalScenario, onMaterial }) {
-  const scenario = useMemo(() => buildEstimatedHistoricalClosure(dataset, today()), [dataset]);
-  const plan = useMemo(() => buildMaterialPlan(historicalScenario ? { ...dataset, orders: dataset.orders.filter((order) => !scenario.cecos.has(order.ceco)) } : dataset, today()), [dataset, historicalScenario, scenario]);
+export function SuggestedPurchasesView({ dataset, onMaterial }) {
+  const plan = useMemo(() => buildMaterialPlan(dataset, today()), [dataset]);
   const [filter, setFilter] = useState("all");
   const current = today();
   const currentWeekEnd = plan.weeks[0]?.end;
@@ -47,8 +39,7 @@ export function SuggestedPurchasesView({ dataset, historicalScenario, setHistori
   const visible = plan.purchases.filter((purchase) => filter === "all" || status(purchase) === filter);
   const counts = { all: plan.purchases.length, late: 0, "this-week": 0, planned: 0, "no-lead": 0 };
   plan.purchases.forEach((purchase) => { counts[status(purchase)] += 1; });
-  return <div className="planning-workspace"><Heading eyebrow="Planificación / Compras" title="Órdenes de compra sugeridas" subtitle="Qué pedir desde hoy y cuándo podría llegar, según el MRP y el plazo del proveedor." action={<><ScenarioSwitch enabled={historicalScenario} onChange={setHistoricalScenario} count={scenario.orders.length} /><span className="planning-chip">Propuesta · sin órdenes emitidas</span></>} />
-    {historicalScenario && <p className="planning-scenario-note">Escenario estimado: las compras asociadas a {scenario.orders.length} CECO históricos se excluyen. Confirma su cierre real antes de registrar pedidos o recepciones.</p>}
+  return <div className="planning-workspace"><Heading eyebrow="Planificación / Compras" title="Órdenes de compra sugeridas" subtitle="Qué pedir desde hoy y cuándo podría llegar, según el MRP y el plazo del proveedor." action={<span className="planning-chip">Propuesta · sin órdenes emitidas</span>} />
     <div className="purchase-filters" aria-label="Filtrar compras sugeridas">{[["all", "Todas"], ["late", "Atención"], ["this-week", "Esta semana"], ["planned", "Planificadas"], ["no-lead", "Sin plazo"]].map(([key, label]) => <button key={key} className={filter === key ? "active" : ""} onClick={() => setFilter(key)}>{label} · {counts[key]}</button>)}</div>
     <section className="panel"><div className="table-scroll"><table className="planning-table purchase-table"><thead><tr><th>Estado</th><th>Material</th><th>Cantidad</th><th>Emitir pedido</th><th>Necesidad</th><th>Llegada estimada</th><th>Plazo</th><th>Origen</th><th>Cálculo</th></tr></thead><tbody>{visible.map((purchase) => <tr key={`${purchase.code}-${purchase.needed}`}><td><span className={`planning-status ${status(purchase)}`}>{status(purchase) === "late" ? purchase.overdue ? "CECO por revisar" : "Urgente" : status(purchase) === "no-lead" ? "Sin plazo" : status(purchase) === "this-week" ? "Esta semana" : "Planificada"}</span></td><td><strong>{purchase.code}</strong><small>{purchase.material.description}</small></td><td><strong>{amount(purchase.quantity)} {purchase.unit}</strong></td><td className={status(purchase) === "late" ? "planning-negative" : ""}>{purchase.orderBy === current ? "Hoy" : fullDate(purchase.orderBy)}</td><td>{purchase.overdue ? `Vencida desde ${fullDate(purchase.originalNeeded)}` : purchase.cecos.length ? fullDate(purchase.needed) : "Reponer mínimo"}</td><td>{purchase.arrivalDate ? fullDate(purchase.arrivalDate) : "Sin plazo configurado"}</td><td>{purchase.leadTime ? `${purchase.leadTime} días` : "Sin configurar"}</td><td>{purchase.cecos.length ? purchase.cecos.map((ceco) => `CECO ${ceco}`).join(" · ") : "Stock de seguridad"}</td><td><details className="purchase-calculation"><summary>Ver cálculo</summary><div>Stock previo: {amount(purchase.opening)} {purchase.unit}<br />Necesidad bruta: {amount(purchase.gross)} {purchase.unit}<br />Saldo antes de comprar: {amount(purchase.afterDemand)} {purchase.unit}<br />Mínimo: {amount(purchase.safety)} {purchase.unit}<br /><button className="row-action" onClick={() => onMaterial(purchase.code)}>Ver MRP del material →</button></div></details></td></tr>)}</tbody></table></div>{visible.length === 0 && <p className="planning-empty">No hay compras sugeridas para este filtro.</p>}</section>
     <p className="planning-footnote">Antes de emitir compras ligadas a CECO con fechas pasadas, confirma si ya terminaron o si fueron reprogramados. La llegada es una estimación basada en el plazo configurado; ningún pedido o recepción se crea automáticamente. Las cantidades se redondean a unidades enteras.</p>

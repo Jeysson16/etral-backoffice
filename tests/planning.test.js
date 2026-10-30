@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildEstimatedHistoricalClosure, buildMaterialPlan, buildPmpCalendar, buildPmpPeriod, buildProductionPlan, materialOrderLinks } from "../src/lib/planning.js";
+import { buildMaterialPlan, buildPmpCalendar, buildPmpPeriod, buildProductionPlan, materialOrderLinks } from "../src/lib/planning.js";
 
 const dataset = {
   flowStages: [{ id: "cut", standardHours: 4, capacityHours: 10 }],
@@ -40,20 +40,6 @@ test("calendario PMP ubica cada CECO en los días entre inicio y fecha pactada",
   assert.equal(july.find((cell) => cell.date === "2026-07-30").rows.length, 1);
   assert.equal(august.find((cell) => cell.date === "2026-08-02").rows.length, 1);
   assert.equal(august.find((cell) => cell.date === "2026-08-03").rows.length, 0);
-});
-
-test("escenario histórico usa fechas programadas y marca consumos como estimados", () => {
-  const historical = { ...dataset,
-    orders: [{ ...dataset.orders[0], dueDate: "2026-08-20" }],
-    activityProgress: [{ ceco: "260001", activityId: "A1", status: "pending", progress: 0, plannedEndDate: "2026-08-18" }],
-    orderMaterialReservations: [{ ceco: "260001", materialCode: "MAT-1", stageId: "cut", requiredQuantity: 7, consumedQuantity: 2, issuedQuantity: 0 }]
-  };
-  const scenario = buildEstimatedHistoricalClosure(historical, "2026-10-29");
-  assert.equal(scenario.activities[0].proposedFinish, "2026-08-18");
-  assert.equal(scenario.materials[0].proposedConsumption, 5);
-  assert.equal(scenario.materials[0].proposedDate, "2026-08-20");
-  assert.equal(scenario.activities[0].estimated, true);
-  assert.equal(historical.orders[0].progress, 0);
 });
 
 test("MRP propone un pedido desde hoy y recepción según plazo real", () => {

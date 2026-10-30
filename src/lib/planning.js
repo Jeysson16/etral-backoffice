@@ -130,26 +130,6 @@ export function buildPmpCalendar(rows, month) {
   });
 }
 
-export function buildEstimatedHistoricalClosure(dataset, today) {
-  const orders = (dataset.orders || []).filter((order) => order.active !== false && Number(order.progress) < 100 && order.dueDate && order.dueDate < today);
-  const cecos = new Set(orders.map((order) => order.ceco));
-  const activities = (dataset.activityProgress || []).filter((item) => cecos.has(item.ceco) && item.status !== "completed" && Number(item.progress) < 100)
-    .map((item) => {
-      const order = orders.find((entry) => entry.ceco === item.ceco);
-      return { ceco: item.ceco, activityId: item.activityId, proposedFinish: item.plannedEndDate || order?.dueDate || null, basis: item.plannedEndDate ? "Fin programado de actividad" : "Fin pactado del CECO", estimated: true };
-    });
-  const materials = (dataset.orderMaterialReservations || []).filter((item) => cecos.has(item.ceco))
-    .map((item) => {
-      const stageActivityIds = new Set((dataset.stageActivities || []).filter((activity) => activity.stageId === item.stageId).map((activity) => activity.id));
-      const stageEnd = (dataset.activityProgress || []).filter((progress) => progress.ceco === item.ceco && stageActivityIds.has(progress.activityId)).map((progress) => progress.plannedEndDate).filter(Boolean).sort().at(-1);
-      return { ceco: item.ceco, materialCode: item.materialCode, stageId: item.stageId,
-        proposedConsumption: Math.max(0, Number(item.requiredQuantity || 0) - Math.max(Number(item.issuedQuantity || 0), Number(item.consumedQuantity || 0))),
-        proposedDate: stageEnd || orders.find((order) => order.ceco === item.ceco)?.dueDate || null, estimated: true };
-    })
-    .filter((item) => item.proposedConsumption > 0);
-  return { orders, cecos, activities, materials };
-}
-
 export function buildMaterialPlan(dataset, today, count = 8) {
   const weeks = planningWeeks(today, count);
   const products = new Map((dataset.bodyTypes || []).map((product) => [product.id, product]));

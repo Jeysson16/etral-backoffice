@@ -1244,9 +1244,6 @@ pre,
 .planning-heading p { color: var(--muted); margin-top: 5px; font-size: 14px; }
 .planning-heading-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .planning-chip { display: inline-flex; align-items: center; min-height: 36px; border-radius: 8px; padding: 0 13px; background: #e9edf3; color: #384456; font-size: 12px; font-weight: 750; }
-.planning-scenario-switch { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; border: 1px solid #e3a27e; border-radius: 8px; background: #fff7f0; color: #8f370c; padding: 0 10px; font-size: 12px; font-weight: 750; }
-.planning-scenario-switch input { accent-color: #bd410c; }
-.planning-scenario-note { border: 1px solid #e3a27e; border-radius: 9px; background: #fff9f3; color: #7c3c18; padding: 11px 14px; font-size: 12px; }
 .planning-primary { border: 0; background: #bd410c; color: white; min-height: 40px; border-radius: 8px; padding: 0 16px; font-size: 12px; font-weight: 800; }
 .planning-primary:hover { background: #a73506; }
 .planning-card { overflow: hidden; }
