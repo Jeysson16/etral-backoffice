@@ -17,6 +17,24 @@ test("MRP genera alertas cuando disponibilidad queda bajo seguridad", () => {
   assert.ok(mrp.alerts.some((alert) => alert.materialCode === "MAT-0042"));
 });
 
+test("Materiales PMP descuenta entregas y omite fases completadas", () => {
+  const order = { ceco: "260500", bodyTypeId: "producto", progress: 50, priority: 1, active: true };
+  const bodyTypes = [{ id: "producto", name: "Producto" }];
+  const bom = [
+    { id: "pieza-1", bodyTypeId: "producto", stageId: "corte", materialCode: "AC-1", quantity: 5 },
+    { id: "pieza-2", bodyTypeId: "producto", stageId: "armado", materialCode: "PE-1", quantity: 10 }
+  ];
+  const inventory = [{ code: "AC-1", physical: 0, safety: 1 }, { code: "PE-1", physical: 9, safety: 2 }];
+  const dataset = {
+    stageActivities: [{ id: "actividad-corte", stageId: "corte" }, { id: "actividad-armado", stageId: "armado" }],
+    activityProgress: [{ ceco: "260500", activityId: "actividad-corte", status: "completed", progress: 100 }],
+    orderMaterialReservations: [{ ceco: "260500", bomItemId: "pieza-2", issuedQuantity: 7, consumedQuantity: 5 }]
+  };
+  const result = evaluateMrp([order], bodyTypes, bom, inventory, dataset);
+  assert.deepEqual(result.explosions.map((row) => [row.materialCode, row.required, row.stockAfter]), [["PE-1", 3, 6]]);
+  assert.equal(result.alerts.length, 0);
+});
+
 test("gemelo ignora registros de calendario y equipos", () => {
   const base = runDigitalTwin(initialDataset, { horizonDays: 14 });
   const changed = structuredClone(initialDataset);

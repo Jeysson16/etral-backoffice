@@ -1,3 +1,5 @@
+import { pendingMaterialQuantity } from "./pendingMaterials.js";
+
 export function availableStock(item) {
   return Number(item.physical) - Number(item.committed);
 }
@@ -38,14 +40,15 @@ export function calculateThesisSafetyStock(item) {
   return null;
 }
 
-export function buildMaterialExplosion(order, bodyTypes, bom, inventory, balances = null) {
+export function buildMaterialExplosion(order, bodyTypes, bom, inventory, balances = null, dataset = null) {
   const bodyType = bodyTypes.find((item) => item.id === order.bodyTypeId);
-  const recipe = bom.filter((item) => item.bodyTypeId === order.bodyTypeId);
+  const recipe = bom.filter((item) => item.bodyTypeId === order.bodyTypeId)
+    .map((piece) => ({ piece, required: dataset ? pendingMaterialQuantity(dataset, order, piece) : Number(piece.quantity) }))
+    .filter(({ required }) => required > 0);
 
-  return recipe.map((piece) => {
+  return recipe.map(({ piece, required }) => {
     const material = inventory.find((item) => item.code === piece.materialCode);
     const stockBefore = balances ? Number(balances[piece.materialCode] ?? 0) : Number(material?.physical ?? 0);
-    const required = Number(piece.quantity);
     const stockAfter = stockBefore - required;
     if (balances) balances[piece.materialCode] = stockAfter;
     const safety = material ? calculateSafetyStock(material) : 0;
@@ -66,12 +69,12 @@ export function buildMaterialExplosion(order, bodyTypes, bom, inventory, balance
   });
 }
 
-export function evaluateMrp(orders, bodyTypes, bom, inventory) {
+export function evaluateMrp(orders, bodyTypes, bom, inventory, dataset = null) {
   const balances = Object.fromEntries(inventory.map((item) => [item.code, Number(item.physical)]));
   const prioritized = [...orders]
-    .filter((order) => Number(order.progress) < 100)
+    .filter((order) => order.active !== false && Number(order.progress) < 100)
     .sort((a, b) => Number(a.priority) - Number(b.priority));
-  const explosions = prioritized.flatMap((order) => buildMaterialExplosion(order, bodyTypes, bom, inventory, balances));
+  const explosions = prioritized.flatMap((order) => buildMaterialExplosion(order, bodyTypes, bom, inventory, balances, dataset));
   const alerts = explosions
     .filter((item) => !item.canRelease)
     .map((item) => ({

@@ -259,7 +259,7 @@ export default function App() {
   }, [repo, session]);
 
   const heatmap = useMemo(() => inventoryHeatmap(dataset.inventory, dataset.orders, dataset.bom), [dataset]);
-  const mrp = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory), [dataset]);
+  const mrp = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory, dataset), [dataset]);
   const kpis = useMemo(() => calculateKpis(dataset), [dataset]);
 
   async function persist(action, message) {
@@ -539,8 +539,8 @@ export default function App() {
           {view === "indicators" && <IndicatorsView dataset={dataset} openDrawer={setDrawer} />}
           {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} isRunning={simulationRunning} />}
           {view === "orders" && <OrdersView dataset={dataset} onRunMrp={() => setView("mrp")} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), patch.updateTimestamps ? "Fecha y hora de la actividad actualizadas." : "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), patch.ceco && patch.ceco !== ceco ? `CECO renombrado a ${patch.ceco}.` : "Datos de la orden actualizados.")} onDeleteOrder={(ceco) => mutate(() => repo.deleteOrder(ceco), `CECO ${ceco} eliminado y reservas pendientes liberadas.`)} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} onDeleteAssignment={(id) => mutate(() => repo.deleteAssignment(id), "Asignación eliminada.")} onDeleteOperation={(id) => mutate(() => repo.deleteOperation(id), "Parte diario eliminado.")} />}
-          {view === "mrp" && <MaterialMrpView dataset={dataset} initialCode={mrpMaterialCode} onPurchases={() => setView("purchases")} />}
-          {view === "purchases" && <SuggestedPurchasesView dataset={dataset} onMaterial={(code) => { setMrpMaterialCode(code); setView("mrp"); }} />}
+          {view === "mrp" && <MaterialMrpView dataset={dataset} initialCode={mrpMaterialCode} onPurchases={() => setView("purchases")} onRegisterReceipt={(code, quantity) => setDrawer({ type: "movement", materialCode: code, quantity })} />}
+          {view === "purchases" && <SuggestedPurchasesView dataset={dataset} onMaterial={(code) => { setMrpMaterialCode(code); setView("mrp"); }} onRegisterReceipt={(code, quantity) => setDrawer({ type: "movement", materialCode: code, quantity })} />}
           {view === "products" && <ProductsView dataset={dataset} openDrawer={setDrawer} onImportExcel={importExcelCatalog} onExportExcel={() => downloadCatalogWorkbook(dataset, "products")} onQuickAssign={(items) => mutate(() => repo.saveBomItems(items), `${items.length} material${items.length === 1 ? "" : "es"} asignado${items.length === 1 ? "" : "s"} a la BOM.`)} onUpdateBom={(id, patch) => mutate(() => repo.updateBomItem(id, patch), "Material requerido actualizado.")} onDeleteBom={(id) => mutate(() => repo.deleteBomItem(id), "Material requerido eliminado.")} />}
           {view === "inventory" && <InventoryView dataset={dataset} heatmap={heatmap} openDrawer={setDrawer} onViewMrp={(code) => { setMrpMaterialCode(code); setView("mrp"); }} onImportExcel={importExcelCatalog} onImportPrices={importMaterialPrices} onExportExcel={() => downloadCatalogWorkbook(dataset, "materials")} onCreateCatalog={createCatalogItem} onUpdateCatalog={(payload) => mutate(() => repo.updateCatalogItem(payload), "Catálogo actualizado.")} onDeleteCatalog={(payload) => mutate(() => repo.deleteCatalogItem(payload), "Opción eliminada del catálogo.")} />}
           {view === "stages" && <StagesView dataset={dataset} openDrawer={setDrawer} />}
@@ -1402,7 +1402,7 @@ function OrdersView({ dataset, onRunMrp, activeDrawer, openDrawer, advanceOrder,
     operations: dataset.operations.filter((item) => visibleCecos.has(item.ceco)),
     quality: dataset.quality.filter((item) => visibleCecos.has(item.ceco))
   };
-  const pmpMaterialAlertCount = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory).alerts.length, [dataset]);
+  const pmpMaterialAlertCount = useMemo(() => new Set(evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory, dataset).alerts.map((alert) => alert.materialCode)).size, [dataset]);
   useEffect(() => {
     if (!selectedOrder) return;
     const refreshed = dataset.orders.find((item) => item.ceco === selectedOrder.ceco);
@@ -1422,22 +1422,32 @@ function OrdersView({ dataset, onRunMrp, activeDrawer, openDrawer, advanceOrder,
     {mode === "calendar" && <ProductionPlanView dataset={dataset} onRunMrp={onRunMrp} />}
     {mode === "kanban" && <ProductKanban dataset={visibleDataset} stageId={filters.stageId} onSelect={setSelectedOrder} onMoveOrder={onMoveOrder} />}
     {mode === "gantt" && <ProductionGantt dataset={visibleDataset} onSelect={setSelectedOrder} onSchedule={onSchedule} />}
-    {mode === "pmp-materials" && <PmpMaterialsView dataset={dataset} onSelect={setSelectedOrder} />}
+    {mode === "pmp-materials" && <PmpMaterialsView dataset={dataset} onSelect={setSelectedOrder} openDrawer={openDrawer} />}
     {mode === "list" && <><ProductList dataset={visibleDataset} onSelect={setSelectedOrder} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} /><ExecutionPanel dataset={visibleDataset} openDrawer={openDrawer} /></>}
     {mode === "customers" && <CustomerCatalog dataset={dataset} openDrawer={openDrawer} />}
     <ProductFlowDrawer dataset={dataset} order={selectedOrder} activeDrawer={activeDrawer} onClose={() => setSelectedOrder(null)} openDrawer={openDrawer} onProgress={onProgress} onUpdateOrder={updateOrder} onCreateQuality={onCreateQuality} onDeleteAssignment={onDeleteAssignment} onDeleteOperation={onDeleteOperation} />
   </div>;
 }
 
-function PmpMaterialsView({ dataset, onSelect }) {
-  const { explosions } = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory), [dataset]);
-  const alerts = explosions.filter((row) => !row.canRelease);
+function PmpMaterialsView({ dataset, onSelect, openDrawer }) {
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
+  const { explosions } = useMemo(() => evaluateMrp(dataset.orders, dataset.bodyTypes, dataset.bom, dataset.inventory, dataset), [dataset]);
+  const materials = new Map(dataset.inventory.map((material) => [material.code, material]));
+  const needs = [...explosions.reduce((groups, row) => {
+    const current = groups.get(row.materialCode) ?? { code: row.materialCode, description: materials.get(row.materialCode)?.description ?? row.description, unit: materials.get(row.materialCode)?.unit ?? "und", required: 0, cecos: new Set(), balance: row.stockAfter, safety: row.safety };
+    current.required += row.required;
+    current.cecos.add(row.ceco);
+    current.balance = row.stockAfter;
+    groups.set(row.materialCode, current);
+    return groups;
+  }, new Map()).values()]
+    .map((item) => ({ ...item, replenish: Math.round(Math.max(0, item.safety - item.balance) * 1000) / 1000 }))
+    .filter((item) => item.replenish > 0)
+    .sort((a, b) => b.replenish - a.replenish || a.code.localeCompare(b.code));
+  const visibleNeeds = showAllAlerts ? needs : needs.slice(0, 8);
   return <section className="panel pmp-materials-panel">
-    <SectionHeader eyebrow="Plan maestro de producción" title="Materiales necesarios por CECO" detail="Reserva según prioridad. Tras cada consumo, el saldo debe conservar el stock de seguridad." action={<span className={`alert-count ${alerts.length ? "critical" : "ok"}`}>{alerts.length ? `${alerts.length} avisos` : "Materiales cubiertos"}</span>} />
-    {alerts.length > 0 && <div className="pmp-material-notices" role="status">{alerts.map((row, index) => {
-      const material = dataset.inventory.find((item) => item.code === row.materialCode);
-      return <article key={`${row.ceco}-${row.materialCode}-${index}`}><strong>CECO {row.ceco} · {row.materialCode}</strong><span>{material?.description ?? row.description}: requiere {row.required} {material?.unit ?? "und"}; saldo {row.stockAfter}, mínimo {row.safety}.</span><b>Reponer {Math.max(0, row.safety - row.stockAfter)} {material?.unit ?? "und"}</b></article>;
-    })}</div>}
+    <SectionHeader eyebrow="Plan maestro de producción" title="Materiales necesarios por CECO" detail="Demanda pendiente por fase y materiales entregados. La reposición propuesta conserva el stock de seguridad." action={<span className={`alert-count ${needs.length ? "critical" : "ok"}`}>{needs.length ? `${needs.length} materiales por reponer` : "Materiales cubiertos"}</span>} />
+    {needs.length > 0 && <div className="pmp-material-alert-area"><p className="pmp-material-help">Las cantidades se agrupan por material para evitar compras duplicadas. Registra un ingreso al recibirlo; la tabla muestra su efecto en cada CECO.</p><div className="pmp-material-notices" role="status">{visibleNeeds.map((item) => <article key={item.code}><div><strong>{item.code} · {item.description}</strong><span>{item.cecos.size} CECO · pendiente {Math.round(item.required * 1000) / 1000} {item.unit} · saldo proyectado {Math.round(item.balance * 1000) / 1000} {item.unit} · seguridad {item.safety} {item.unit}</span></div><b>Reponer {item.replenish} {item.unit}</b><Button variant="secondary" onClick={() => openDrawer({ type: "movement", materialCode: item.code, quantity: item.replenish })}>Registrar ingreso</Button></article>)}</div>{needs.length > 8 && <button className="pmp-material-toggle" type="button" onClick={() => setShowAllAlerts((current) => !current)}>{showAllAlerts ? "Mostrar menos" : `Ver ${needs.length - 8} materiales más`}</button>}</div>}
     <div className="table-scroll"><table><thead><tr><th>Prioridad / CECO</th><th>Producto</th><th>Material</th><th>Necesario</th><th>Saldo previo</th><th>Saldo final</th><th>Seguridad</th><th>Estado</th></tr></thead><tbody>{explosions.map((row, index) => {
       const order = dataset.orders.find((item) => item.ceco === row.ceco);
       const material = dataset.inventory.find((item) => item.code === row.materialCode);

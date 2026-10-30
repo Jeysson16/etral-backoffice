@@ -1,4 +1,5 @@
 import { calculateSafetyStock } from "./mrp.js";
+import { pendingMaterialQuantity } from "./pendingMaterials.js";
 
 const DAY = 86400000;
 
@@ -33,15 +34,6 @@ export function planningWeeks(today, count = 8) {
 
 export function orderStart(order, product) {
   return order.plannedStartDate || shiftDate(order.dueDate, -Math.max(0, Number(product?.targetDays || 1) - 1));
-}
-
-function pendingMaterialQuantity(dataset, order, piece) {
-  const activities = (dataset.stageActivities || []).filter((activity) => activity.active !== false && activity.stageId === piece.stageId);
-  if (piece.stageId && activities.length && activities.every((activity) =>
-    (dataset.activityProgress || []).some((progress) => progress.ceco === order.ceco && progress.activityId === activity.id && (progress.status === "completed" || Number(progress.progress) >= 100)))) return 0;
-  const reservation = (dataset.orderMaterialReservations || []).find((item) => item.ceco === order.ceco && item.bomItemId === piece.id);
-  const alreadyIssued = Math.max(Number(reservation?.issuedQuantity || 0), Number(reservation?.consumedQuantity || 0));
-  return Math.max(0, Number(piece.quantity || 0) - alreadyIssued);
 }
 
 export function materialOrderLinks(dataset) {
