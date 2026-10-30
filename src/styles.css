@@ -1265,13 +1265,15 @@ pre,
 .pmp-calendar-header select { min-height: 38px; border: 1px solid #cfd6df; border-radius: 8px; background: white; padding: 7px 10px; }
 .pmp-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(112px, 1fr)); min-width: 784px; border-top: 1px solid #e3e8ee; border-left: 1px solid #e3e8ee; }
 .pmp-weekday { padding: 10px; border-right: 1px solid #e3e8ee; border-bottom: 1px solid #e3e8ee; background: #f5f7fa; color: #485365; text-align: center; font-size: 11px; text-transform: uppercase; }
-.pmp-day { display: flex; flex-direction: column; gap: 4px; min-height: 105px; border: 0; border-right: 1px solid #e3e8ee; border-bottom: 1px solid #e3e8ee; background: white; padding: 8px; color: #202938; text-align: left; cursor: pointer; }
+.pmp-day { display: flex; flex-direction: column; gap: 4px; min-height: 150px; border: 0; border-right: 1px solid #e3e8ee; border-bottom: 1px solid #e3e8ee; background: white; padding: 8px; color: #202938; text-align: left; cursor: pointer; }
 .pmp-day:hover { background: #fff8f3; }
 .pmp-day.outside { background: #f8f9fb; color: #a2aab5; cursor: default; }
 .pmp-day.today { box-shadow: inset 0 0 0 2px #e45d16; }
 .pmp-day.selected { background: #fff3e9; }
 .pmp-day-number { align-self: flex-end; font-size: 12px; font-weight: 800; }
-.pmp-day-order { display: block; overflow: hidden; max-width: 100%; border-radius: 5px; background: #eaf1ff; color: #244692; padding: 3px 5px; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+.pmp-day-order { display: grid; gap: 2px; width: 100%; min-width: 0; border-radius: 5px; background: #eaf1ff; color: #244692; padding: 4px 5px; font-size: 10px; line-height: 1.2; }
+.pmp-day-order b { white-space: nowrap; }
+.pmp-day-product { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .pmp-day-order.starts { background: #eaf8ef; color: #166534; }
 .pmp-day-order.due { background: #fff0e7; color: #a73506; }
 .pmp-day > small { color: #5c687a; font-size: 10px; }
