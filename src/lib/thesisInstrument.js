@@ -4,9 +4,9 @@ export function thesisPostCecos(dataset) {
   return new Set((dataset.thesisMeasurements ?? []).filter((row) => row.phase === "post").map((row) => row.ceco));
 }
 
-export function scopeDatasetToThesis(dataset) {
-  const cecos = thesisPostCecos(dataset);
-  if (!cecos.size) return dataset;
+export function scopeDatasetToThesis(dataset, selectedCecos = thesisPostCecos(dataset)) {
+  const cecos = selectedCecos;
+  if (!cecos.size && !(dataset.thesisMeasurements ?? []).length) return dataset;
   const included = (row) => cecos.has(row.ceco);
   return {
     ...dataset,

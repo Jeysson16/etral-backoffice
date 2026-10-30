@@ -33,4 +33,7 @@ test("el análisis de tesis incluye solo CECO de Post sin alterar órdenes opera
   assert.deepEqual(scoped.orderMaterialReservations.map((row) => row.ceco), ["260350"]);
   assert.equal(scoped.inventory, dataset.inventory);
   assert.equal(dataset.orders.length, 2);
+  const all = scopeDatasetToThesis(dataset, new Set(["260350", "260500"]));
+  assert.equal(all.orders.length, 2);
+  assert.equal(all.operations.length, 2);
 });

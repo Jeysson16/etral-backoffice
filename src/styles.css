@@ -117,6 +117,29 @@ select option { color: #1f2937; background: #fff; font-weight: 500; }
 .data-quality-note p { color: #5e7183; font-size: 11px; line-height: 1.5; }
 .indicator-header-actions { display: flex; align-items: center; gap: 12px; }
 .indicators-toolbar { border-top: 3px solid var(--orange); }
+.indicator-ceco-selector { padding: 0; }
+.indicator-ceco-selector summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 20px; cursor: pointer; list-style: none; }
+.indicator-ceco-selector summary::-webkit-details-marker { display: none; }
+.indicator-ceco-selector summary > span { display: grid; gap: 3px; }
+.indicator-ceco-selector summary b { color: var(--ink); font-size: 13px; }
+.indicator-ceco-selector summary small { color: var(--muted); font-size: 11px; }
+.indicator-ceco-selector summary strong { color: #a83b0a; font-size: 12px; white-space: nowrap; }
+.indicator-ceco-selector[open] summary strong span { display: inline-block; transform: rotate(180deg); }
+.indicator-ceco-content { padding: 0 20px 18px; border-top: 1px solid #edf0f3; }
+.indicator-ceco-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 0; }
+.indicator-ceco-actions button { border: 1px solid #d7e1ed; background: #f8fafc; color: #30425d; border-radius: 8px; padding: 7px 11px; font-size: 11px; font-weight: 800; cursor: pointer; }
+.indicator-ceco-actions button:hover { border-color: #f27939; color: #a83b0a; }
+.indicator-ceco-actions button.active { border-color: #f1ab83; background: #fff2e9; color: #a83b0a; }
+.indicator-ceco-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.indicator-ceco-list label { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px 10px; border: 1px solid #e0e6ee; border-radius: 9px; cursor: pointer; }
+.indicator-ceco-list label.selected { border-color: #f1ab83; background: #fff8f3; }
+.indicator-ceco-list input { accent-color: #ca4d12; flex: 0 0 auto; }
+.indicator-ceco-list label > span { display: grid; gap: 2px; min-width: 0; }
+.indicator-ceco-list label b { color: #243550; font-size: 11px; }
+.indicator-ceco-list label small { color: #77859a; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.indicator-ceco-list label em { margin-left: auto; color: #15804b; font-size: 10px; font-style: normal; font-weight: 800; }
+@media (max-width: 1050px) { .indicator-ceco-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 580px) { .indicator-ceco-selector summary, .indicator-ceco-content { padding-left: 14px; padding-right: 14px; } .indicator-ceco-list { grid-template-columns: 1fr; } }
 .indicators-toolbar code { color: #9d4314; }
 .indicator-dashboard-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; align-items: stretch; }
 .period-chart, .equations-panel, .records-panel { overflow: hidden; }

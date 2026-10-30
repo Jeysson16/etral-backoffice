@@ -4,6 +4,7 @@ import { calculateCecoProgress, calculateReorderPoint, calculateSafetyStock, eva
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { activityProgressDate, availableDateRange, calculateProductivityReport } from "./lib/productivity.js";
 import ThesisInstrumentPanel from "./components/ThesisInstrumentPanel.jsx";
+import IndicatorCecoSelector from "./components/IndicatorCecoSelector.jsx";
 import { scopeDatasetToThesis, thesisPostCecos } from "./lib/thesisInstrument.js";
 import { exportIndicatorsWorkbook, exportPeriodRecords } from "./lib/indicatorExports.js";
 import { deriveMaterialDemand } from "./lib/materialDemand.js";
@@ -764,9 +765,11 @@ function isWithinRange(value, range) {
 }
 
 function IndicatorsView({ dataset, openDrawer, setView }) {
-  const researchDataset = useMemo(() => scopeDatasetToThesis(dataset), [dataset]);
   const researchCecos = useMemo(() => thesisPostCecos(dataset), [dataset]);
-  const excludedCecos = researchCecos.size ? (dataset.orders ?? []).filter((order) => !researchCecos.has(order.ceco)).length : 0;
+  const [customCecos, setCustomCecos] = useState(null);
+  const selectedCecos = useMemo(() => customCecos == null ? researchCecos : new Set([...customCecos].filter((ceco) => (dataset.orders ?? []).some((order) => order.ceco === ceco))), [customCecos, researchCecos, dataset.orders]);
+  const researchDataset = useMemo(() => scopeDatasetToThesis(dataset, selectedCecos), [dataset, selectedCecos]);
+  const excludedCecos = researchCecos.size ? (dataset.orders ?? []).filter((order) => !selectedCecos.has(order.ceco)).length : 0;
   const availableRange = useMemo(() => availableDateRange(researchDataset), [researchDataset]);
   const [dateRange, setDateRange] = useState(availableRange);
   const [grouping, setGrouping] = useState("month");
@@ -817,7 +820,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
       <div>
         <p className="eyebrow">Repositorio de resultados</p>
         <strong>Indicadores, ecuaciones y microdatos de investigación</strong>
-        <span>{researchCecos.size ? `${researchCecos.size} CECO de la hoja «Post» en el análisis${excludedCecos ? ` · ${excludedCecos} fuera del instrumento` : ""}.` : "Resultados del periodo y su evidencia exportable."}</span>
+        <span>{researchCecos.size ? `${selectedCecos.size} CECO seleccionados${excludedCecos ? ` · ${excludedCecos} fuera del análisis` : ""}.` : "Resultados del periodo y su evidencia exportable."}</span>
       </div>
       <div className="date-range">
         <label>Desde<input type="date" value={dateRange.start} max={dateRange.end} onChange={(event) => event.target.value && setDateRange((currentRange) => ({ ...currentRange, start: event.target.value }))} /></label>
@@ -828,6 +831,11 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
         <Button onClick={() => exportIndicatorsWorkbook(researchDataset, report, dateRange, grouping)}>↓ Libro de tesis</Button>
       </div>
     </section>
+
+    <IndicatorCecoSelector dataset={dataset} selectedCecos={selectedCecos} excelCecos={researchCecos}
+      onSelectExcel={() => setCustomCecos(null)}
+      onSelectAll={() => setCustomCecos(new Set((dataset.orders ?? []).map((order) => order.ceco)))}
+      onToggle={(ceco) => setCustomCecos((current) => { const next = new Set(current ?? researchCecos); if (next.has(ceco)) next.delete(ceco); else next.add(ceco); return next; })} />
 
     <section className="metric-grid four">
       <Metric label="Unidades producidas" value={current.producedUnits} detail={`${current.plannedUnits} planificadas en el periodo`} tone="success" />
