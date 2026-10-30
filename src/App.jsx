@@ -3,6 +3,7 @@ import { initialDataset } from "./data/seed.js";
 import { calculateCecoProgress, calculateReorderPoint, calculateSafetyStock, evaluateMrp, hasSafetyStockParameters, inventoryHeatmap, materialRequirementsByStage } from "./lib/mrp.js";
 import { calculateKpis, calibrateDigitalTwin } from "./lib/simulator.js";
 import { activityProgressDate, availableDateRange, calculateProductivityReport } from "./lib/productivity.js";
+import ThesisInstrumentPanel from "./components/ThesisInstrumentPanel.jsx";
 import { exportIndicatorsWorkbook, exportPeriodRecords } from "./lib/indicatorExports.js";
 import { deriveMaterialDemand } from "./lib/materialDemand.js";
 import { downloadMaterialPricesWorkbook, parseMaterialPricesWorkbook } from "./lib/materialPrices.js";
@@ -75,7 +76,7 @@ function normalizeDataset(value) {
     activityProgress: value.activityProgress ?? [], bodyTypes: value.bodyTypes ?? [], productFamilies: value.productFamilies ?? [],
     productionLines: value.productionLines ?? [], customers: value.customers ?? [], inventory: value.inventory ?? [], bom: value.bom ?? [],
     orders: value.orders ?? [], orderMaterialReservations: value.orderMaterialReservations ?? [], operations: value.operations ?? [],
-    warehouse: value.warehouse ?? [], quality: value.quality ?? [], inventoryMovements: value.inventoryMovements ?? [], purchaseRequests: value.purchaseRequests ?? [], historicalPurchases: value.historicalPurchases ?? [],
+    warehouse: value.warehouse ?? [], quality: value.quality ?? [], inventoryMovements: value.inventoryMovements ?? [], purchaseRequests: value.purchaseRequests ?? [], historicalPurchases: value.historicalPurchases ?? [], thesisMeasurements: value.thesisMeasurements ?? [],
     catalogs: value.catalogs ?? { categories: [], units: [], brands: [] }, shifts: value.shifts ?? [], personnel: value.personnel ?? [],
     equipment: value.equipment ?? [], workCalendar: value.workCalendar ?? [], assignments: value.assignments ?? [], incidents: value.incidents ?? []
   };
@@ -750,7 +751,7 @@ function ProductivityDashboard({ report, onOpen }) {
   ];
   const available = rows.filter((item) => item.value != null).length;
   return <section className="panel productivity-panel">
-    <SectionHeader eyebrow="Indicadores de la investigación" title="MRP y productividad contrastados" detail="Cálculos basados en el Anexo 1 de la tesis. Cada tarjeta compara el periodo elegido con el periodo inmediatamente anterior." action={<div className="indicator-header-actions"><span className="coverage-chip">{available}/7 calculables</span>{onOpen && <button className="text-button" onClick={onOpen}>Abrir tablero →</button>}</div>} />
+    <SectionHeader eyebrow="Operación del periodo" title="MRP y productividad en unidades" detail="Estas tarjetas usan CECO terminados, partes e inventario del rango seleccionado. El instrumento de tesis en kg está en Indicadores." action={<div className="indicator-header-actions"><span className="coverage-chip">{available}/7 calculables</span>{onOpen && <button className="text-button" onClick={onOpen}>Abrir tablero →</button>}</div>} />
     <div className="productivity-grid">{rows.map((item) => <ProductivityCard key={item.label} {...item} />)}</div>
     <div className="data-quality-note"><span>i</span><p><strong>Calidad del dato:</strong> {current.estimatedProducedUnits} unidades terminadas se infieren por estado y fecha pactada. El avance de fase acredita cantidades BOM cuando no hay salida explícita. Los costos, tarifas y valores marcados como estimados son referenciales y deben contrastarse con compras, nómina y venta reales.</p></div>
   </section>;
@@ -831,6 +832,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
       <Metric label="Registros exportables" value={operations.length + progress.length + movements.length} detail="Partes, avances y movimientos" tone="success" />
     </section>
 
+    <ThesisInstrumentPanel measurements={dataset.thesisMeasurements} />
     <ProductivityDashboard report={report} />
     <MaterialCoverageReview dataset={dataset} setView={setView} />
 

@@ -45,6 +45,18 @@ test("libro de indicadores exporta SS y ROP con la fórmula del Excel", () => {
   assert.equal(summary.find((row) => row[0] === "average_delivery_delay")[2], 2);
 });
 
+test("el libro conserva las lecturas del instrumento y su promedio por CECO", () => {
+  const dataset = fixture();
+  dataset.thesisMeasurements = [{ phase: "post", ceco: "260350", date: "2026-06-08", product: "Baranda Mixta", weightKg: 624.29, workers: 8, laborHours: 65.5, hourlyCost: 4.708333333333333, rawMaterialCost: 1992.12, suppliesCost: 1828.27, outputValue: 11500, energyCost: 1200, workbookMultifactor: 2.158090109019519, sourceSheet: "Post MO y MAT ", sourceRow: 8 }];
+  const workbook = buildIndicatorsWorkbook(dataset, calculateProductivityReport(dataset, range.start, range.end), range);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Instrumento tesis"], { header: 1 });
+  const summary = XLSX.utils.sheet_to_json(workbook.Sheets.Resumen, { header: 1 });
+  const ceco = rows.find((row) => row[0] === "post" && row[1] === "260350");
+  assert.equal(ceco[4], 624.29);
+  assert.ok(Math.abs(rows.at(-1)[13] - 624.29 / 65.5) < 1e-10);
+  assert.equal(summary.find((row) => row[0] === "instrument_multifactor_excel")[2], 2.158090109019519);
+});
+
 test("la ficha de stock deja sin valor SS y ROP si faltan d o σLT", () => {
   const dataset = fixture();
   delete dataset.inventory[0].averageDemand;

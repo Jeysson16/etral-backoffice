@@ -3,6 +3,7 @@ import { activityProgressDate, buildIndicatorSeries, materialConsumptionCost } f
 import { addExportTitle, styleWorkbookSheet } from "./excelWorkbookStyle.js";
 import { calculateFormulaSafetyStock, calculateReorderPoint, calculateSafetyStock, hasSafetyStockParameters } from "./mrp.js";
 import { deriveMaterialDemand } from "./materialDemand.js";
+import { summarizeThesisInstrument } from "./thesisInstrument.js";
 
 function inRange(value, start, end) {
   const date = String(value ?? "").slice(0, 10);
@@ -70,14 +71,31 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     ["multifactor_productivity", current.multifactorProductivity, previous.multifactorProductivity]
   ];
   const metricMap = new Map(metricValues.map((row) => [row[0], row]));
+  const instrument = summarizeThesisInstrument(dataset.thesisMeasurements ?? []);
   appendSheet(workbook, "Resumen", [
     ...titleRow("INDICADORES PRODUCTIVOS", range),
     ["Variable SPSS", "Indicador", "Actual", "Periodo anterior", "Unidad", "Ecuación", "Rol", "Nivel de medición"],
     ...definitions.map(([variable, label, unit, equation, role, level]) => {
       const values = metricMap.get(variable);
       return [variable, label, values?.[1] ?? null, values?.[2] ?? null, unit, equation, role, level];
-    })
+    }),
+    ...(instrument.rows.length ? [
+      ["instrument_labor", "Mano de obra · instrumento", instrument.post.labor, instrument.pre.labor, "kg/h", "Promedio de peso / horas por CECO", "Resultado", "Escala"],
+      ["instrument_materials", "Materiales · instrumento", instrument.post.materials, instrument.pre.materials, "kg/S/", "Promedio de peso / (materia prima + insumos) por CECO", "Resultado", "Escala"],
+      ["instrument_multifactor", "Multifactorial · criterio vigente", instrument.post.multifactor, instrument.pre.multifactor, "veces", "Promedio de valor / (mano de obra + materiales) por CECO", "Resultado", "Escala"],
+      ["instrument_multifactor_excel", "Multifactorial · fórmula del Excel", instrument.post.workbookMultifactor, instrument.pre.workbookMultifactor, "veces", "Incluye energía cuando está registrada", "Resultado", "Escala"]
+    ] : [])
   ], { preserveLayout: true, numberFormats: { 2: "0.00", 3: "0.00" } });
+  if (instrument.rows.length) {
+    appendSheet(workbook, "Instrumento tesis", [
+      ["Fuente", "INSTRUMENTOS DE TESIS.xlsx · Pre MO y MAT / Post MO y MAT"],
+      ["Criterio", "Promedio de cocientes por CECO; multifactorial vigente = valor / (mano de obra + materiales)"],
+      ["Grupo", "CECO", "Fecha", "Carrocería", "Peso kg", "Trabajadores", "Horas", "S/ hora", "Materia prima S/", "Insumos S/", "Materiales S/", "Valor producido S/", "Energía S/", "kg/h", "kg/S/", "Multifactorial vigente", "Multifactorial Excel", "Hoja", "Fila"],
+      ...instrument.rows.map((row) => [row.phase, row.ceco, row.date, row.product, row.weightKg, row.workers, row.laborHours, row.hourlyCost, row.rawMaterialCost, row.suppliesCost, row.materials, row.outputValue, row.energyCost, row.laborProductivity, row.materialProductivity, row.thesisMultifactor, row.workbookMultifactor, row.sourceSheet, row.sourceRow]),
+      ["Promedio antes", null, null, null, null, null, null, null, null, null, null, null, null, instrument.pre.labor, instrument.pre.materials, instrument.pre.multifactor, instrument.pre.workbookMultifactor],
+      ["Promedio después", null, null, null, null, null, null, null, null, null, null, null, null, instrument.post.labor, instrument.post.materials, instrument.post.multifactor, instrument.post.workbookMultifactor]
+    ], { headerRow: 2, numberFormats: { 4: "0.00", 6: "0.00", 8: "0.00", 9: "0.00", 10: "0.00", 11: "0.00", 13: "0.000", 14: "0.0000", 15: "0.000", 16: "0.000" } });
+  }
   appendSheet(workbook, "Serie temporal", [
     ["periodo", "fecha_inicio", "fecha_fin", "unidades_planificadas", "unidades_producidas", "horas_reportadas", "pmp_compliance", "progress_rate", "average_delivery_delay", "safety_coverage", "labor_productivity", "material_productivity", "multifactor_productivity"],
     ...series.map((row) => [row.label, row.start, row.end, row.plannedUnits, row.producedUnits, row.reportedHours, row.pmpCompliance, row.progressRate, row.averageLeadTime, row.safetyCoverage, row.laborProductivity, row.materialProductivity, row.multifactorProductivity])

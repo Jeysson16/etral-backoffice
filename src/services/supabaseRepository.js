@@ -36,7 +36,7 @@ export const supabaseRepository = {
     // opcionales hasta que existan en el proyecto remoto.
     const optionalTables = [
       "customers", "order_material_reservations", "work_shifts", "personnel", "personnel_work_shifts",
-      "equipment", "work_calendar", "resource_assignments", "operational_incidents", "purchase_requests", "historical_material_purchases"
+      "equipment", "work_calendar", "resource_assignments", "operational_incidents", "purchase_requests", "historical_material_purchases", "thesis_productivity_measurements"
     ];
     const tables = [...requiredTables, ...optionalTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
@@ -71,6 +71,14 @@ export const supabaseRepository = {
       inventoryMovements: rows.inventory_movements.map(mapMovement),
       purchaseRequests: rows.purchase_requests,
       historicalPurchases: rows.historical_material_purchases,
+      thesisMeasurements: rows.thesis_productivity_measurements.map((row) => ({
+        phase: row.phase, ceco: row.ceco, date: row.source_date, product: row.product_description,
+        weightKg: Number(row.weight_kg), workers: Number(row.worker_count), laborHours: Number(row.labor_hours),
+        hourlyCost: Number(row.hourly_cost_pen), rawMaterialCost: Number(row.raw_material_cost_pen),
+        suppliesCost: Number(row.supplies_cost_pen), outputValue: Number(row.output_value_pen),
+        energyCost: row.energy_cost_pen == null ? null : Number(row.energy_cost_pen),
+        workbookMultifactor: Number(row.workbook_multifactor), sourceSheet: row.source_sheet, sourceRow: row.source_row
+      })),
       catalogs: { categories: rows.material_categories, units: rows.measurement_units, brands: rows.brands },
       productFamilies: rows.product_families,
       productionLines: rows.production_lines,
