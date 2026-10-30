@@ -115,6 +115,21 @@ export function buildPmpPeriod(dataset, startMonth, endMonth, dateBasis = "start
   return { months, products, orders, overlapping, totals: months.map((month) => orders.filter((row) => row.month === month).length) };
 }
 
+export function buildPmpCalendar(rows, month) {
+  if (!/^\d{4}-\d{2}$/.test(month)) return [];
+  const first = `${month}-01`;
+  const firstDay = parseDate(first);
+  if (!firstDay) return [];
+  const offset = (firstDay.getUTCDay() + 6) % 7;
+  const daysInMonth = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+  const cellCount = Math.ceil((offset + daysInMonth) / 7) * 7;
+  return Array.from({ length: cellCount }, (_, index) => {
+    const date = shiftDate(first, index - offset);
+    const inMonth = date.slice(0, 7) === month;
+    return { date, inMonth, rows: inMonth ? rows.filter((row) => row.plannedStart <= date && (!row.order.dueDate || row.order.dueDate >= date)) : [] };
+  });
+}
+
 export function buildMaterialPlan(dataset, today, count = 8) {
   const weeks = planningWeeks(today, count);
   const products = new Map((dataset.bodyTypes || []).map((product) => [product.id, product]));
@@ -139,7 +154,7 @@ export function buildMaterialPlan(dataset, today, count = 8) {
       if (originalNeeded && (!entry.originalNeeded || originalNeeded < entry.originalNeeded)) entry.originalNeeded = originalNeeded;
       demand.set(key, entry);
       const orderKey = `${piece.materialCode}:${order.ceco}`;
-      const requirement = requirements.get(orderKey) || { code: piece.materialCode, ceco: order.ceco, product: products.get(order.bodyTypeId)?.name || "Producto", quantity: 0, needed, originalNeeded, overdue: Boolean(originalNeeded && originalNeeded < today), week: weeks[index] };
+      const requirement = requirements.get(orderKey) || { code: piece.materialCode, ceco: order.ceco, product: products.get(order.bodyTypeId)?.name || "Producto", quantity: 0, needed, originalNeeded, overdue: Boolean(originalNeeded && originalNeeded < today), progress: Number(order.progress || 0), week: weeks[index] };
       requirement.quantity += quantity;
       requirements.set(orderKey, requirement);
     }

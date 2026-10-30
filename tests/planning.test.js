@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildMaterialPlan, buildPmpPeriod, buildProductionPlan, materialOrderLinks } from "../src/lib/planning.js";
+import { buildMaterialPlan, buildPmpCalendar, buildPmpPeriod, buildProductionPlan, materialOrderLinks } from "../src/lib/planning.js";
 
 const dataset = {
   flowStages: [{ id: "cut", standardHours: 4, capacityHours: 10 }],
@@ -29,6 +29,17 @@ test("PMP por periodo cuenta CECO reales por inicio o fecha pactada y muestra lo
   const byDue = buildPmpPeriod(sample, "2026-06", "2026-07", "due");
   assert.deepEqual(byDue.totals, [0, 1]);
   assert.equal(byDue.overlapping.length, 2);
+});
+
+test("calendario PMP ubica cada CECO en los días entre inicio y fecha pactada", () => {
+  const sample = { ...dataset, orders: [{ ...dataset.orders[0], plannedStartDate: "2026-07-30", dueDate: "2026-08-02" }] };
+  const period = buildPmpPeriod(sample, "2026-07", "2026-08");
+  const july = buildPmpCalendar(period.overlapping, "2026-07");
+  const august = buildPmpCalendar(period.overlapping, "2026-08");
+  assert.equal(july.find((cell) => cell.date === "2026-07-29").rows.length, 0);
+  assert.equal(july.find((cell) => cell.date === "2026-07-30").rows.length, 1);
+  assert.equal(august.find((cell) => cell.date === "2026-08-02").rows.length, 1);
+  assert.equal(august.find((cell) => cell.date === "2026-08-03").rows.length, 0);
 });
 
 test("MRP propone un pedido desde hoy y recepción según plazo real", () => {
