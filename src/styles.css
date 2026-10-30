@@ -1614,10 +1614,21 @@ pre,
 .thesis-instrument-metrics article strong small { font-size: 0.72rem; color: #60718a; font-weight: 600; }
 .thesis-instrument-metrics article p { margin: 0.55rem 0 0; color: #66768c; font-size: 0.75rem; }
 .thesis-method-note { margin: 0 0 1rem; padding: 0.8rem 1rem; border-radius: 10px; background: #edf4fc; color: #34516e; font-size: 0.82rem; line-height: 1.5; }
-.thesis-instrument-scroll { max-height: 31rem; overflow: auto; border: 1px solid #e3e9f0; border-radius: 10px; }
-.thesis-instrument-scroll table { min-width: 1020px; }
-.thesis-instrument-scroll th { position: sticky; top: 0; z-index: 1; background: #f2f5f9; }
-.thesis-instrument-scroll td, .thesis-instrument-scroll th { padding: 0.7rem 0.65rem; white-space: nowrap; }
+.thesis-phase-tabs { display: inline-flex; gap: 4px; margin: 0 0 0.8rem; padding: 4px; border-radius: 10px; background: #edf2f8; }
+.thesis-phase-tabs button { border: 0; border-radius: 7px; padding: 0.55rem 0.8rem; color: #52627b; background: transparent; font-size: 0.77rem; font-weight: 700; cursor: pointer; }
+.thesis-phase-tabs button.active { background: #fff; color: #102b59; box-shadow: 0 1px 5px #1c35501f; }
+.thesis-instrument-scroll { max-height: 37rem; overflow: auto; border: 1px solid #e3e9f0; border-radius: 10px; }
+.thesis-instrument-scroll table { min-width: 2380px; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+.thesis-instrument-scroll th { position: sticky; top: 35px; z-index: 2; background: #f2f5f9; }
+.thesis-instrument-scroll .thesis-column-groups th { top: 0; z-index: 3; padding: 0.55rem; background: #0c1c51; color: #fff; text-align: center; }
+.thesis-instrument-scroll .thesis-column-groups th:nth-child(2) { background: #153568; }
+.thesis-instrument-scroll .thesis-column-groups th:nth-child(3) { background: #13535b; }
+.thesis-instrument-scroll .thesis-column-groups th:nth-child(4) { background: #503d82; }
+.thesis-instrument-scroll td, .thesis-instrument-scroll th { padding: 0.65rem 0.6rem; white-space: nowrap; border-bottom: 1px solid #e6ebf1; }
+.thesis-instrument-scroll tbody tr:nth-child(even) { background: #f8fafc; }
+.thesis-instrument-scroll .thesis-result-cell { font-weight: 800; color: #173969; background: #edf5ff; }
+.thesis-instrument-scroll .thesis-average-row { background: #e8f4ec; font-weight: 800; color: #18513a; }
+.thesis-instrument-scroll .thesis-average-row td { border-top: 2px solid #b7d8c1; }
 .thesis-instrument-scroll td small { display: block; margin-top: 0.15rem; color: #728198; }
 .thesis-phase { display: inline-block; padding: 0.18rem 0.45rem; border-radius: 5px; font-size: 0.72rem; font-weight: 700; background: #e9efff; color: #305899; }
 .thesis-phase.post { background: #e5f7ec; color: #167044; }

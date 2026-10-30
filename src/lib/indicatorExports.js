@@ -82,15 +82,15 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     ...(instrument.rows.length ? [
       ["instrument_labor", "Mano de obra · instrumento", instrument.post.labor, instrument.pre.labor, "kg/h", "Promedio de peso / horas por CECO", "Resultado", "Escala"],
       ["instrument_materials", "Materiales · instrumento", instrument.post.materials, instrument.pre.materials, "kg/S/", "Promedio de peso / (materia prima + insumos) por CECO", "Resultado", "Escala"],
-      ["instrument_multifactor", "Multifactorial · criterio vigente", instrument.post.multifactor, instrument.pre.multifactor, "veces", "Promedio de valor / (mano de obra + materiales) por CECO", "Resultado", "Escala"],
-      ["instrument_multifactor_excel", "Multifactorial · fórmula del Excel", instrument.post.workbookMultifactor, instrument.pre.workbookMultifactor, "veces", "M / (F × G + N + O); O equivale a materiales en este libro", "Resultado", "Escala"]
+      ["instrument_multifactor_excel", "Multifactorial · ficha del Excel", instrument.post.workbookMultifactor, instrument.pre.workbookMultifactor, "veces", "Promedio de M / (F × G + N + O) por CECO; O equivale a materiales en este libro", "Resultado", "Escala"],
+      ["instrument_multifactor", "Multifactorial · criterio operativo del Word", instrument.post.multifactor, instrument.pre.multifactor, "veces", "Promedio de valor / (mano de obra + materiales) por CECO", "Resultado", "Escala"]
     ] : [])
   ], { preserveLayout: true, numberFormats: { 2: "0.00", 3: "0.00" } });
   if (instrument.rows.length) {
     appendSheet(workbook, "Instrumento tesis", [
       ["Fuente", "INSTRUMENTOS DE TESIS.xlsx · Pre MO y MAT / Post MO y MAT"],
-      ["Criterio", "H=D/F; L=D/(I+J); P Excel=M/(F×G+N+O). Q–S suman bloques; los promedios están al final."],
-      ["Grupo", "CECO", "Fecha", "Carrocería", "Peso kg", "Trabajadores", "Horas", "S/ hora", "Materia prima S/", "Insumos S/", "Materiales S/", "Valor producido S/", "Energía S/", "kg/h", "kg/S/", "Multifactorial vigente", "Multifactorial Excel", "Hoja", "Fila", "A · horas base", "O · capital S/", "Q · suma multi", "R · suma kg/h", "S · suma kg/S/", "P Excel recalculado", "CECO incluidos en Q–S"],
+      ["Criterio", "H=D/F; K=I+J; L=D/K; P Excel=M/(F×G+N+O), O=K. Q–S suman bloques; los promedios están al final."],
+      ["Grupo", "CECO", "Fecha", "Carrocería", "Peso kg", "Trabajadores", "Horas", "S/ hora", "Materia prima S/", "Insumos S/", "Materiales S/", "Valor producido S/", "Energía S/", "kg/h", "kg/S/", "Multifactorial Word", "Multifactorial Excel", "Hoja", "Fila", "A · horas base", "O · capital S/", "Q · suma multi", "R · suma kg/h", "S · suma kg/S/", "P Excel recalculado", "CECO incluidos en Q–S"],
       ...instrument.rows.map((row) => [row.phase, row.ceco, row.date, row.product, row.weightKg, row.workers, row.laborHours, row.hourlyCost, row.rawMaterialCost, row.suppliesCost, row.materials, row.outputValue, row.energyCost, row.laborProductivity, row.materialProductivity, row.thesisMultifactor, row.workbookMultifactor, row.sourceSheet, row.sourceRow, row.baseHours, row.capitalCost, row.groupMultifactorSum, row.groupLaborSum, row.groupMaterialSum, row.workbookMultifactorCalculated, row.groupCecos]),
       ["Promedio antes", null, null, null, null, null, null, null, null, null, null, null, null, instrument.pre.labor, instrument.pre.materials, instrument.pre.multifactor, instrument.pre.workbookMultifactor],
       ["Promedio después", null, null, null, null, null, null, null, null, null, null, null, null, instrument.post.labor, instrument.post.materials, instrument.post.multifactor, instrument.post.workbookMultifactor]

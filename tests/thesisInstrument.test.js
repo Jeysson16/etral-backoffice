@@ -13,6 +13,7 @@ test("el instrumento usa peso, horas y costo por CECO, con promedio de razones",
   assert.ok(Math.abs(result.rows[0].laborProductivity - 9.531145038167937) < 1e-10);
   assert.ok(Math.abs(result.rows[0].materialProductivity - 0.163410018348912) < 1e-10);
   assert.ok(Math.abs(result.post.labor - (9.531145038167937 + 13.796464088397787) / 2) < 1e-10);
+  assert.ok(Math.abs(result.post.workbookMultifactor - (2.158090109019519 + 3.8428715919952983) / 2) < 1e-10);
   assert.ok(result.post.multifactor > result.post.workbookMultifactor);
   assert.equal(result.verifiedWorkbookRows, 2);
 });

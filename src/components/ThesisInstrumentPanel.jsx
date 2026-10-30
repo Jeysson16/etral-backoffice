@@ -1,33 +1,40 @@
-import React from "react";
+import React, { useState } from "react";
 import { summarizeThesisInstrument } from "../lib/thesisInstrument.js";
 
-const fmt = (value, digits = 3) => value == null || !Number.isFinite(value) ? "—" : value.toLocaleString("es-PE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const fmt = (value, digits = 2) => value == null || !Number.isFinite(value) ? "—" : value.toLocaleString("es-PE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export default function ThesisInstrumentPanel({ measurements = [] }) {
   const { pre, post, rows, verifiedWorkbookRows, verifiedGroups, groupCount } = summarizeThesisInstrument(measurements);
+  const [phase, setPhase] = useState("post");
   if (!rows.length) return null;
+  const selected = phase === "post" ? post : pre;
+  const visibleRows = rows.filter((row) => row.phase === phase);
   const metrics = [
-    ["Mano de obra", "kg/h", "labor", 3],
-    ["Materiales", "kg/S/", "materials", 4],
-    ["Multifactorial", "veces", "multifactor", 3]
+    ["Mano de obra", "kg/h", "labor", 2],
+    ["Materiales", "kg/S/", "materials", 3],
+    ["Multifactorial · Excel", "veces", "workbookMultifactor", 2]
   ];
   return <section className="panel thesis-instrument-panel">
-    <div className="section-header"><div><p className="eyebrow">Instrumento de tesis · CECO</p><h2>Productividad antes y después</h2><p>Serie completa del Excel: promedio de cocientes por carrocería.</p></div><span className="coverage-chip">{pre.count} antes · {post.count} después</span></div>
+    <div className="section-header"><div><p className="eyebrow">Ficha de recolección de datos y cálculo</p><h2>Productividad por CECO</h2><p>Valores de «INSTRUMENTOS DE TESIS.xlsx», con sus campos y fórmulas originales.</p></div><span className="coverage-chip">{pre.count} antes · {post.count} después</span></div>
     <div className="thesis-instrument-metrics">{metrics.map(([label, unit, key, digits]) => <article key={key}>
       <span>{label}</span><strong>{fmt(post[key], digits)} <small>{unit}</small></strong>
       <p>Antes {fmt(pre[key], digits)} · Después {fmt(post[key], digits)}</p>
     </article>)}</div>
-    <div className="thesis-method-note"><strong>Fórmulas:</strong> H = D ÷ F (kg/h); L = D ÷ (I + J) (kg/S/); P del Excel = M ÷ (F × G + N + O). En el libro, O = I + J y N en blanco cuenta como cero. El indicador multifactorial vigente usa M ÷ (F × G + I + J). <b>{verifiedWorkbookRows}/{rows.length} filas verificadas</b>.</div>
-    <div className="table-scroll thesis-instrument-scroll"><table><thead><tr><th>Grupo / fecha</th><th>CECO · carrocería</th><th>Peso kg</th><th>Horas</th><th>Trab.</th><th>Materia prima S/</th><th>Insumos S/</th><th>Valor S/</th><th>kg/h</th><th>kg/S/</th><th>Multi. vigente</th><th>Multi. Excel</th></tr></thead><tbody>{rows.map((row) => <tr key={`${row.phase}-${row.ceco}`}>
-      <td><span className={`thesis-phase ${row.phase}`}>{row.phase === "pre" ? "Antes" : "Después"}</span><small>{row.date}</small></td>
-      <td><strong>{row.ceco}</strong><small>{row.product}</small></td>
-      <td>{fmt(row.weightKg, 2)}</td><td>{fmt(row.laborHours, 2)}</td><td>{row.workers}</td><td>{fmt(row.rawMaterialCost, 2)}</td><td>{fmt(row.suppliesCost, 2)}</td><td>{fmt(row.outputValue, 2)}</td>
-      <td><strong>{fmt(row.laborProductivity)}</strong></td><td><strong>{fmt(row.materialProductivity, 4)}</strong></td><td>{fmt(row.thesisMultifactor)}</td><td>{fmt(row.workbookMultifactor)}</td>
-    </tr>)}</tbody></table></div>
-    <div className="thesis-extra-header"><h3>Otros valores del Excel</h3><span>A y G son entradas; N y O intervienen en P. Q–S suman bloques ({verifiedGroups}/{groupCount} verificados).</span></div>
-    <div className="table-scroll thesis-extra-scroll"><table><thead><tr><th>Grupo</th><th>CECO</th><th>A · base h</th><th>G · S/h</th><th>N · energía S/</th><th>O · capital S/</th><th>Q · Σ multi</th><th>R · Σ kg/h</th><th>S · Σ kg/S/</th><th>CECO incluidos en Q–S</th></tr></thead><tbody>{rows.map((row) => <tr key={`extra-${row.phase}-${row.ceco}`}>
-      <td>{row.phase === "pre" ? "Antes" : "Después"}</td><td><strong>{row.ceco}</strong></td><td>{fmt(row.baseHours, 2)}</td><td>{fmt(row.hourlyCost, 4)}</td><td>{fmt(row.energyCost, 2)}</td><td>{fmt(row.capitalCost, 2)}</td><td>{fmt(row.groupMultifactorSum)}</td><td>{fmt(row.groupLaborSum)}</td><td>{fmt(row.groupMaterialSum, 4)}</td><td>{row.groupCecos ?? "—"}</td>
-    </tr>)}</tbody></table></div>
-    <p className="thesis-source">Fuente: INSTRUMENTOS DE TESIS.xlsx · hojas «Pre MO y MAT» y «Post MO y MAT». Las cifras del instrumento se conservan separadas del Kardex y de las estimaciones operativas.</p>
+    <div className="thesis-method-note"><b>Fórmulas de la ficha:</b> mano de obra H = D ÷ F; materiales L = D ÷ (I + J); multifactorial P = M ÷ (F × G + N + O). En este libro O = K = I + J y N vacío equivale a cero. El indicador operativo de la página aplica el criterio del Word: M ÷ (F × G + I + J).</div>
+    <div className="thesis-phase-tabs" role="tablist" aria-label="Periodo de la ficha">
+      <button type="button" role="tab" aria-selected={phase === "post"} className={phase === "post" ? "active" : ""} onClick={() => setPhase("post")}>Después · {post.count} CECO</button>
+      <button type="button" role="tab" aria-selected={phase === "pre"} className={phase === "pre" ? "active" : ""} onClick={() => setPhase("pre")}>Antes · {pre.count} CECO</button>
+    </div>
+    <div className="table-scroll thesis-instrument-scroll"><table><thead>
+      <tr className="thesis-column-groups"><th colSpan="3">Registro</th><th colSpan="5">Mano de obra</th><th colSpan="4">Materiales</th><th colSpan="4">Multifactorial</th><th colSpan="3">Sumas de bloques</th></tr>
+      <tr><th>A · h base</th><th>B · Fecha</th><th>C · CECO y carrocería</th><th>D · Peso kg</th><th>E · Trab.</th><th>F · Horas</th><th>G · S/ hora</th><th>H · kg/h</th><th>I · Materia prima S/</th><th>J · Insumos S/</th><th>K · Total S/</th><th>L · kg/S/</th><th>M · Producto S/</th><th>N · Energía S/</th><th>O · Capital S/</th><th>P · Multi. Excel</th><th>Q · Σ multi.</th><th>R · Σ kg/h</th><th>S · Σ kg/S/</th></tr>
+    </thead><tbody>{visibleRows.map((row) => <tr key={`${row.phase}-${row.ceco}`}>
+      <td>{fmt(row.baseHours)}</td><td>{row.date}</td><td><strong>{row.ceco}</strong><small>{row.product}</small></td>
+      <td>{fmt(row.weightKg)}</td><td>{row.workers}</td><td>{fmt(row.laborHours)}</td><td>{fmt(row.hourlyCost, 4)}</td><td className="thesis-result-cell">{fmt(row.laborProductivity, 3)}</td>
+      <td>{fmt(row.rawMaterialCost)}</td><td>{fmt(row.suppliesCost)}</td><td>{fmt(row.materials)}</td><td className="thesis-result-cell">{fmt(row.materialProductivity, 3)}</td>
+      <td>{fmt(row.outputValue)}</td><td>{fmt(row.energyCost)}</td><td>{fmt(row.capitalCost)}</td><td className="thesis-result-cell">{fmt(row.workbookMultifactor, 3)}</td>
+      <td>{fmt(row.groupMultifactorSum, 3)}</td><td>{fmt(row.groupLaborSum, 3)}</td><td>{fmt(row.groupMaterialSum, 3)}</td>
+    </tr>)}<tr className="thesis-average-row"><td colSpan="7">PROMEDIO · {phase === "post" ? "DESPUÉS" : "ANTES"} · {selected.count} CECO</td><td>{fmt(selected.labor, 3)}</td><td colSpan="3"></td><td>{fmt(selected.materials, 3)}</td><td colSpan="3"></td><td>{fmt(selected.workbookMultifactor, 3)}</td><td colSpan="3"></td></tr></tbody></table></div>
+    <p className="thesis-source">Fuente: hojas «Pre MO y MAT» y «Post MO y MAT». P coincide con el Excel en {verifiedWorkbookRows}/{rows.length} filas; Q–S en {verifiedGroups}/{groupCount} bloques. Las cifras de la ficha se conservan separadas del Kardex.</p>
   </section>;
 }
