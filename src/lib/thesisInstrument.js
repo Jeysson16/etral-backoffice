@@ -36,7 +36,8 @@ export function thesisInstrumentRows(measurements = []) {
       laborProductivity: weight / Number(row.laborHours),
       materialProductivity: weight / materials,
       thesisMultifactor: output / (materials + labor),
-      workbookMultifactor: Number(row.workbookMultifactor),
+      workbookMultifactor: workbookMultifactorCalculated,
+      workbookMultifactorSource: Number(row.workbookMultifactor),
       workbookMultifactorCalculated
     };
   });
@@ -67,5 +68,5 @@ export function summarizeThesisInstrument(measurements = []) {
       workbookMultifactor: average(items.map((row) => row.workbookMultifactor))
     };
   };
-  return { rows, pre: summarize("pre"), post: summarize("post"), verifiedWorkbookRows: rows.filter((row) => row.workbookMultifactorCalculated != null && Math.abs(row.workbookMultifactorCalculated - row.workbookMultifactor) < 1e-8).length, verifiedGroups: rows.filter((row) => row.groupVerified).length, groupCount: rows.filter((row) => row.groupMultifactorSum != null).length };
+  return { rows, pre: summarize("pre"), post: summarize("post"), verifiedWorkbookRows: rows.filter((row) => row.workbookMultifactorCalculated != null && Math.abs(row.workbookMultifactorCalculated - row.workbookMultifactorSource) < 1e-8).length, verifiedGroups: rows.filter((row) => row.groupVerified).length, groupCount: rows.filter((row) => row.groupMultifactorSum != null).length };
 }

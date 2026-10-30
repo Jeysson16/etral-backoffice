@@ -18,6 +18,13 @@ test("el instrumento usa peso, horas y costo por CECO, con promedio de razones",
   assert.equal(result.verifiedWorkbookRows, 2);
 });
 
+test("P se recalcula con los importes recibidos, aunque el valor guardado del Excel sea anterior", () => {
+  const updated = { ...sample[0], outputValue: 23000 };
+  const result = summarizeThesisInstrument([updated]);
+  assert.ok(Math.abs(result.post.workbookMultifactor - 2 * sample[0].workbookMultifactor) < 1e-10);
+  assert.equal(result.verifiedWorkbookRows, 0);
+});
+
 test("el análisis de tesis incluye solo CECO de Post sin alterar órdenes operativas", () => {
   const dataset = {
     thesisMeasurements: [{ phase: "pre", ceco: "260010" }, { phase: "post", ceco: "260350" }],
