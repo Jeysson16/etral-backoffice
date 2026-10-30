@@ -141,6 +141,20 @@ function setActivityProgress(dataset, ceco, activityId, patch) {
 }
 
 export const localRepository = {
+  async listSupplyScenarios() {
+    return JSON.parse(localStorage.getItem("etral.supply.scenarios.v1") || "[]").slice(0, 20).map(({ results, ...row }) => row);
+  },
+  async getSupplyScenario(id) {
+    const record = JSON.parse(localStorage.getItem("etral.supply.scenarios.v1") || "[]").find((row) => row.id === id);
+    if (!record) throw new Error("No se encontró el escenario.");
+    return record;
+  },
+  async saveSupplyScenario(record) {
+    const saved = { ...record, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+    const history = JSON.parse(localStorage.getItem("etral.supply.scenarios.v1") || "[]");
+    localStorage.setItem("etral.supply.scenarios.v1", JSON.stringify([saved, ...history]));
+    return saved;
+  },
   async savePurchaseRequest(action, payload) {
     const dataset = load();
     dataset.purchaseRequests ||= [];

@@ -1391,6 +1391,32 @@ pre,
 .supply-results td:has(small) { min-width: 170px; }
 .supply-method, .supply-advanced { margin-top: 20px; }
 .supply-method summary, .supply-advanced > summary { cursor: pointer; font-weight: 700; }
+.supply-config .planning-heading { margin-bottom: 18px; }
+.supply-batch { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 14px; background: #f2f6fb; border-radius: 10px; }
+.supply-batch > strong { align-self: center; margin-right: auto; font-size: 13px; }
+.supply-batch label { width: 130px; }
+.supply-batch label:has(input[type=date]) { width: 170px; }
+.supply-hint { font-size: 12px; margin: 12px 0; }
+.supply-edit-list { max-height: 360px; overflow: auto; border: 1px solid #dbe4ef; border-radius: 10px; }
+.supply-edit-list table { min-width: 820px; width: 100%; }
+.supply-edit-list th { position: sticky; top: 0; z-index: 1; background: #f6f8fb; }
+.supply-edit-list th, .supply-edit-list td { text-align: left; padding: 12px; }
+.supply-edit-list td:first-child { width: 42px; }
+.supply-edit-list td:nth-child(2) { min-width: 240px; }
+.supply-edit-list input[type=date] { min-width: 145px; }
+.supply-edit-list input[type=number] { min-width: 75px; max-width: 150px; }
+.supply-edit-list input[type=checkbox] { width: 18px; height: 18px; }
+.supply-edit-list input:disabled { color: #738196; background: #f4f6f9; opacity: .7; }
+.supply-edit-list tr.selected { background: #fff8f1; }
+.supply-run { margin-top: 20px; }
+.supply-history { margin-top: 22px; }
+.supply-history article { display: flex; align-items: center; gap: 14px; padding: 18px 0; border-bottom: 1px solid #e3e8ef; }
+.supply-history article > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.supply-history small { margin-top: 6px; }
+.supply-results .supply-metrics { margin: 20px 0; }
+.supply-results table { min-width: 780px; }
+.supply-results details > summary { cursor: pointer; color: #b74a14; font-size: 12px; margin-top: 8px; }
+@media (max-width: 650px) { .supply-batch > strong { width: 100%; } .supply-history article { flex-wrap: wrap; } .supply-history article > div { flex-basis: 100%; } }
 @media (max-width: 900px) { .supply-editors, .supply-metrics { grid-template-columns: 1fr; } .supply-config, .supply-results { padding: 18px; } }
 .procurement-form form { display: grid; gap: 16px; margin-top: 16px; }
 .procurement-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }

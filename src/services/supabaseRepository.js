@@ -9,6 +9,21 @@ export function hasSupabaseConfig() {
 }
 
 export const supabaseRepository = {
+  async listSupplyScenarios() {
+    const { data, error } = await supabase.from("simulation_runs").select("id,name,created_at,parameters").eq("parameters->>kind", "material_supply_v1").order("created_at", { ascending: false }).limit(20);
+    if (error) throw error;
+    return data;
+  },
+  async getSupplyScenario(id) {
+    const { data, error } = await supabase.from("simulation_runs").select("*").eq("id", id).eq("parameters->>kind", "material_supply_v1").single();
+    if (error) throw error;
+    return data;
+  },
+  async saveSupplyScenario(record) {
+    const { data, error } = await supabase.from("simulation_runs").insert(record).select("id,name,created_at,parameters").single();
+    if (error) throw error;
+    return data;
+  },
   async getDataset() {
     if (!supabase) {
       throw new Error("Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY.");
