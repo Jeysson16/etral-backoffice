@@ -29,6 +29,18 @@ test("necesidad y proyección se asignan a la fase programada sin duplicar el st
   assert.equal(board.suggestions[0].phaseKey, "260001:paint");
   assert.equal(board.suggestions[0].quantity, 2);
   assert.equal(board.groups[1].requestCount, 1);
+  assert.equal(board.groups[1].rows[0].requestDate, "2026-11-13");
+  assert.equal(board.groups[1].rows[0].plannedNeeded, "2026-11-15");
+  assert.equal(board.groups[1].rows[0].requestOverdue, false);
+});
+
+test("una necesidad vencida conserva la fecha ideal de solicitud anterior a la fase", () => {
+  const plan = buildMaterialPlan(sample, "2026-11-20");
+  const board = buildPhasePurchaseBoard(sample, plan, "2026-11-20");
+  const row = board.groups.find((group) => group.stageId === "paint").rows[0];
+  assert.equal(row.requestDate, "2026-11-13");
+  assert.equal(row.plannedNeeded, "2026-11-15");
+  assert.equal(row.requestOverdue, true);
 });
 
 test("una fase cerrada deja de demandar su material", () => {
