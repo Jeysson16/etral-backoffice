@@ -845,7 +845,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
 
     <section className="metric-grid four">
       <Metric label="Unidades producidas" value={current.producedUnits} detail={`${current.plannedUnits} planificadas en el periodo`} tone="success" />
-      <Metric label="Horas-hombre" value={`${formatIndicator(current.reportedHours)} h`} detail={current.measurementMode === "weight" ? `${current.producedUnits} CECO terminados` : `${operations.length} partes registrados`} />
+      <Metric label={current.measurementMode === "weight" ? "Tiempo real" : "Horas-hombre"} value={`${formatIndicator(current.reportedHours)} h`} detail={current.measurementMode === "weight" ? `${current.producedUnits} CECO terminados` : `${operations.length} partes registrados`} />
       <Metric label="Actividades completadas" value={current.executedActivities} detail={`${current.programmedActivities} con avance en el periodo`} />
       <Metric label="Registros exportables" value={operations.length + progress.length + movements.length} detail="Partes, avances y movimientos" tone="success" />
     </section>
