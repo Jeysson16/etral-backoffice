@@ -172,7 +172,9 @@ export function buildMaterialPlan(dataset, today, count = 8) {
       const afterDemand = opening - needed.quantity;
       let receipt = scheduled.get(index) || 0;
       const outstanding = beyondHorizon + [...scheduled].reduce((sum, [weekIndex, quantity]) => sum + (weekIndex > index ? quantity : 0), 0);
-      const net = Math.max(0, safety - afterDemand - receipt - outstanding);
+      // El abastecimiento operativo solo se propone para CECO con demanda pendiente.
+      // Una brecha aislada de stock de seguridad no genera una solicitud sin CECO.
+      const net = needed.cecos.size ? Math.max(0, safety - afterDemand - receipt - outstanding) : 0;
       const suggestedOrder = net ? Math.ceil(net) : 0;
       const targetDate = needed.needed || (index === 0 ? today : week.start);
       const plannedOrderDate = leadTime == null ? null : shiftDate(targetDate, -leadTime);

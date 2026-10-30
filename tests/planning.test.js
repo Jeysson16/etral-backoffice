@@ -20,6 +20,13 @@ test("una solicitud evita duplicar sugerencias sin crear existencias", () => {
   assert.equal(buildMaterialPlan(sample, "2026-10-21").purchases[0].quantity, 6);
 });
 
+test("MRP no propone compras sin demanda de un CECO abierto", () => {
+  const sample = { ...dataset, orders: [{ ...dataset.orders[0], progress: 100 }], inventory: [{ ...dataset.inventory[0], physical: 0 }] };
+  const plan = buildMaterialPlan(sample, "2026-10-21");
+  assert.equal(plan.purchases.length, 0);
+  assert.equal(plan.rows[0].totalGross, 0);
+});
+
 test("la orden proyecta solo el saldo pendiente y no duplica ingresos parciales", () => {
   const sample = { ...dataset, inventory: [{ ...dataset.inventory[0], physical: 5 }], purchaseRequests: [{ material_code: "MAT-1", quantity: 6, received_quantity: 2, status: "ordered", expected_date: "2026-10-28" }] };
   const plan = buildMaterialPlan(sample, "2026-10-21");
