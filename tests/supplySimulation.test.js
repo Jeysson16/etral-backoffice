@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareSupply, simulateSupply } from '../src/lib/supplySimulation.js';
+import { compareSupply, simulateSupply, summarizeSupplyComparison } from '../src/lib/supplySimulation.js';
 
 const options = { startDate: '2026-10-29', horizonDays: 7 };
 function fixture() {
@@ -87,4 +87,30 @@ test('recepciones cerradas/canceladas y necesidad posterior al horizonte no se c
   assert.equal(simulateSupply(data, options).purchases.length, 0);
   data.orders[0].plannedStartDate = '2026-12-01';
   assert.equal(simulateSupply(data, options).cecoMaterials.length, 0);
+});
+
+test('muestra la reducción del pedido aunque la solicitud sin fecha ya valiera cero en la base', () => {
+  const data = fixture();
+  data.purchaseRequests[0].status = 'requested';
+  data.purchaseRequests[0].expected_date = null;
+  data.inventory[0].physical = 6;
+  const changes = { R1: { date: '2026-10-30', percent: 0 } };
+  const { baseline, scenario } = compareSupply(data, { ...options, deliveries: changes });
+  const summary = summarizeSupplyComparison(baseline, scenario, { deliveries: changes });
+  assert.equal(summary.adjustedPurchases[0].remaining, 4);
+  assert.equal(summary.adjustedPurchases[0].baseQuantity, 0);
+  assert.equal(summary.adjustedPurchases[0].notArriving, 4);
+  assert.equal(summary.baselineHasUndatedRequests, true);
+  assert.equal(summary.hasOperatingChange, false);
+});
+
+test('cuantifica cambios de cobertura y saldo cuando se reduce una OC prevista', () => {
+  const changes = { R1: { percent: 0 } };
+  const { baseline, scenario } = compareSupply(fixture(), { ...options, deliveries: changes });
+  const summary = summarizeSupplyComparison(baseline, scenario, { deliveries: changes });
+  assert.equal(summary.baseArrivingOrders, 1);
+  assert.equal(summary.scenarioArrivingOrders, 0);
+  assert.equal(summary.changedInventory.length, 1);
+  assert.equal(summary.changedNeeds.length, 1);
+  assert.equal(summary.hasOperatingChange, true);
 });
