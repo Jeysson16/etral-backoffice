@@ -143,7 +143,7 @@ class OperationLog(BaseModel):
 
 
 class FactorySnapshot(BaseModel):
-    """Estado operativo usado por el MRP y por una corrida del gemelo."""
+    """Estado operativo usado por el MRP y por una corrida de simulación."""
 
     materials: list[Material]
     bom: list[BomItem]

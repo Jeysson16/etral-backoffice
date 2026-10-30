@@ -43,7 +43,7 @@ export default function ResourcesView({ dataset, openDrawer, setView }) {
   return <div className="stack-lg resources-page">
     <section className="resource-feed-banner">
       <div className="feed-orbit"><span>PLANTA</span><i /><i /><i /></div>
-      <div><span>Alimentación operativa</span><h2>Recursos conectados al gemelo digital</h2><p>La capacidad base se construye con disponibilidad de personal, turnos, asignaciones e incidencias.</p></div>
+      <div><span>Alimentación operativa</span><h2>Recursos de planta</h2><p>La capacidad base se construye con disponibilidad de personal, turnos, asignaciones e incidencias.</p></div>
       <aside><strong>{metrics.productiveHours} h</strong><small>capacidad laboral efectiva / semana</small></aside>
     </section>
 
@@ -56,7 +56,7 @@ export default function ResourcesView({ dataset, openDrawer, setView }) {
     <div className="resource-tabs" role="tablist">{tabs.map(([id, label, icon]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}><span>{icon}</span>{label}<b>{dataset[id]?.length ?? 0}</b></button>)}</div>
 
     {tab === "personnel" && <section className="panel resource-section">
-      <Header eyebrow="Maestro de recursos" title="Personal de planta" detail="Disponibilidad, especialidad, turno y eficiencia usada por el gemelo." action={<ActionButton onClick={() => openDrawer({ type: "personnel" })}>+ Nuevo trabajador</ActionButton>} />
+      <Header eyebrow="Maestro de recursos" title="Personal de planta" detail="Disponibilidad, especialidad, turno y eficiencia usada en la planificación." action={<ActionButton onClick={() => openDrawer({ type: "personnel" })}>+ Nuevo trabajador</ActionButton>} />
       <div className="people-grid">{dataset.personnel.map((person) => { const shifts = shiftsOf(dataset, person); return <article key={person.id} className="person-card"><header><span className="person-avatar">{person.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><Badge value={person.status} /></header><h3>{person.name}</h3><p>{person.employeeCode} · {person.role}</p><dl><div><dt>Especialidad</dt><dd>{person.specialty || "General"}</dd></div><div><dt>Turnos</dt><dd>{shifts.length ? shifts.map((shift) => shift.name).join(" · ") : "Sin turno"}</dd></div></dl><footer><div><span>Eficiencia</span><b>{person.efficiency}%</b></div><div className="mini-progress"><i style={{ width: `${Math.min(100, person.efficiency)}%` }} /></div><small>{formatHours(person.weeklyHours)} horas semanales calculadas</small><button className="row-action" onClick={() => openDrawer({ type: "personnel", personnel: person })}>Editar</button></footer></article>; })}</div>
     </section>}
 

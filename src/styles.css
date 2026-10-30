@@ -360,7 +360,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .monte-carlo-summary > p { margin: 0; padding: 0 22px 18px; color: #657487; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .monte-carlo-grid { grid-template-columns: 1fr; } }
 
-/* Alimentación operativa del gemelo */
+/* Alimentación operativa de planta */
 .resources-page { min-width: 0; }
 .resource-feed-banner { position: relative; overflow: hidden; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 20px; padding: 24px 28px; border-radius: 14px; color: white; background: linear-gradient(125deg, #12263b 0%, #1d4764 58%, #16725f 100%); box-shadow: 0 15px 36px rgba(19, 45, 67, .18); }
 .resource-feed-banner::after { content: ""; position: absolute; width: min(210px, 32vw); aspect-ratio: 1; height: auto; right: 14%; top: -130px; border-radius: 50%; border: 34px solid rgba(255,255,255,.055); }
@@ -1111,7 +1111,7 @@ pre,
   .record-tabs { padding-left: 14px; padding-right: 14px; }
 }
 
-/* Digital Twin Calibration & Advanced Simulation Styles */
+/* Calibration and advanced simulation styles */
 .calibration-card {
   margin: 0 22px 18px;
   padding: 14px;
@@ -1390,6 +1390,13 @@ pre,
 .purchase-table { min-width: 1100px; }
 .procurement-form { padding: 22px; }
 .phase-board { display: grid; gap: 16px; min-width: 0; }
+.phase-board-view { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; border: 1px solid #dce5ee; border-radius: 13px; padding: 16px 18px; background: #fff; }
+.phase-board-view > div:first-child { display: grid; gap: 4px; }
+.phase-board-view strong { color: #14233b; font-size: 15px; }
+.phase-board-view span { color: #596b83; font-size: 12px; }
+.phase-board-view-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.phase-board-view-actions button { border: 1px solid #cfd9e5; border-radius: 8px; padding: 9px 13px; background: #fff; color: #31445d; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.phase-board-view-actions button.active { border-color: #bd410c; background: #bd410c; color: #fff; }
 .phase-board-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .phase-board-overview > div { border: 1px solid #dce5ee; border-radius: 13px; padding: 16px 18px; background: #fff; box-shadow: 0 5px 18px #18253b08; }
 .phase-board-overview > div:nth-child(1) { border-top: 3px solid #2872c9; }

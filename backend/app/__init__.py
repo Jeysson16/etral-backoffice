@@ -1,1 +1,1 @@
-"""Motor de negocio del gemelo digital ETRAL."""
+"""Motor de negocio de simulación ETRAL."""

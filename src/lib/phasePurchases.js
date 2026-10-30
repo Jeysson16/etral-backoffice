@@ -1,5 +1,18 @@
 import { shiftDate } from "./planning.js";
 
+export function phaseGroupsForView(groups, view = "next") {
+  const chronological = [...groups].sort((a, b) =>
+    String(a.originalNeeded || a.needed || "").localeCompare(String(b.originalNeeded || b.needed || ""))
+    || a.routeOrder - b.routeOrder || a.ceco.localeCompare(b.ceco));
+  if (view === "future") return chronological;
+  const seen = new Set();
+  return chronological.filter((group) => {
+    if (seen.has(group.ceco)) return false;
+    seen.add(group.ceco);
+    return true;
+  });
+}
+
 export function buildPhasePurchaseBoard(dataset, plan, today) {
   const materials = new Map((dataset.inventory || []).map((item) => [item.code, item]));
   const rowsByCode = new Map(plan.rows.map((row) => [row.material.code, row]));
