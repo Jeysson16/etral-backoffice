@@ -1,3 +1,5 @@
+import { shiftDate } from "./planning.js";
+
 export function buildPhasePurchaseBoard(dataset, plan, today) {
   const materials = new Map((dataset.inventory || []).map((item) => [item.code, item]));
   const rowsByCode = new Map(plan.rows.map((row) => [row.material.code, row]));
@@ -40,7 +42,11 @@ export function buildPhasePurchaseBoard(dataset, plan, today) {
       needed: requirement.needed, originalNeeded: requirement.originalNeeded, rows: [] };
     const suggestion = suggestionByPhaseMaterial.get(`${key}:${requirement.code}`) || null;
     const stockAfter = projected.get(`${key}:${requirement.code}`);
-    group.rows.push({ ...requirement, material, projected: stockAfter, safety: planRow.safety,
+    const plannedNeeded = requirement.originalNeeded || requirement.needed;
+    const leadDays = Math.max(1, Math.ceil(Number(material.leadTimeDays) || 0));
+    const requestDate = shiftDate(plannedNeeded, -leadDays);
+    group.rows.push({ ...requirement, material, plannedNeeded, requestDate, requestOverdue: requestDate < today,
+      projected: stockAfter, safety: planRow.safety,
       pendingSupply: planRow.pendingSupply, suggestion,
       status: suggestion ? "request" : stockAfter < planRow.safety && planRow.pendingSupply ? "pending"
         : stockAfter < planRow.safety && planRow.totalSuggested ? "planned" : stockAfter < planRow.safety ? "short" : "covered" });

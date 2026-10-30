@@ -1408,6 +1408,10 @@ pre,
 .phase-material-figures small { display: block; color: #78869a; font-size: 10px; font-weight: 700; }
 .phase-material-figures b { display: block; margin-top: 2px; color: #23354f; font-size: 12px; font-weight: 850; overflow-wrap: anywhere; }
 .phase-material-figures .below b { color: #b13c0c; }
+.phase-material-dates { display: flex; flex-wrap: wrap; gap: 5px 14px; padding-left: 25px; color: #63738a; font-size: 11px; }
+.phase-material-dates b { color: #20364f; font-weight: 800; }
+.phase-material-dates em { color: #af4217; font-style: normal; font-weight: 800; }
+.phase-board-date-note { margin: 8px 0 14px; color: #596b83; font-size: 12px; line-height: 1.45; }
 .phase-material.request .phase-material-figures > div:last-child b { color: #b13c0c; }
 .phase-board-empty { border: 1px dashed #cbd7e4; border-radius: 12px; padding: 28px; color: #65758d; background: #fff; text-align: center; }
 .phase-selection-bar { position: sticky; bottom: 14px; z-index: 4; display: flex; justify-content: space-between; align-items: center; gap: 16px; width: min(100%, 420px); margin: 0 auto; border: 1px solid #cfd9e5; border-radius: 12px; padding: 10px 12px 10px 16px; background: #152239; color: #fff; box-shadow: 0 12px 35px #10203740; font-size: 12px; }

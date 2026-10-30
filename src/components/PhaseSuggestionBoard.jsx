@@ -1,7 +1,7 @@
 import React from "react";
 
 const amount = (value) => Number(value || 0).toLocaleString("es-PE", { maximumFractionDigits: 3 });
-const date = (value) => value ? new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`)) : "—";
+const date = (value) => value ? new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`)) : "—";
 const keyOf = (item) => `${item.code}:${item.needed}`;
 
 export default function PhaseSuggestionBoard({ board, query, ceco, onCeco, showCovered, onShowCovered, selected, onSelect, onSelectMany, onCreateMany, busy }) {
@@ -31,6 +31,7 @@ export default function PhaseSuggestionBoard({ board, query, ceco, onCeco, showC
       <label className="phase-board-switch"><input type="checkbox" checked={allSelected} disabled={!visibleSuggestions.length} onChange={(event) => onSelectMany(visibleSuggestions, event.target.checked)} /> Seleccionar visibles</label>
       <button className="planning-primary" disabled={!selected.size || busy} onClick={onCreateMany}>{busy ? "Guardando…" : `Crear ${selected.size} solicitud${selected.size === 1 ? "" : "es"}`}</button>
     </div>
+    <p className="phase-board-date-note">La solicitud ideal se programa antes de la necesidad de la fase según el plazo de reposición. Si el plazo ya venció, tramítala hoy; la fecha real de registro no se altera.</p>
     <div className="phase-board-groups">{groups.map((group) => {
       const selectable = group.rows.map((row) => row.suggestion).filter(Boolean);
       const allGroupSelected = selectable.length > 0 && selectable.every((item) => selected.has(keyOf(item)));
@@ -38,7 +39,7 @@ export default function PhaseSuggestionBoard({ board, query, ceco, onCeco, showC
       return <article className="phase-group" key={group.key}>
         <header className="phase-group-header">
           <div className="phase-group-id"><span className="phase-group-number">{String(group.routeOrder + 1).padStart(2, "0")}</span><div><small>CECO {group.ceco} · {group.product}</small><h3>{group.stageName}</h3></div></div>
-          <div className="phase-group-meta"><span>{date(group.needed)}</span><b>{group.requestCount} por solicitar</b><small>{group.totalCovered}/{group.totalCount} cubiertos</small></div>
+          <div className="phase-group-meta"><span>Necesidad de fase: {date(group.originalNeeded || group.needed)}</span><b>{group.requestCount} por solicitar</b><small>{group.totalCovered}/{group.totalCount} cubiertos</small></div>
         </header>
         <div className="phase-group-progress"><span style={{ width: `${coverage}%` }} /></div>
         {selectable.length > 0 && <label className="phase-group-select"><input type="checkbox" checked={allGroupSelected} onChange={(event) => onSelectMany(selectable, event.target.checked)} /> Seleccionar esta fase</label>}
@@ -48,6 +49,7 @@ export default function PhaseSuggestionBoard({ board, query, ceco, onCeco, showC
             <div><strong>{row.code}</strong><span>{row.material.description}</span></div>
           </div>
           <div className="phase-material-figures"><div><small>Requiere</small><b>{amount(row.quantity)} {row.material.unit}</b></div><div className={row.projected < row.safety ? "below" : ""}><small>Proyectado / SS</small><b>{amount(row.projected)} / {amount(row.safety)}</b></div><div><small>{row.suggestion ? "Solicitar" : row.status === "pending" ? "En trámite" : "Cobertura"}</small><b>{row.suggestion ? `${amount(row.suggestion.quantity)} ${row.material.unit}` : row.status === "pending" ? `${amount(row.pendingSupply)} ${row.material.unit}` : row.status === "covered" ? "Cubierto" : row.status === "planned" ? "Incluido" : "Revisar"}</b></div></div>
+          <div className="phase-material-dates"><span>Solicitud ideal <b>{date(row.requestDate)}</b></span><span>Necesidad de fase <b>{date(row.plannedNeeded)}</b></span>{row.requestOverdue && <em>Plazo vencido · tramitar hoy</em>}</div>
         </div>)}</div>
       </article>;
     })}</div>
