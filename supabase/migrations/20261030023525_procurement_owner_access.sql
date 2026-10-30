@@ -1,0 +1,1 @@
+alter policy owner_access on public.purchase_requests to authenticated using (created_by = (select auth.uid()) and not coalesce((select (auth.jwt()->>'is_anonymous')::boolean), false)) with check (created_by = (select auth.uid()) and not coalesce((select (auth.jwt()->>'is_anonymous')::boolean), false));

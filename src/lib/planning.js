@@ -158,6 +158,13 @@ export function buildMaterialPlan(dataset, today, count = 8) {
     let balance = Number(material.physical || 0);
     const scheduled = new Map();
     let beyondHorizon = 0;
+    const pendingRequests = (dataset.purchaseRequests || []).filter((request) => request.material_code === material.code && ["requested", "ordered"].includes(request.status));
+    for (const request of pendingRequests) {
+      const remaining = Math.max(0, Number(request.quantity) - Number(request.received_quantity || 0));
+      const arrivalIndex = request.status === "ordered" && request.expected_date >= today ? weekIndex(request.expected_date, weeks) : null;
+      if (arrivalIndex === null) beyondHorizon += remaining;
+      else scheduled.set(arrivalIndex, (scheduled.get(arrivalIndex) || 0) + remaining);
+    }
     const suggestions = [];
     const cells = weeks.map((week, index) => {
       const needed = demand.get(`${material.code}:${index}`) || { quantity: 0, cecos: new Set(), overdue: false, needed: null, originalNeeded: null };
@@ -185,7 +192,7 @@ export function buildMaterialPlan(dataset, today, count = 8) {
       return { week, opening, gross: needed.quantity, afterDemand, net, suggestedOrder, receipt, closing: balance,
         cecos: [...needed.cecos], overdue: needed.overdue, needed: targetDate, originalNeeded: needed.originalNeeded, orderBy, arrivalDate };
     });
-    return { material, safety, leadTime, cells, suggestions,
+    return { material, safety, leadTime, cells, suggestions, pendingSupply: pendingRequests.reduce((sum, request) => sum + Math.max(0, Number(request.quantity) - Number(request.received_quantity || 0)), 0),
       orders: [...requirements.values()].filter((item) => item.code === material.code).sort((a, b) => a.needed.localeCompare(b.needed) || a.ceco.localeCompare(b.ceco)),
       totalGross: cells.reduce((sum, cell) => sum + cell.gross, 0), totalSuggested: suggestions.reduce((sum, item) => sum + item.quantity, 0) };
   });

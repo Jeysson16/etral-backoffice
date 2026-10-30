@@ -1361,6 +1361,10 @@ pre,
 .purchase-filters button { border: 0; border-radius: 7px; background: transparent; color: #3e4959; padding: 9px 14px; font-weight: 800; font-size: 12px; }
 .purchase-filters button.active { background: #111827; color: white; }
 .purchase-table { min-width: 1100px; }
+.procurement-form { padding: 22px; }
+.procurement-form form { display: grid; gap: 16px; margin-top: 16px; }
+.procurement-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+.procurement-actions { display: grid; gap: 9px; }
 .purchase-table th, .purchase-table td { text-align: left; }
 .purchase-table th:first-child { min-width: 110px; }
 .purchase-table td:nth-child(2) { min-width: 225px; }

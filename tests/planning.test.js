@@ -10,6 +10,27 @@ const dataset = {
   inventory: [{ code: "MAT-1", description: "Material", physical: 3, safety: 2, leadTimeDays: 7, unit: "und" }]
 };
 
+test("una solicitud evita duplicar sugerencias sin crear existencias", () => {
+  const sample = { ...dataset, purchaseRequests: [{ material_code: "MAT-1", quantity: 6, received_quantity: 0, status: "requested" }] };
+  const plan = buildMaterialPlan(sample, "2026-10-21");
+  assert.equal(plan.purchases.length, 0);
+  assert.equal(plan.rows[0].cells[0].closing, -4);
+  assert.equal(plan.rows[0].cells.reduce((sum, cell) => sum + cell.receipt, 0), 0);
+  sample.purchaseRequests[0].status = "cancelled";
+  assert.equal(buildMaterialPlan(sample, "2026-10-21").purchases[0].quantity, 6);
+});
+
+test("la orden proyecta solo el saldo pendiente y no duplica ingresos parciales", () => {
+  const sample = { ...dataset, inventory: [{ ...dataset.inventory[0], physical: 5 }], purchaseRequests: [{ material_code: "MAT-1", quantity: 6, received_quantity: 2, status: "ordered", expected_date: "2026-10-28" }] };
+  const plan = buildMaterialPlan(sample, "2026-10-21");
+  assert.equal(plan.purchases.length, 0);
+  assert.equal(plan.rows[0].cells[0].closing, -2);
+  assert.equal(plan.rows[0].cells[1].receipt, 4);
+  assert.equal(plan.rows[0].cells[1].closing, 2);
+  sample.purchaseRequests[0].expected_date = "2026-10-20";
+  assert.equal(buildMaterialPlan(sample, "2026-10-21").rows[0].cells[0].receipt, 0);
+});
+
 test("calendario PMP ubica la entrega y estima capacidad semanal", () => {
   const plan = buildProductionPlan(dataset, "2026-10-21");
   assert.equal(plan.rows[0].week, 0);

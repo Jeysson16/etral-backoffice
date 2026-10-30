@@ -21,7 +21,7 @@ export const supabaseRepository = {
     // opcionales hasta que existan en el proyecto remoto.
     const optionalTables = [
       "customers", "order_material_reservations", "work_shifts", "personnel", "personnel_work_shifts",
-      "equipment", "work_calendar", "resource_assignments", "operational_incidents"
+      "equipment", "work_calendar", "resource_assignments", "operational_incidents", "purchase_requests"
     ];
     const tables = [...requiredTables, ...optionalTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
@@ -54,6 +54,7 @@ export const supabaseRepository = {
       warehouse: rows.warehouse_exits.map(mapWarehouse),
       quality: rows.quality_checks.map(mapQuality),
       inventoryMovements: rows.inventory_movements.map(mapMovement),
+      purchaseRequests: rows.purchase_requests,
       catalogs: { categories: rows.material_categories, units: rows.measurement_units, brands: rows.brands },
       productFamilies: rows.product_families,
       productionLines: rows.production_lines,
@@ -64,6 +65,17 @@ export const supabaseRepository = {
       assignments: (rows.resource_assignments ?? []).map(mapAssignment),
       incidents: (rows.operational_incidents ?? []).map(mapIncident)
     };
+  },
+  async savePurchaseRequest(action, payload) {
+    let result;
+    if (action === "create") result = await supabase.from("purchase_requests").upsert({ id: payload.id, material_code: payload.material_code, quantity: Number(payload.quantity), needed_date: payload.needed_date || null, cecos: payload.cecos || [], note: payload.note || "" }, { onConflict: "id", ignoreDuplicates: true });
+    else if (action === "edit") result = await supabase.from("purchase_requests").update({ quantity: Number(payload.quantity), needed_date: payload.needed_date || null, note: payload.note || "" }).eq("id", payload.id).eq("status", "requested").select().single();
+    else if (action === "order") result = await supabase.from("purchase_requests").update({ status: "ordered", supplier: payload.supplier, order_number: payload.order_number, order_date: payload.order_date, expected_date: payload.expected_date, unit_cost: Number(payload.unit_cost) }).eq("id", payload.id).eq("status", "requested").select().single();
+    else if (action === "receive") result = await supabase.rpc("receive_purchase_request", { p_id: payload.id, p_quantity: Number(payload.quantity), p_timestamp: toUtcTimestamp(payload.receipt_at), p_reference: payload.receipt_reference });
+    else if (action === "cancel") result = await supabase.from("purchase_requests").update({ status: "cancelled" }).eq("id", payload.id).in("status", ["requested", "ordered"]).select().single();
+    else throw new Error("Acción de compra no válida");
+    if (result.error) throw result.error;
+    return this.getDataset();
   },
   async saveFlowStages(flowStages) {
     const rows = flowStages.map((stage, index) => ({

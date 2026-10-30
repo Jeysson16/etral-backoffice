@@ -141,6 +141,38 @@ function setActivityProgress(dataset, ceco, activityId, patch) {
 }
 
 export const localRepository = {
+  async savePurchaseRequest(action, payload) {
+    const dataset = load();
+    dataset.purchaseRequests ||= [];
+    const today = toLocalDateTimeInput(new Date().toISOString()).slice(0, 10);
+    let row = dataset.purchaseRequests.find((item) => item.id === payload.id);
+    if (action === "create") {
+      if (payload.id && dataset.purchaseRequests.some((item) => item.id === payload.id)) return dataset;
+      if (!(Number(payload.quantity) > 0) || !dataset.inventory.some((item) => item.code === payload.material_code)) throw new Error("Revisa el material y la cantidad");
+      dataset.purchaseRequests.push({ id: payload.id || newInternalId("request"), request_number: dataset.purchaseRequests.length + 1, material_code: payload.material_code, quantity: Number(payload.quantity), received_quantity: 0, status: "requested", requested_date: today, needed_date: payload.needed_date || null, cecos: payload.cecos || [], note: payload.note || "" });
+    } else {
+      if (!row || ["received", "cancelled"].includes(row.status)) throw new Error("Registro cerrado o inexistente");
+      if (action === "edit" && row.status === "requested") {
+        if (!(Number(payload.quantity) > 0)) throw new Error("Cantidad no válida");
+        Object.assign(row, { quantity: Number(payload.quantity), needed_date: payload.needed_date, note: payload.note });
+      } else if (action === "order" && row.status === "requested") {
+        if (!payload.supplier?.trim() || !payload.order_number?.trim() || !payload.order_date || payload.order_date < row.requested_date || !payload.expected_date || payload.expected_date < payload.order_date || payload.unit_cost === "" || Number(payload.unit_cost) < 0) throw new Error("Completa los datos y revisa las fechas de la orden");
+        Object.assign(row, { status: "ordered", supplier: payload.supplier, order_number: payload.order_number, order_date: payload.order_date, expected_date: payload.expected_date, unit_cost: Number(payload.unit_cost) });
+      } else if (action === "receive" && row.status === "ordered") {
+        const quantity = Number(payload.quantity);
+        if (!(quantity > 0) || quantity > row.quantity - row.received_quantity || !payload.receipt_at || payload.receipt_at.slice(0,10) < row.order_date || new Date(payload.receipt_at) > new Date() || !payload.receipt_reference?.trim()) throw new Error("Revisa la cantidad, fecha y documento de recepción");
+        row.received_quantity += quantity;
+        row.status = row.received_quantity === row.quantity ? "received" : "ordered";
+        row.receipt_at = payload.receipt_at;
+        row.receipt_reference = payload.receipt_reference;
+        dataset.inventory.find((item) => item.code === row.material_code).physical += quantity;
+        dataset.inventoryMovements.unshift({ id: newInternalId("mov"), type: "ingreso", code: row.material_code, quantity, timestamp: payload.receipt_at, ceco: "", note: `OC ${row.order_number} · Solicitud ${row.request_number} · ${payload.receipt_reference}` });
+      } else if (action === "cancel") row.status = "cancelled";
+      else throw new Error("Transición no válida");
+    }
+    save(dataset);
+    return dataset;
+  },
   async getDataset() {
     return load();
   },
