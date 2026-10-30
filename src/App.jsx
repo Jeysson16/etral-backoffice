@@ -19,6 +19,7 @@ import { MaterialMrpView, SuggestedPurchasesView } from "./components/PlanningVi
 import ProductionPlanView from "./components/PmpPeriodView.jsx";
 import IndicatorDetails from "./components/IndicatorDetails.jsx";
 import AcademicStockReference from "./components/AcademicStockReference.jsx";
+import SupplySimulator from "./components/SupplySimulator.jsx";
 
 
 const views = {
@@ -170,7 +171,6 @@ export default function App() {
     randomSeed: 42
   });
 
-  const [simParams, setSimParams] = useState(simDraft);
   const [twin, setTwin] = useState(null);
   const [simulationRunning, setSimulationRunning] = useState(false);
   const [simulationTime, setSimulationTime] = useState("Escenario inicial");
@@ -479,8 +479,7 @@ export default function App() {
     setError("");
     setSimulationTime("Calculando escenario…");
     try {
-      const result = await runTwinSimulation(dataset, simDraft);
-      setSimParams({ ...simDraft });
+      const result = await runTwinSimulation(dataset, { ...simDraft, priorityCecos: [], orderPriorityOverrides: {}, expediteCeco: "", materialAdjustments: [] });
       setTwin(result);
       setSimulationTime(`Ejecutado ${new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`);
     } catch (err) {
@@ -488,17 +487,6 @@ export default function App() {
       setSimulationTime("La simulación no pudo completarse");
     } finally {
       setSimulationRunning(false);
-    }
-  }
-
-  async function saveOrderPriorities(entries) {
-    try {
-      const refreshed = await repo.updateOrderPriorities(entries);
-      setDataset(normalizeDataset(refreshed));
-      setNotice(`${entries.length} prioridad(es) CECO guardada(s) en Supabase.`);
-      setError("");
-    } catch (err) {
-      setError(`No se pudieron guardar las prioridades: ${err.message}`);
     }
   }
 
@@ -537,7 +525,7 @@ export default function App() {
         <div className="page-content">
           {view === "overview" && <Overview dataset={dataset} kpis={kpis} heatmap={heatmap} mrp={mrp} setView={setView} onUpdateMovementTimestamp={(id, timestamp) => mutate(() => repo.updateInventoryMovementTimestamp(id, timestamp), "Fecha y hora del movimiento actualizadas.")} />}
           {view === "indicators" && <IndicatorsView dataset={dataset} openDrawer={setDrawer} setView={setView} />}
-          {view === "twin" && <TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} onSavePriorities={saveOrderPriorities} simulationTime={simulationTime} dataReady={dataReady} isRunning={simulationRunning} />}
+          {view === "twin" && <div className="stack-lg"><SupplySimulator dataset={dataset} dataReady={dataReady} /><details className="panel supply-advanced"><summary>Análisis complementario de capacidad y personal</summary><p>Este cálculo de capacidad es independiente del escenario de entregas anterior. No estima fechas de producción a partir de los retrasos de compra.</p><TwinView dataset={dataset} draft={simDraft} setDraft={setSimDraft} result={twin} execute={executeSimulation} simulationTime={simulationTime} dataReady={dataReady} isRunning={simulationRunning} /></details></div>}
           {view === "orders" && <OrdersView dataset={dataset} onPurchases={() => setView("purchases")} onRunMrp={() => setView("mrp")} activeDrawer={drawer} openDrawer={setDrawer} advanceOrder={advanceOrder} onMoveOrder={(order, stageId) => mutate(() => repo.moveOrder(order.ceco, stageId), `CECO ${order.ceco} movido a ${stageOf(dataset, stageId)?.name}.`)} onProgress={(ceco, activityId, patch) => mutate(() => repo.updateActivityProgress(ceco, activityId, patch), patch.updateTimestamps ? "Fecha y hora de la actividad actualizadas." : "Avance de actividad actualizado.")} onSchedule={(ceco, entries) => mutate(() => repo.updateActivitySchedules(ceco, entries), entries.length > 1 ? "Cronograma y fases posteriores actualizados." : "Fecha programada actualizada.")} onUpdateOrder={(ceco, patch) => mutate(() => repo.updateOrder(ceco, patch), patch.ceco && patch.ceco !== ceco ? `CECO renombrado a ${patch.ceco}.` : "Datos de la orden actualizados.")} onDeleteOrder={(ceco) => mutate(() => repo.deleteOrder(ceco), `CECO ${ceco} eliminado y reservas pendientes liberadas.`)} onCreateQuality={(payload) => mutate(() => repo.createQualityCheck(payload), "Control de calidad registrado.")} onDeleteAssignment={(id) => mutate(() => repo.deleteAssignment(id), "Asignación eliminada.")} onDeleteOperation={(id) => mutate(() => repo.deleteOperation(id), "Parte diario eliminado.")} />}
           {view === "mrp" && <MaterialMrpView dataset={dataset} initialCode={mrpMaterialCode} onPurchases={() => setView("purchases")} />}
           {view === "purchases" && <SuggestedPurchasesView dataset={dataset} onMaterial={(code) => { setMrpMaterialCode(code); setView("mrp"); }} onSave={async (action, payload) => { const updated = await runWithSessionRecovery(() => repo.savePurchaseRequest(action, payload)); setDataset(normalizeDataset(updated)); }} />}
@@ -895,7 +883,7 @@ function IndicatorsView({ dataset, openDrawer, setView }) {
   </div>;
 }
 
-function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities, simulationTime, dataReady, isRunning }) {
+function TwinView({ dataset, draft, setDraft, result, execute, simulationTime, dataReady, isRunning }) {
   const [tab, setTab] = useState("capacity");
   const [calibInfo, setCalibInfo] = useState(null);
 
@@ -947,122 +935,12 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
     });
   }
 
-  function toggleMaterialAdjustment(materialCode) {
-    setDraft((current) => {
-      const adjustments = current.materialAdjustments ?? [];
-      const isSelected = adjustments.some((item) => item.materialCode === materialCode);
-      return {
-        ...current,
-        materialAdjustments: isSelected
-          ? adjustments.filter((item) => item.materialCode !== materialCode)
-          : [...adjustments, { materialCode, stockAdjustment: 0 }]
-      };
-    });
-  }
-
-  function updateMaterialAdjustment(materialCode, stockAdjustment) {
-    setDraft((current) => ({
-      ...current,
-      materialAdjustments: (current.materialAdjustments ?? []).map((item) => (
-        item.materialCode === materialCode ? { ...item, stockAdjustment } : item
-      ))
-    }));
-  }
-
-  function togglePriorityCeco(ceco) {
-    setDraft((current) => {
-      const selected = current.priorityCecos ?? [];
-      const overrides = current.orderPriorityOverrides ?? {};
-      if (selected.includes(ceco)) {
-        return {
-          ...current,
-          priorityCecos: selected.filter((item) => item !== ceco),
-          orderPriorityOverrides: Object.fromEntries(Object.entries(overrides).filter(([item]) => item !== ceco))
-        };
-      }
-
-      // 999 is the database's "not prioritized yet" sentinel, not an actual queue position.
-      // Give selected CECOs a usable, unique position from the outset.
-      const used = new Set(selected
-        .map((item) => Number(overrides[item]))
-        .filter((priority) => Number.isInteger(priority) && priority >= 1 && priority !== 999));
-      let nextPriority = 1;
-      while (used.has(nextPriority)) nextPriority += 1;
-
-      const storedPriority = Number(dataset.orders.find((item) => item.ceco === ceco)?.priority);
-      const initialPriority = Number.isInteger(storedPriority) && storedPriority >= 1 && storedPriority !== 999 && !used.has(storedPriority)
-        ? storedPriority
-        : nextPriority;
-
-      return {
-        ...current,
-        priorityCecos: [...selected, ceco],
-        orderPriorityOverrides: { ...overrides, [ceco]: initialPriority }
-      };
-    });
-  }
-
-  function updatePriorityCeco(ceco, priority) {
-    setDraft((current) => {
-      return { ...current, orderPriorityOverrides: { ...(current.orderPriorityOverrides ?? {}), [ceco]: priority === "" ? "" : Number(priority) } };
-    });
-  }
-
-  function orderSelectedCecosSequentially() {
-    setDraft((current) => ({
-      ...current,
-      orderPriorityOverrides: Object.fromEntries((current.priorityCecos ?? []).map((ceco, index) => [ceco, index + 1]))
-    }));
-  }
-
-  // Repairs selections created before the UI stopped exposing the database's
-  // "999 = no priority" sentinel as a real queue value.
-  useEffect(() => {
-    setDraft((current) => {
-      const selected = current.priorityCecos ?? [];
-      const overrides = current.orderPriorityOverrides ?? {};
-      const used = new Set();
-      let changed = false;
-      let candidate = 1;
-      const repaired = { ...overrides };
-
-      selected.forEach((ceco) => {
-        const priority = Number(repaired[ceco]);
-        if (Number.isInteger(priority) && priority >= 1 && priority !== 999 && !used.has(priority)) {
-          used.add(priority);
-          return;
-        }
-        while (used.has(candidate)) candidate += 1;
-        repaired[ceco] = candidate;
-        used.add(candidate);
-        candidate += 1;
-        changed = true;
-      });
-
-      return changed ? { ...current, orderPriorityOverrides: repaired } : current;
-    });
-  }, [dataset.orders]);
-
-  const materialAdjustmentErrors = (draft.materialAdjustments ?? []).flatMap((adjustment) => {
-    const material = dataset.inventory.find((item) => item.code === adjustment.materialCode);
-    const amount = Number(adjustment.stockAdjustment);
-    if (adjustment.stockAdjustment === "" || !Number.isFinite(amount)) return [`${adjustment.materialCode}: ingresa un número válido.`];
-    if (material && Number(material.physical) + amount < 0) return [`${adjustment.materialCode}: el ajuste dejaría el físico por debajo de cero.`];
-    return [];
-  });
-  const priorityValues = (draft.priorityCecos ?? []).map((ceco) => ({ ceco, priority: Number(draft.orderPriorityOverrides?.[ceco]) }));
-  const priorityErrors = priorityValues.flatMap(({ ceco, priority }, index, values) => {
-    if (!Number.isInteger(priority) || priority < 1) return [`CECO ${ceco}: usa un orden entero mayor que cero.`];
-    if (values.filter((item) => item.priority === priority).length > 1) return [`CECO ${ceco}: el orden ${priority} está repetido.`];
-    return [];
-  });
-  const canExecute = dataReady && !isRunning && materialAdjustmentErrors.length === 0 && priorityErrors.length === 0;
+  const canExecute = dataReady && !isRunning;
 
   const comparisons = result ? [
     ["Órdenes terminables", result.baseline.throughput, result.scenario.throughput, "órdenes"],
     ["Cumplimiento PMP por CECO", result.baseline.pmpCompliance, `${result.scenario.pmpCompliance}%`, "%"],
-    ["Lead time estimado", result.baseline.estimatedLeadDays, result.scenario.estimatedLeadDays, "días"],
-    ["Quiebres proyectados", result.baseline.stockouts, result.scenario.stockouts, "materiales"]
+    ["Lead time estimado", result.baseline.estimatedLeadDays, result.scenario.estimatedLeadDays, "días"]
   ] : [];
 
   const activeOrders = dataset.orders.filter((order) => Number(order.progress) < 100);
@@ -1096,42 +974,7 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           </div>
         </Field>
 
-        <div className="field-group multi-scenario-field">
-          <span>Ajuste extraordinario de material</span>
-          <div className="multi-picker" role="group" aria-label="Materiales para ajuste extraordinario">
-            {dataset.inventory.map((item) => <label key={item.code}><input type="checkbox" checked={(draft.materialAdjustments ?? []).some((adjustment) => adjustment.materialCode === item.code)} onChange={() => toggleMaterialAdjustment(item.code)} /><span><strong>{item.code}</strong><small>{item.description}</small></span></label>)}
-          </div>
-          <small>Seleccione uno o varios materiales. Use un valor positivo para un ingreso y negativo para una pérdida simulada. Los ajustes válidos se consideran automáticamente al ejecutar la simulación; no alteran el inventario real.</small>
-          {(draft.materialAdjustments ?? []).length > 0 && <div className="scenario-selection-list material-adjustment-list">
-            {draft.materialAdjustments.map((adjustment) => {
-              const material = dataset.inventory.find((item) => item.code === adjustment.materialCode);
-              return <div key={adjustment.materialCode}>
-                <span><strong>{adjustment.materialCode}</strong><small>{material?.description}</small></span>
-                <input aria-label={`Ajuste de stock para ${adjustment.materialCode}`} type="number" value={adjustment.stockAdjustment} onChange={(event) => updateMaterialAdjustment(adjustment.materialCode, event.target.value)} />
-              </div>;
-            })}
-          </div>}
-          {materialAdjustmentErrors.length > 0 && <small className="form-error">{materialAdjustmentErrors.join(" ")}</small>}
-        </div>
 
-        <div className="field-group multi-scenario-field">
-          <span>Prioridades de CECO en cola</span>
-          <div className="multi-picker" role="group" aria-label="CECO prioritarios en cola">
-            {activeOrders.map((order) => <label key={order.ceco}><input type="checkbox" checked={(draft.priorityCecos ?? []).includes(order.ceco)} onChange={() => togglePriorityCeco(order.ceco)} /><span><strong>CECO {order.ceco}</strong><small>{productOf(dataset, order.bodyTypeId)?.name}</small></span></label>)}
-          </div>
-          <small>El orden 1 se programa primero, luego 2, 3 y así sucesivamente. Al seleccionar un CECO se asigna el siguiente orden libre; el 999 significa “sin prioridad” y no se usa como posición real.</small>
-          {(draft.priorityCecos ?? []).length > 0 && <div className="scenario-selection-list priority-order-list">
-            {draft.priorityCecos.map((ceco) => {
-              const order = activeOrders.find((item) => item.ceco === ceco);
-              return <div key={ceco}>
-                <span><strong>CECO {ceco}</strong><small>{productOf(dataset, order?.bodyTypeId)?.name}</small></span>
-                <input aria-label={`Prioridad de CECO ${ceco}`} type="number" min="1" step="1" value={draft.orderPriorityOverrides?.[ceco] ?? order?.priority ?? ""} onChange={(event) => updatePriorityCeco(ceco, event.target.value)} />
-              </div>;
-            })}
-          </div>}
-          {priorityErrors.length > 0 && <small className="form-error">{priorityErrors.join(" ")}</small>}
-          {(draft.priorityCecos ?? []).length > 0 && <div className="priority-actions"><button type="button" className="text-button" onClick={orderSelectedCecosSequentially}>Ordenar seleccionados 1 → {draft.priorityCecos.length}</button><button type="button" className="text-button" disabled={priorityErrors.length > 0} onClick={() => onSavePriorities(priorityValues)}>Guardar prioridades reales</button></div>}
-        </div>
       </div>
 
       <Button onClick={execute} disabled={!canExecute}>{isRunning ? "Calculando escenario…" : dataReady ? "Ejecutar simulación gemela" : "Esperando datos…"}</Button>
@@ -1178,12 +1021,11 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           <p>Variación de rendimiento y ausentismo aplicada a cada trabajador disponible.</p>
         </section>}
 
-        <SimulationAlerts notifications={result.notifications} />
+
 
         <section className="panel simulation-main">
           <div className="tabs">
             <button className={tab === "capacity" ? "active" : ""} onClick={() => setTab("capacity")}>Capacidad por fase</button>
-            <button className={tab === "materials" ? "active" : ""} onClick={() => setTab("materials")}>Impacto en materiales</button>
             <button className={tab === "demand" ? "active" : ""} onClick={() => setTab("demand")}>Demanda y productos</button>
             <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>Parámetros por orden CECO</button>
             {result.scenario.cecoSchedule && <button className={tab === "schedule" ? "active" : ""} onClick={() => setTab("schedule")}>Programa finito CECO</button>}
@@ -1192,7 +1034,6 @@ function TwinView({ dataset, draft, setDraft, result, execute, onSavePriorities,
           </div>
 
           {tab === "capacity" && <CapacityChart rows={result.scenario.stageCapacity} bottleneck={result.scenario.bottleneck} />}
-          {tab === "materials" && <MaterialSimulation rows={result.scenario.materials} />}
           {tab === "demand" && <DemandSimulation insights={result.scenario.demandInsights} />}
           {tab === "schedule" && result.scenario.cecoSchedule && (
             <div className="order-params-panel">
@@ -1324,38 +1165,9 @@ function CapacityChart({ rows, bottleneck }) {
   })}</div></div>;
 }
 
-function MaterialSimulation({ rows }) {
-  return <div className="table-scroll"><table><thead><tr><th>Material</th><th>Demanda real</th><th>Físico / mínimo</th><th>Consumo proyectado</th><th>Riesgo y reposición</th><th>Origen</th></tr></thead><tbody>{rows.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.description}</small></td><td>{item.demand?.records ? <><strong>{item.demand.day} / {item.demand.week} / {item.demand.month}</strong><small>día / 7 días / 30 días · salidas y consumos registrados</small></> : <small>Sin movimientos de salida o consumo fechados.</small>}</td><td><strong>{item.physical} {item.unit}</strong><small>Disponible {item.available} · mínimo {item.safety}</small></td><td><strong>{item.required} {item.unit}</strong><small>Saldo al cierre: {item.projected} {item.unit}</small></td><td><span className={`stock-label ${item.tone}`}>{item.tone === "danger" ? "Quiebre" : item.tone === "warning" ? "Bajo mínimo" : "Cubierto"}</span>{item.firstRisk && <small>{item.firstRisk.date} · {item.suggestedReplenishment == null ? "Falta plazo de abastecimiento" : `reponer ${item.suggestedReplenishment} ${item.unit}`}</small>}</td><td>{(item.requirements ?? []).length ? <small>{(item.requirements ?? []).map((need) => `CECO ${need.ceco}: ${need.quantity} en ${need.stage}`).join(" · ")}</small> : <small>Sin consumo pendiente identificado en BOM/ruta.</small>}</td></tr>)}</tbody></table></div>;
-}
-
 function DemandSimulation({ insights }) {
   const products = insights?.products;
   return <div className="stack-lg"><section className="panel"><SectionHeader eyebrow="Historial disponible" title="Productos más solicitados y tendencia" detail={products?.available ? products.reference : "No hay pedidos cerrados con una fecha utilizable; no se muestra una tendencia inventada."} />{products?.available ? <div className="table-scroll"><table><thead><tr><th>Producto</th><th>Pedidos cerrados</th><th>Últimos 30 días del historial</th><th>Período anterior</th><th>Tendencia</th></tr></thead><tbody>{products.rows.map((item) => <tr key={item.productId}><td><strong>{item.product}</strong></td><td>{item.completed}</td><td>{item.recent}</td><td>{item.previous}</td><td>{item.trend}</td></tr>)}</tbody></table></div> : <EmptyState text="Registra pedidos cerrados con fecha para habilitar este reporte." />}</section><section className="panel"><SectionHeader eyebrow="Cómo leer la demanda" title="Fuente y límites del dato" detail="La demanda de materiales se muestra por día, 7 días y 30 días solo cuando existen movimientos de salida o consumo. La proyección futura usa CECO abiertos, su ruta y los materiales registrados en el BOM o en sus reservas." /></section></div>;
-}
-
-function SimulationAlerts({ notifications }) {
-  const critical = notifications.filter((item) => item.severity === "critical").length;
-  const groups = Array.from(notifications.reduce((map, alert) => {
-    const key = `${alert.severity}:${alert.category}`;
-    const group = map.get(key) ?? { ...alert, count: 0, affected: new Set(), examples: [] };
-    group.count += 1;
-    (alert.affected ?? []).forEach((item) => group.affected.add(item));
-    group.examples.push(alert);
-    map.set(key, group);
-    return map;
-  }, new Map()).values()).sort((a, b) => b.count - a.count);
-  const affectedCecos = new Set(notifications.flatMap((item) => item.affected ?? [])).size;
-  return <section className="panel alert-center">
-    <SectionHeader eyebrow="Alertas accionables" title="Situaciones previstas" action={<span className={`alert-count ${critical ? "critical" : "ok"}`}>{critical ? `${critical} críticas` : "Sin críticas"}</span>} />
-    {notifications.length > 0 && <div className="alert-overview"><div><strong>{critical}</strong><span>bloqueos críticos</span></div><div><strong>{affectedCecos}</strong><span>CECO afectados</span></div><div><strong>{groups.length}</strong><span>causas agrupadas</span></div><p>Revisa primero los grupos con más CECO y aplica la acción sugerida una sola vez por causa.</p></div>}
-    <div className="alert-group-list">
-      {notifications.length === 0 && <EmptyState text="Los indicadores se mantienen dentro de los umbrales configurados." />}
-      {groups.map((group) => <details className={`alert-group ${group.severity}`} key={`${group.severity}-${group.category}`}>
-        <summary><div className="alert-symbol">{group.severity === "critical" ? "!" : "△"}</div><div><span>{group.category}</span><strong>{group.count} {group.count === 1 ? "alerta" : "alertas"} · {group.title.replace(/^CECO \d+ /, "")}</strong></div><b>{group.value}</b><em className="expand-control"><span className="closed-label">Expandir</span><span className="open-label">Contraer</span><i>⌄</i></em></summary>
-        <div className="alert-group-detail"><p><b>Qué ocurre:</b> {group.situation}</p><p><b>Por qué:</b> {group.reason}</p><div className="affected-chips">{Array.from(group.affected).slice(0, 10).map((item) => <span key={item}>{item}</span>)}{group.affected.size > 10 && <span>+{group.affected.size - 10} más</span>}</div><p className="recommended-action"><b>Acción recomendada:</b> {group.recommendedAction}</p><details className="alert-examples"><summary>Ver CECO y cálculos individuales ({group.examples.length})</summary>{group.examples.map((alert) => <div key={alert.id}><strong>{alert.title}</strong><span>{alert.period}</span><code>{alert.calculation}</code></div>)}</details></div>
-      </details>)}
-    </div>
-  </section>;
 }
 
 function OrdersView({ dataset, onPurchases, onRunMrp, activeDrawer, openDrawer, advanceOrder, onMoveOrder, onProgress, onSchedule, onUpdateOrder, onDeleteOrder, onCreateQuality, onDeleteAssignment, onDeleteOperation }) {
