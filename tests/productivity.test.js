@@ -29,6 +29,19 @@ test("calcula los indicadores definidos por la tesis", () => {
   assert.equal(current.multifactorProductivity, 5);
 });
 
+test("productividad por peso usa los campos del CECO y el promedio de razones del Excel", () => {
+  const order = { ceco: "260350", progress: 100, dueDate: "2026-06-30", actualDeliveryDate: "2026-06-28",
+    outputWeightKg: 624.29, reportedWorkerCount: 8, reportedLaborHours: 65.5, laborHourCostPen: 4.708333333333333,
+    rawMaterialCostPen: 1992.12, suppliesCostPen: 1828.27, outputValue: 11500, energyCost: 1200, capitalCost: 3820.39 };
+  const measured = calculateProductivityReport({ orders: [order], operations: [], activityProgress: [], inventory: [] }, "2026-06-01", "2026-06-30").current;
+  assert.equal(measured.measurementMode, "weight");
+  assert.equal(measured.reportedHours, 65.5);
+  assert.equal(measured.laborProductivity, 9.531);
+  assert.equal(measured.materialProductivity, 0.1634);
+  assert.equal(measured.multifactorProductivity, 2.158);
+  assert.equal(measured.cecoMeasurements[0].rawMaterialCost, 1992.12);
+});
+
 test("cobertura usa el stock de seguridad calculado y el mínimo manual cuando faltan parámetros", () => {
   const inventory = [
     { code: "A", physical: 2, committed: 0, safety: 2, serviceFactor: 2, demandStdDev: 3, leadTimeDays: 4, averageDemand: 2, leadTimeStdDev: 1 },

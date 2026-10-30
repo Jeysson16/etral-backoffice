@@ -45,6 +45,33 @@ test("libro de indicadores exporta SS y ROP con la fórmula del Excel", () => {
   assert.equal(summary.find((row) => row[0] === "average_delivery_delay")[2], 2);
 });
 
+test("la ficha de productividad exporta los valores registrados en el CECO", () => {
+  const dataset = fixture();
+  Object.assign(dataset.orders[0], {
+    outputWeightKg: 624.29,
+    reportedWorkerCount: 8,
+    reportedLaborHours: 65.5,
+    laborHourCostPen: 4.708333333333333,
+    rawMaterialCostPen: 1992.12,
+    suppliesCostPen: 1828.27,
+    outputValue: 11500,
+    energyCost: 1200,
+    capitalCost: 3820.39,
+    productivityBasis: "Instrumento de tesis"
+  });
+  const report = calculateProductivityReport(dataset, range.start, range.end);
+  const workbook = buildIndicatorsWorkbook(dataset, report, range);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets["Ficha productividad"], { header: 1 });
+  const summary = XLSX.utils.sheet_to_json(workbook.Sheets.Resumen, { header: 1 });
+  assert.equal(rows[4][3], 624.29);
+  assert.equal(rows[4][5], 65.5);
+  assert.equal(rows[4][10], 1992.12 + 1828.27);
+  assert.ok(Math.abs(rows[4][7] - 624.29 / 65.5) < 1e-10);
+  assert.ok(Math.abs(rows[4][11] - 624.29 / (1992.12 + 1828.27)) < 1e-10);
+  assert.ok(Math.abs(rows[4][18] - 11500 / (65.5 * 4.708333333333333 + 1200 + 3820.39)) < 1e-10);
+  assert.equal(summary.find((row) => row[0] === "labor_productivity")[4], "kg/h");
+});
+
 test("el libro conserva las lecturas del instrumento y su promedio por CECO", () => {
   const dataset = fixture();
   dataset.thesisMeasurements = [{ phase: "post", ceco: "260350", date: "2026-06-08", product: "Baranda Mixta", weightKg: 624.29, workers: 8, laborHours: 65.5, hourlyCost: 4.708333333333333, rawMaterialCost: 1992.12, suppliesCost: 1828.27, outputValue: 11500, energyCost: 1200, capitalCost: 3820.39, baseHours: 202.16, groupMultifactorSum: 8.756465627219828, groupLaborSum: 37.860987966156166, groupMaterialSum: 0.45633305912878647, workbookMultifactor: 2.158090109019519, sourceSheet: "Post MO y MAT ", sourceRow: 8 }];

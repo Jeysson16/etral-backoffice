@@ -34,6 +34,29 @@ function round(value, digits = 2) {
   return Math.round(value * factor) / factor;
 }
 
+const mean = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+const validNumber = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+
+export function cecoProductivityInput(order) {
+  if (![order?.outputWeightKg, order?.reportedLaborHours, order?.laborHourCostPen,
+    order?.rawMaterialCostPen, order?.suppliesCostPen, order?.outputValue, order?.capitalCost].every(validNumber)) return null;
+  const weightKg = Number(order.outputWeightKg);
+  const hours = Number(order.reportedLaborHours);
+  const hourlyCost = Number(order.laborHourCostPen);
+  const rawMaterialCost = Number(order.rawMaterialCostPen);
+  const suppliesCost = Number(order.suppliesCostPen);
+  const materialCost = rawMaterialCost + suppliesCost;
+  const laborCost = hours * hourlyCost;
+  const energyCost = validNumber(order.energyCost) ? Number(order.energyCost) : 0;
+  const capitalCost = Number(order.capitalCost);
+  const denominator = laborCost + energyCost + capitalCost;
+  if (weightKg <= 0 || hours <= 0 || materialCost <= 0 || denominator <= 0) return null;
+  return { ceco: order.ceco, weightKg, workers: validNumber(order.reportedWorkerCount) ? Number(order.reportedWorkerCount) : null,
+    hours, hourlyCost, rawMaterialCost, suppliesCost, materialCost, laborCost, energyCost, capitalCost,
+    outputValue: Number(order.outputValue), laborProductivity: weightKg / hours,
+    materialProductivity: weightKg / materialCost, multifactorProductivity: Number(order.outputValue) / denominator };
+}
+
 const workerKey = (value) => String(value ?? "").trim().toLocaleLowerCase("es");
 
 export function materialConsumptionCost(dataset, ceco, start, end) {
@@ -192,6 +215,14 @@ function calculatePeriod(dataset, start, end) {
   const otherCosts = completed.length && factorCosts.every((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)))
     ? factorCosts.reduce((sum, value) => sum + Number(value), 0) : null;
 
+  const cecoMeasurements = completed.map(({ order }) => cecoProductivityInput(order));
+  const thesisMode = completed.length > 0 && cecoMeasurements.every(Boolean);
+  const measuredHours = thesisMode ? cecoMeasurements.reduce((sum, row) => sum + row.hours, 0) : reportedHours;
+  const measuredMaterials = thesisMode ? cecoMeasurements.reduce((sum, row) => sum + row.materialCost, 0) : materialCost;
+  const measuredLabor = thesisMode ? cecoMeasurements.reduce((sum, row) => sum + row.laborCost, 0) : laborCost;
+  const measuredOutput = thesisMode ? cecoMeasurements.reduce((sum, row) => sum + row.outputValue, 0) : outputValue;
+  const measuredOther = thesisMode ? cecoMeasurements.reduce((sum, row) => sum + row.energyCost + row.capitalCost, 0) : otherCosts;
+
   return {
     start,
     end,
@@ -207,21 +238,25 @@ function calculatePeriod(dataset, start, end) {
     safetyCoverage: round(percent(safetyCovered, inventory.length), 1),
     safetyCovered,
     safetyTotal: inventory.length,
-    reportedHours: round(reportedHours, 1),
-    laborProductivity: reportedHours > 0 ? round(completed.length / reportedHours, 3) : null,
-    materialProductivity: materialCost > 0 ? round(completed.length / materialCost, 4) : null,
-    materialCost: round(materialCost, 2),
-    materialCostReason,
-    hasEstimatedMaterialUsage,
-    estimatedMaterialPrices,
-    estimatedMonetaryInputs: estimatedMaterialPrices || estimatedLaborRates || estimatedOrderValues,
+    reportedHours: round(measuredHours, 2),
+    producedWeightKg: thesisMode ? round(cecoMeasurements.reduce((sum, row) => sum + row.weightKg, 0), 2) : null,
+    measurementMode: thesisMode ? "weight" : "units",
+    cecoMeasurements: thesisMode ? cecoMeasurements : [],
+    laborProductivity: thesisMode ? round(mean(cecoMeasurements.map((row) => row.laborProductivity)), 3) : reportedHours > 0 ? round(completed.length / reportedHours, 3) : null,
+    materialProductivity: thesisMode ? round(mean(cecoMeasurements.map((row) => row.materialProductivity)), 4) : materialCost > 0 ? round(completed.length / materialCost, 4) : null,
+    materialCost: round(measuredMaterials, 2),
+    materialCostReason: thesisMode ? null : materialCostReason,
+    hasEstimatedMaterialUsage: thesisMode ? false : hasEstimatedMaterialUsage,
+    estimatedMaterialPrices: thesisMode ? false : estimatedMaterialPrices,
+    estimatedMonetaryInputs: thesisMode ? false : estimatedMaterialPrices || estimatedLaborRates || estimatedOrderValues,
     completedCecoCount: completedCecos.size,
-    laborCost: round(laborCost, 2),
-    otherCosts: round(otherCosts, 2),
-    multifactorProductivity: materialCost !== null && laborCost !== null && outputValue !== null && (materialCost + laborCost) > 0
+    laborCost: round(measuredLabor, 2),
+    otherCosts: round(measuredOther, 2),
+    multifactorProductivity: thesisMode ? round(mean(cecoMeasurements.map((row) => row.multifactorProductivity)), 3)
+      : materialCost !== null && laborCost !== null && outputValue !== null && (materialCost + laborCost) > 0
       ? round(outputValue / (materialCost + laborCost), 3)
       : null,
-    outputValue: round(outputValue, 2),
+    outputValue: round(measuredOutput, 2),
     completedOrders: completed.map((item) => ({
       ceco: item.order.ceco,
       customer: item.order.customer,

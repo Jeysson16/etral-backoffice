@@ -152,6 +152,13 @@ export const supabaseRepository = {
     if (Object.hasOwn(patch, "energyCost")) values.energy_cost_basis = patch.energyCostBasis ?? "Registrado en CECO";
     if (Object.hasOwn(patch, "capitalCost")) values.capital_cost = nullableNumber(patch.capitalCost);
     if (Object.hasOwn(patch, "capitalCost")) values.capital_cost_basis = patch.capitalCostBasis ?? "Registrado en CECO";
+    if (Object.hasOwn(patch, "outputWeightKg")) values.output_weight_kg = nullableNumber(patch.outputWeightKg);
+    if (Object.hasOwn(patch, "reportedWorkerCount")) values.reported_worker_count = nullableNumber(patch.reportedWorkerCount);
+    if (Object.hasOwn(patch, "reportedLaborHours")) values.reported_labor_hours = nullableNumber(patch.reportedLaborHours);
+    if (Object.hasOwn(patch, "laborHourCostPen")) values.labor_hour_cost_pen = nullableNumber(patch.laborHourCostPen);
+    if (Object.hasOwn(patch, "rawMaterialCostPen")) values.raw_material_cost_pen = nullableNumber(patch.rawMaterialCostPen);
+    if (Object.hasOwn(patch, "suppliesCostPen")) values.supplies_cost_pen = nullableNumber(patch.suppliesCostPen);
+    if (["outputWeightKg", "reportedWorkerCount", "reportedLaborHours", "laborHourCostPen", "rawMaterialCostPen", "suppliesCostPen"].some((key) => Object.hasOwn(patch, key))) values.productivity_basis = patch.productivityBasis ?? "Registrado en CECO";
     if (Object.hasOwn(patch, "actualDeliveryDate")) values.actual_finish_date = patch.actualDeliveryDate || null;
     const { error } = await supabase.from("ceco_orders").update(values).eq("ceco", ceco);
     if (error) throw error;
@@ -204,6 +211,13 @@ export const supabaseRepository = {
     if (payload.outputValue != null) { values.sale_amount_pen = Number(payload.outputValue); values.output_value_basis = "Registrado en CECO"; }
     if (payload.energyCost != null) { values.energy_cost = Number(payload.energyCost); values.energy_cost_basis = "Registrado en CECO"; }
     if (payload.capitalCost != null) { values.capital_cost = Number(payload.capitalCost); values.capital_cost_basis = "Registrado en CECO"; }
+    if (payload.outputWeightKg != null) values.output_weight_kg = Number(payload.outputWeightKg);
+    if (payload.reportedWorkerCount != null) values.reported_worker_count = Number(payload.reportedWorkerCount);
+    if (payload.reportedLaborHours != null) values.reported_labor_hours = Number(payload.reportedLaborHours);
+    if (payload.laborHourCostPen != null) values.labor_hour_cost_pen = Number(payload.laborHourCostPen);
+    if (payload.rawMaterialCostPen != null) values.raw_material_cost_pen = Number(payload.rawMaterialCostPen);
+    if (payload.suppliesCostPen != null) values.supplies_cost_pen = Number(payload.suppliesCostPen);
+    if (Object.keys(values).some((key) => ["output_weight_kg", "reported_worker_count", "reported_labor_hours", "labor_hour_cost_pen", "raw_material_cost_pen", "supplies_cost_pen"].includes(key))) values.productivity_basis = "Registrado en CECO";
     if (Object.keys(values).length) {
       const { error: valueError } = await supabase.from("ceco_orders").update(values).eq("ceco", payload.ceco);
       if (valueError) throw valueError;
@@ -682,7 +696,7 @@ function mapActivityProgress(row) {
 }
 
 function mapOrder(row) {
-  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, actualDeliveryDate: row.actual_finish_date ?? null, budgetNumber: row.budget_number ?? null, createdAt: row.created_at || null, active: row.active !== false, outputValue: nullableNumber(row.sale_amount_pen), outputValueBasis: row.output_value_basis ?? null, energyCost: nullableNumber(row.energy_cost), energyCostBasis: row.energy_cost_basis ?? null, capitalCost: nullableNumber(row.capital_cost), capitalCostBasis: row.capital_cost_basis ?? null };
+  return { id: row.id, ceco: row.ceco, customerId: row.customer_id, customer: row.customer, bodyTypeId: row.body_type_id, productionLineId: row.production_line_id, progress: Number(row.progress), line: row.line, status: row.status, stageId: row.stage_id, plantState: row.plant_state, priority: row.priority, plannedStartDate: row.planned_start_date, dueDate: row.due_date, actualDeliveryDate: row.actual_finish_date ?? null, budgetNumber: row.budget_number ?? null, createdAt: row.created_at || null, active: row.active !== false, outputValue: nullableNumber(row.sale_amount_pen), outputValueBasis: row.output_value_basis ?? null, energyCost: nullableNumber(row.energy_cost), energyCostBasis: row.energy_cost_basis ?? null, capitalCost: nullableNumber(row.capital_cost), capitalCostBasis: row.capital_cost_basis ?? null, outputWeightKg: nullableNumber(row.output_weight_kg), reportedWorkerCount: nullableNumber(row.reported_worker_count), reportedLaborHours: nullableNumber(row.reported_labor_hours), laborHourCostPen: nullableNumber(row.labor_hour_cost_pen), rawMaterialCostPen: nullableNumber(row.raw_material_cost_pen), suppliesCostPen: nullableNumber(row.supplies_cost_pen), productivityBasis: row.productivity_basis ?? null };
 }
 
 function mapCustomer(row) { return { id: row.id, documentNumber: row.document_number, name: row.name, contactName: row.contact_name, phone: row.phone, email: row.email, active: row.active }; }

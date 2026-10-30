@@ -61,6 +61,13 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
   const { current, previous } = report;
   const demandByCode = deriveMaterialDemand(dataset, range);
   const series = buildIndicatorSeries(dataset, range.start, range.end, grouping);
+  const measured = current.measurementMode === "weight";
+  const activeDefinitions = measured ? definitions.map((row) => {
+    if (row[0] === "labor_productivity") return [row[0], row[1], "kg/h", "Promedio por CECO de peso / horas", row[4], row[5]];
+    if (row[0] === "material_productivity") return [row[0], row[1], "kg/S/", "Promedio por CECO de peso / (materia prima + insumos)", row[4], row[5]];
+    if (row[0] === "multifactor_productivity") return [row[0], row[1], "ratio", "Promedio por CECO de producto / (horas × tarifa + energía + capital)", row[4], row[5]];
+    return row;
+  }) : definitions;
   const metricValues = [
     ["pmp_compliance", current.pmpCompliance, previous.pmpCompliance],
     ["progress_rate", current.progressRate, previous.progressRate],
@@ -75,7 +82,7 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
   appendSheet(workbook, "Resumen", [
     ...titleRow("INDICADORES PRODUCTIVOS", range),
     ["Variable SPSS", "Indicador", "Actual", "Periodo anterior", "Unidad", "Ecuación", "Rol", "Nivel de medición"],
-    ...definitions.map(([variable, label, unit, equation, role, level]) => {
+    ...activeDefinitions.map(([variable, label, unit, equation, role, level]) => {
       const values = metricMap.get(variable);
       return [variable, label, values?.[1] ?? null, values?.[2] ?? null, unit, equation, role, level];
     }),
@@ -125,10 +132,16 @@ export function buildIndicatorsWorkbook(dataset, report, range, grouping = "mont
     }), { 6: "0", 7: "0", 8: "0", 9: "0.00", 10: "0", 11: "0", 12: "0.00" });
   appendSheet(workbook, "Ficha plan maestro", thesisPlan.rows, thesisPlan.options);
   const thesisProductivity = thesisRows("FICHA DE RECOLECCIÓN Y CÁLCULO · PRODUCTIVIDAD", range,
-    ["Fecha", "CECO", "Descripción de carrocería", "Unidades producidas", "N.º de trabajadores", "Tiempo real (horas-hombre)", "Costo por hora-hombre", "Productividad mano de obra (und/HH)", "Costo materia prima", "Costo insumos", "Costo total materiales", "Productividad materiales (und/S/)", "Producto total S/", "Costo total mano de obra S/", "Capital de trabajo (materiales) S/", "Denominador (MO + materiales) S/", "Energía complementaria S/", "Capital complementario S/", "Productividad multifactorial", "Observaciones"],
+    [measured ? "Fecha de inicio" : "Fecha", "CECO", "Descripción de carrocería", measured ? "Peso producido (kg)" : "Unidades producidas", "N.º de trabajadores", "Tiempo real (horas-hombre)", "Costo por hora-hombre", measured ? "Productividad mano de obra (kg/h)" : "Productividad mano de obra (und/HH)", "Costo materia prima", "Costo insumos", "Costo total materiales", measured ? "Productividad materiales (kg/S/)" : "Productividad materiales (und/S/)", "Producto total S/", "Costo total mano de obra S/", "Capital de trabajo (materiales) S/", measured ? "Denominador (MO + energía + capital) S/" : "Denominador (MO + materiales) S/", "Energía S/", "Capital S/", "Productividad multifactorial", "Observaciones"],
     current.completedOrders.map((completed) => {
       const order = (dataset.orders ?? []).find((item) => item.ceco === completed.ceco);
       const product = (dataset.bodyTypes ?? []).find((item) => item.id === order?.bodyTypeId);
+      const input = current.cecoMeasurements?.find((item) => item.ceco === completed.ceco);
+      if (input) return [order?.plannedStartDate ?? completed.completionDate, completed.ceco, product?.name ?? "", input.weightKg, input.workers, input.hours,
+        input.hourlyCost, input.laborProductivity, input.rawMaterialCost, input.suppliesCost, input.materialCost,
+        input.materialProductivity, input.outputValue, input.laborCost, input.capitalCost,
+        input.laborCost + input.energyCost + input.capitalCost, input.energyCost, input.capitalCost,
+        input.multifactorProductivity, order?.productivityBasis ?? "Registrado en CECO"];
       const logs = operations.filter((item) => item.ceco === completed.ceco && inRange(item.date, range.start, range.end));
       const hours = logs.reduce((sum, item) => sum + Number(item.totalHours ?? 0), 0);
       const workers = new Set(logs.map((item) => item.worker).filter(Boolean)).size;

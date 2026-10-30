@@ -740,6 +740,10 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .ceco-edit-field { display: grid; gap: 2px; min-width: 0; }
 .ceco-edit-field .form-error { font-size: 8px; white-space: nowrap; }
 .ceco-edit-hint { margin-top: -6px; color: #778496; font-size: 9px; }
+.ceco-productivity-inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid #e2e9f1; border-radius: 10px; background: #f8fafc; }
+.ceco-productivity-inputs input { width: 100%; min-height: 34px; }
+@media (max-width: 760px) { .ceco-productivity-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .ceco-productivity-inputs { grid-template-columns: 1fr; } }
 .quality-control { display: grid; grid-template-columns: 105px 95px minmax(0, 1fr) auto; gap: 7px; padding-top: 10px; border-top: 1px solid #edf0f3; }
 .quality-control input, .quality-control select { min-height: 34px; font-size: 9px; }
 .quality-control .button { min-height: 34px; padding: 6px 9px; font-size: 9px; }
