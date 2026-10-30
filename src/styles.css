@@ -1418,6 +1418,71 @@ pre,
 .supply-results details > summary { cursor: pointer; color: #b74a14; font-size: 12px; margin-top: 8px; }
 @media (max-width: 650px) { .supply-batch > strong { width: 100%; } .supply-history article { flex-wrap: wrap; } .supply-history article > div { flex-basis: 100%; } }
 @media (max-width: 900px) { .supply-editors, .supply-metrics { grid-template-columns: 1fr; } .supply-config, .supply-results { padding: 18px; } }
+
+/* Simulación: controles compactos y listas fáciles de recorrer. */
+.supply-simulator { --supply-ink: #17283f; --supply-subtle: #63738a; --supply-border: #dee5ed; }
+.supply-simulator > .panel { border-radius: 16px; border-color: var(--supply-border); box-shadow: 0 12px 32px rgba(20, 39, 62, .055); }
+.supply-config { padding: clamp(20px, 2.6vw, 34px); }
+.supply-config .planning-heading { align-items: center; gap: 12px; margin-bottom: 20px; }
+.supply-config .planning-heading h2 { margin: 4px 0 0; font-size: clamp(26px, 2.5vw, 34px); }
+.supply-config .planning-heading p { margin: 8px 0 0; }
+.supply-config .planning-heading > .text-button { border: 1px solid var(--supply-border); border-radius: 9px; background: #fff; padding: 10px 14px; text-decoration: none; white-space: nowrap; }
+.supply-config > .supply-main-tabs { width: 100%; border: 0; border-bottom: 1px solid var(--supply-border); border-radius: 0; padding: 0; gap: 22px; }
+.supply-config > .supply-main-tabs button { border-radius: 0; border-bottom: 3px solid transparent; padding: 12px 2px 13px; background: transparent; color: var(--supply-subtle); font-size: 13px; }
+.supply-config > .supply-main-tabs button.active { border-color: #d95317; color: var(--supply-ink); }
+.supply-config > .supply-main-tabs button:disabled { opacity: .45; }
+.supply-config > .supply-editor-tabs { margin-top: 6px; background: #f4f6f9; border-color: #e7ebf0; }
+.supply-config > .supply-editor-tabs button { min-width: 105px; }
+.supply-simulator label { color: #33465e; }
+.supply-simulator input:not([type=checkbox]), .supply-simulator select { min-height: 42px; border-color: #d2dce6; transition: border-color .15s, box-shadow .15s; }
+.supply-simulator input:not([type=checkbox]):focus-visible, .supply-simulator select:focus-visible, .supply-simulator button:focus-visible, .supply-simulator summary:focus-visible { outline: 2px solid #d95317; outline-offset: 2px; border-color: #d95317; }
+.supply-batch { gap: 10px; border: 1px solid #dce6f2; background: #f5f8fc; padding: 16px; margin-top: 4px; }
+.supply-batch > strong { color: #1e3856; font-size: 13px; }
+.supply-batch label { font-size: 11px; }
+.supply-batch .planning-primary { min-height: 42px; padding-inline: 18px; }
+.supply-hint { color: var(--supply-subtle); line-height: 1.5; margin: 12px 0 14px; }
+.supply-edit-list { max-height: 430px; border-color: var(--supply-border); }
+.supply-edit-list th { color: #53647b; font-size: 11px; text-transform: uppercase; letter-spacing: .025em; background: #f5f7fa; box-shadow: inset 0 -1px #dfe6ee; white-space: nowrap; }
+.supply-edit-list td { border-top: 1px solid #edf1f5; vertical-align: middle; }
+.supply-edit-list td strong { color: var(--supply-ink); font-size: 12px; }
+.supply-edit-list td small { margin-top: 4px; }
+.supply-edit-list tbody tr:hover { background: #f7fafc; }
+.supply-edit-list tbody tr.selected, .supply-edit-list tbody tr.selected:hover { background: #fff6ef; }
+.supply-edit-list tbody tr.selected td:first-child { box-shadow: inset 3px 0 #df5716; }
+.supply-edit-list input[type=number], .supply-edit-list input[type=date] { font-size: 12px; }
+.supply-run { border-top: 1px solid var(--supply-border); padding-top: 20px; justify-content: flex-end; }
+.supply-run .planning-primary { padding: 12px 22px; font-size: 13px; }
+.supply-history { margin-top: 22px; }
+.supply-history h3 { font-size: 17px; color: var(--supply-ink); }
+.supply-history article { padding: 18px; margin-top: 10px; border: 1px solid var(--supply-border); border-radius: 10px; background: #fff; }
+.supply-history article:hover { border-color: #f3b58e; box-shadow: 0 4px 16px rgba(37, 46, 61, .045); }
+.supply-history article strong { font-size: 14px; color: var(--supply-ink); }
+.supply-history article .planning-primary { white-space: nowrap; }
+.supply-results { padding: clamp(20px, 2.6vw, 32px); }
+.supply-results > .planning-heading { align-items: center; border-bottom: 1px solid var(--supply-border); padding-bottom: 16px; }
+.supply-results > .planning-heading h2 { font-size: clamp(22px, 2vw, 28px); }
+.supply-results .supply-metrics { gap: 12px; }
+.supply-results .supply-metrics article { border: 1px solid var(--supply-border); box-shadow: none; border-radius: 10px; padding: 16px 18px; }
+.supply-results .supply-metrics article > span { display: block; min-height: 34px; color: #425772; font-weight: 700; }
+.supply-results .supply-metrics article > div { color: var(--supply-subtle); margin-top: 8px; line-height: 1.3; }
+.supply-results .supply-metrics strong { font-size: 23px; }
+.supply-cecos article { background: #f8fafc; border-color: var(--supply-border); }
+.supply-cecos article p { margin: 8px 0; font-size: 13px; }
+.supply-results .procurement-table-frame { border: 1px solid var(--supply-border); border-radius: 10px; }
+.supply-results .procurement-table-frame th { white-space: nowrap; font-size: 11px; }
+.supply-results .procurement-table-frame td { vertical-align: top; font-size: 12px; }
+.supply-method { border-top: 1px solid var(--supply-border); padding-top: 16px; }
+.supply-advanced { padding: 20px 24px; }
+@media (max-width: 650px) {
+  .supply-config, .supply-results { padding: 18px; }
+  .supply-config > .supply-main-tabs { gap: 13px; overflow-x: auto; white-space: nowrap; }
+  .supply-config > .supply-main-tabs button { font-size: 12px; }
+  .supply-controls { grid-template-columns: 1fr; gap: 12px; }
+  .supply-batch label, .supply-batch label:has(input[type=date]) { flex: 1 1 130px; width: auto; }
+  .supply-batch .planning-primary { width: 100%; }
+  .supply-run .planning-primary { width: 100%; }
+  .supply-history article .text-button, .supply-history article .planning-primary { flex: 1 1 auto; text-align: center; }
+}
 .procurement-form form { display: grid; gap: 16px; margin-top: 16px; }
 .procurement-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
 .procurement-actions { display: grid; gap: 9px; }
