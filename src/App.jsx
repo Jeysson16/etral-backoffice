@@ -74,7 +74,7 @@ function normalizeDataset(value) {
     activityProgress: value.activityProgress ?? [], bodyTypes: value.bodyTypes ?? [], productFamilies: value.productFamilies ?? [],
     productionLines: value.productionLines ?? [], customers: value.customers ?? [], inventory: value.inventory ?? [], bom: value.bom ?? [],
     orders: value.orders ?? [], orderMaterialReservations: value.orderMaterialReservations ?? [], operations: value.operations ?? [],
-    warehouse: value.warehouse ?? [], quality: value.quality ?? [], inventoryMovements: value.inventoryMovements ?? [], purchaseRequests: value.purchaseRequests ?? [],
+    warehouse: value.warehouse ?? [], quality: value.quality ?? [], inventoryMovements: value.inventoryMovements ?? [], purchaseRequests: value.purchaseRequests ?? [], historicalPurchases: value.historicalPurchases ?? [],
     catalogs: value.catalogs ?? { categories: [], units: [], brands: [] }, shifts: value.shifts ?? [], personnel: value.personnel ?? [],
     equipment: value.equipment ?? [], workCalendar: value.workCalendar ?? [], assignments: value.assignments ?? [], incidents: value.incidents ?? []
   };

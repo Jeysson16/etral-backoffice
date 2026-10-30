@@ -21,7 +21,7 @@ export const supabaseRepository = {
     // opcionales hasta que existan en el proyecto remoto.
     const optionalTables = [
       "customers", "order_material_reservations", "work_shifts", "personnel", "personnel_work_shifts",
-      "equipment", "work_calendar", "resource_assignments", "operational_incidents", "purchase_requests"
+      "equipment", "work_calendar", "resource_assignments", "operational_incidents", "purchase_requests", "historical_material_purchases"
     ];
     const tables = [...requiredTables, ...optionalTables];
     const results = await Promise.all(tables.map((table) => supabase.from(table).select("*")));
@@ -55,6 +55,7 @@ export const supabaseRepository = {
       quality: rows.quality_checks.map(mapQuality),
       inventoryMovements: rows.inventory_movements.map(mapMovement),
       purchaseRequests: rows.purchase_requests,
+      historicalPurchases: rows.historical_material_purchases,
       catalogs: { categories: rows.material_categories, units: rows.measurement_units, brands: rows.brands },
       productFamilies: rows.product_families,
       productionLines: rows.production_lines,
