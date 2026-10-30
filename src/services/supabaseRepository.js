@@ -84,7 +84,8 @@ export const supabaseRepository = {
   },
   async savePurchaseRequest(action, payload) {
     let result;
-    if (action === "create") result = await supabase.from("purchase_requests").upsert({ id: payload.id, material_code: payload.material_code, quantity: Number(payload.quantity), needed_date: payload.needed_date || null, cecos: payload.cecos || [], note: payload.note || "" }, { onConflict: "id", ignoreDuplicates: true });
+    if (action === "historicalReceipt") result = await supabase.from("historical_material_purchases").update({ received_on: payload.received_on || null }).eq("id", payload.id).select().single();
+    else if (action === "create") result = await supabase.from("purchase_requests").upsert({ id: payload.id, material_code: payload.material_code, quantity: Number(payload.quantity), needed_date: payload.needed_date || null, cecos: payload.cecos || [], note: payload.note || "" }, { onConflict: "id", ignoreDuplicates: true });
     else if (action === "edit") result = await supabase.from("purchase_requests").update({ quantity: Number(payload.quantity), needed_date: payload.needed_date || null, note: payload.note || "" }).eq("id", payload.id).eq("status", "requested").select().single();
     else if (action === "order") result = await supabase.from("purchase_requests").update({ status: "ordered", supplier: payload.supplier, order_number: payload.order_number, order_date: payload.order_date, expected_date: payload.expected_date, unit_cost: Number(payload.unit_cost) }).eq("id", payload.id).eq("status", "requested").select().single();
     else if (action === "receive") result = await supabase.rpc("receive_purchase_request", { p_id: payload.id, p_quantity: Number(payload.quantity), p_timestamp: toUtcTimestamp(payload.receipt_at), p_reference: payload.receipt_reference });

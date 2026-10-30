@@ -159,6 +159,13 @@ export const localRepository = {
     const dataset = load();
     dataset.purchaseRequests ||= [];
     const today = toLocalDateTimeInput(new Date().toISOString()).slice(0, 10);
+    if (action === "historicalReceipt") {
+      const historical = dataset.historicalPurchases?.find((item) => item.id === payload.id);
+      if (!historical) throw new Error("Compra histórica no encontrada");
+      historical.received_on = payload.received_on || null;
+      save(dataset);
+      return dataset;
+    }
     let row = dataset.purchaseRequests.find((item) => item.id === payload.id);
     if (action === "create") {
       if (payload.id && dataset.purchaseRequests.some((item) => item.id === payload.id)) return dataset;
