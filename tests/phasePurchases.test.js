@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildMaterialPlan } from "../src/lib/planning.js";
-import { buildPhasePurchaseBoard } from "../src/lib/phasePurchases.js";
+import { buildPhasePurchaseBoard, phaseGroupsForView } from "../src/lib/phasePurchases.js";
 
 const sample = {
   flowStages: [{ id: "cut", name: "Corte", code: "01" }, { id: "paint", name: "Pintura", code: "02" }],
@@ -50,4 +50,14 @@ test("una fase cerrada deja de demandar su material", () => {
   const board = buildPhasePurchaseBoard(dataset, plan, "2026-10-30");
   assert.deepEqual(board.groups.map((group) => group.stageName), ["Pintura"]);
   assert.equal(board.suggestions[0].quantity, 1);
+});
+
+test("la vista inicial muestra la fase pendiente más cercana por CECO y futuro conserva todas", () => {
+  const groups = [
+    { key: "a:paint", ceco: "a", routeOrder: 1, originalNeeded: "2026-11-15" },
+    { key: "b:cut", ceco: "b", routeOrder: 0, originalNeeded: "2026-11-03" },
+    { key: "a:cut", ceco: "a", routeOrder: 0, originalNeeded: "2026-11-01" }
+  ];
+  assert.deepEqual(phaseGroupsForView(groups).map((group) => group.key), ["a:cut", "b:cut"]);
+  assert.deepEqual(phaseGroupsForView(groups, "future").map((group) => group.key), ["a:cut", "b:cut", "a:paint"]);
 });
